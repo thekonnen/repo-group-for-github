@@ -8,6 +8,8 @@ import { checkYaml, commitEdit, commitYaml, createDotGithub, EditError } from '.
 import { discardPending, filePending, setPending } from './new-repo';
 import { probeAccess, readOrgFile, type OrgFile } from './org-data';
 import { refreshIndex, type IndexStore } from './repo-index';
+import { refreshActionIndex } from './action-index';
+import { loadDetails } from './details';
 
 export interface Deps {
   fetch: FetchLike;
@@ -47,6 +49,16 @@ export function createHandler(deps: Deps) {
       }
     : deps.kv;
   const progress = new Map<string, Progress>();
+  /** `index: action` in repo-groups.yml (read from the ETag cache when there is one). */
+  const wantsActionIndex = async (org: string): Promise<boolean> => {
+    try {
+      const file = (await deps.kv.get<OrgFile>(`rg:file:${org}`)) ?? (await readOrgFile(client, deps.kv, org));
+      if (!file.exists) return false;
+      return readConfig(file.text, await loadYamlParser(), { org }).config?.index === 'action';
+    } catch {
+      return false;
+    }
+  };
   const tokenKind = async () => (await loadAuth(deps.kv))?.kind ?? 'oauth';
 
   async function handle(req: Request): Promise<unknown> {
@@ -77,19 +89,27 @@ export function createHandler(deps: Deps) {
         await signOut(deps.kv);
         return publicAuth(undefined);
       case 'org:cached':
-        return (await deps.index.load(req.org)) satisfies OrgSnapshot | null;
+      {
+        // Only repos and meta: entries of the Action index file that are not confirmed yet are never part of this.
+        const snap = await deps.index.load(req.org);
+        return (snap ? { repos: snap.repos, meta: snap.meta } : null) satisfies OrgSnapshot | null;
+      }
       case 'org:refresh': {
         const publicOnly = !(await loadAuth(deps.kv));
         try {
-          return await refreshIndex(client, req.org, deps.index, {
+          const opts = {
             force: req.force,
             concurrency: publicOnly ? 2 : 6,
-            onProgress: (p) => progress.set(req.org, { loaded: p.loaded, estimatedTotal: p.estimatedTotal }),
-          });
+            onProgress: (p: { loaded: number; estimatedTotal: number; phase?: 'action' }) => progress.set(req.org, { loaded: p.loaded, estimatedTotal: p.estimatedTotal, phase: p.phase }),
+          };
+          if (await wantsActionIndex(req.org)) return await refreshActionIndex(client, req.org, deps.index, { ...opts, publicOnly });
+          return await refreshIndex(client, req.org, deps.index, opts);
         } finally {
           progress.delete(req.org);
         }
       }
+      case 'org:details':
+        return loadDetails(client, deps.kv, req.org, req.repos);
       case 'org:progress':
         return progress.get(req.org) ?? null;
       case 'org:config': {

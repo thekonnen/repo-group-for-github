@@ -17,6 +17,7 @@ export type Request =
   | { type: 'org:access'; org: string }
   | { type: 'org:config'; org: string; cachedOnly?: boolean }
   | { type: 'org:progress'; org: string }
+  | { type: 'org:details'; org: string; repos: string[] }
   | { type: 'org:edit'; org: string; edit: Edit }
   | { type: 'org:create-dotgithub'; org: string }
   | { type: 'newrepo:pending'; entry: Omit<PendingRepo, 'createdAt'> }
@@ -41,6 +42,8 @@ export type ConfigResult =
 export interface Progress {
   loaded: number;
   estimatedTotal: number;
+  /** 'action': loading the organization index file; loaded/estimatedTotal are then a percentage out of 100. */
+  phase?: 'action';
 }
 
 export type ErrorInfo = { kind: string; message: string; hint?: string; resetAt?: number };

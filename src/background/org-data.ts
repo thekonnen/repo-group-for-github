@@ -48,9 +48,10 @@ export async function readDotGithub(client: Client, org: string): Promise<DotGit
 }
 
 /** Detects the user's access level (F15). Personal access tokens skip the installation check. */
-export async function probeAccess(client: Client, org: string, tokenKind: 'oauth' | 'pat'): Promise<{ access: Access; dotGithub: DotGithub }> {
-  let membershipRole: AccessProbe['membershipRole'] = null;
-  try {
+export async function probeAccess(client: Client, org: string, tokenKind: 'oauth' | 'pat', personal = false): Promise<{ access: Access; dotGithub: DotGithub }> {
+  // The signed-in user's own account: there is no membership, the user owns it.
+  let membershipRole: AccessProbe['membershipRole'] = personal ? 'admin' : null;
+  if (!personal) try {
     const m = await client.rest(`/user/memberships/orgs/${encodeURIComponent(org)}`, { allow404: true });
     if (m.status !== 404 && m.data?.state !== 'pending') membershipRole = m.data?.role === 'admin' ? 'admin' : 'member';
   } catch (e) {
@@ -62,8 +63,6 @@ export async function probeAccess(client: Client, org: string, tokenKind: 'oauth
     const inst = await client.rest('/user/installations?per_page=100', { allow404: true });
     appInstalled = !!inst.data?.installations?.some((i: any) => i.account?.login?.toLowerCase() === org.toLowerCase());
   }
-  return {
-    dotGithub,
-    access: detectAccess({ membershipRole, pushOnDotGithub: dotGithub.readable ? dotGithub.push : null, appInstalled, allowForking: dotGithub.allowForking }),
-  };
+  const access = detectAccess({ membershipRole, pushOnDotGithub: dotGithub.readable ? dotGithub.push : null, appInstalled, allowForking: dotGithub.allowForking });
+  return { dotGithub, access: personal ? { ...access, personal: true } : access };
 }

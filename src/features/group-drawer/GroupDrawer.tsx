@@ -166,7 +166,7 @@ function Form({ ctl, mode, path, focusLogo }: { ctl: Controller; mode: 'edit' | 
           <input id="rg-f-desc" class="rg-input" value={description} autocomplete="off" placeholder="One short sentence" onInput={(e) => setDescription((e.target as HTMLInputElement).value)} />
         </div>
 
-        <TeamsField
+        {!s.access?.personal && <TeamsField
           org={s.org}
           teams={teams}
           onChange={(t) => (setTeams(t), setProblem(null))}
@@ -176,7 +176,7 @@ function Form({ ctl, mode, path, focusLogo }: { ctl: Controller; mode: 'edit' | 
           customRoles={tv.customRoles ? Object.keys(tv.customRoles) : undefined}
           onSync={mode === 'edit' && savedSlugs.length ? () => void ctl.teams.openSync({ teams: savedSlugs, groupKey: path.join('/') }) : undefined}
           syncNote={teamsDirty ? 'Save your team changes first. Sync access uses the saved file.' : null}
-        />
+        />}
 
         <div class="rg-field">
           <label for="rg-f-rule">Match rules</label>

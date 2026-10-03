@@ -82,11 +82,11 @@ export async function commitEdit(client: Client, kv: KV, org: string, edit: Edit
 }
 
 /** Creates the private <org>/.github repository (with a first commit, so files can be added). */
-export async function createDotGithub(client: Client, org: string): Promise<void> {
+export async function createDotGithub(client: Client, org: string, personal = false): Promise<void> {
   try {
-    await client.rest(`/orgs/${enc(org)}/repos`, {
+    await client.rest(personal ? '/user/repos' : `/orgs/${enc(org)}/repos`, {
       method: 'POST',
-      body: { name: '.github', private: true, auto_init: true, description: 'Organization-wide settings, including Repository Group' },
+      body: { name: '.github', private: true, auto_init: true, description: personal ? 'Profile and settings, including Repository Group' : 'Organization-wide settings, including Repository Group' },
     });
   } catch (e) {
     if (e instanceof GitHubError && e.kind === 'validation' && /already exists/i.test(e.message)) return;

@@ -1,0 +1,37 @@
+<!doctype html>
+<!-- Structure of a user's own Repositories tab (https://github.com/<login>?tab=repositories), saved from github.com on 2026-10-03.
+     Hand-reduced: scripts, styles, icons, tokens and the profile card are gone, and the repositories are made-up names.
+     What is kept is the markup the extension locates: the toolbar form, #user-repositories-list and the pagination. -->
+<html lang="en" data-color-mode="dark"><body>
+<header class="Header"><a href="https://github.com/" aria-label="GitHub Homepage">GitHub</a></header>
+<main id="js-repo-pjax-container">
+  <div class="Layout Layout--flowRow-until-md Layout--sidebarPosition-start">
+    <div class="Layout-sidebar"><div class="h-card"><span class="p-nickname vcard-username">alyssonjalles</span></div></div>
+    <div class="Layout-main">
+      <turbo-frame id="user-profile-frame">
+        <div data-hpc="">
+          <div class="border-bottom color-border-muted tmp-py-3">
+            <a href="https://github.com/new" class="d-md-none btn btn-primary">New</a>
+            <div class="d-flex flex-items-start">
+              <form class="width-full" data-autosearch-results-container="user-repositories-list" aria-label="Repositories" role="search" action="https://github.com/alyssonjalles" method="get">
+                <input type="search" id="your-repos-filter" name="q" class="form-control width-full" placeholder="Find a repository…" aria-label="Find a repository…" value="">
+                <details id="type-options"><summary class="btn"><span>Type</span></summary></details>
+                <details id="language-options"><summary class="btn"><span>Language</span></summary></details>
+                <details id="sort-options"><summary class="btn"><span>Sort</span></summary></details>
+              </form>
+              <a href="https://github.com/new" class="btn btn-primary d-none d-md-block ml-2">New</a>
+            </div>
+          </div>
+          <div id="user-repositories-list" data-hpc="">
+            <ul data-filterable-for="your-repos-filter" data-filterable-type="substring">
+              <li class="col-12 d-flex width-full py-4 border-bottom private source"><div class="col-10"><h3><a href="https://github.com/alyssonjalles/side-project">side-project</a> <span class="Label">Private</span></h3></div></li>
+              <li class="col-12 d-flex width-full py-4 border-bottom public source"><div class="col-10"><h3><a href="https://github.com/alyssonjalles/dotfiles">dotfiles</a> <span class="Label">Public</span></h3></div></li>
+            </ul>
+            <div class="paginate-container"></div>
+          </div>
+        </div>
+      </turbo-frame>
+    </div>
+  </div>
+</main>
+</body></html>

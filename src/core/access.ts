@@ -24,6 +24,8 @@ export interface Access {
   /** Sync access rows are limited to repos where viewerIsAdmin. */
   syncNeedsRepoAdmin: boolean;
   publicOnly: boolean;
+  /** The signed-in user's own account (not an organization): no teams. */
+  personal?: boolean;
 }
 
 export function detectAccess(p: AccessProbe): Access {

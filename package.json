@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "wxt",
-    "dev:firefox": "wxt -b firefox",
+    "dev:firefox": "wxt -b firefox --mv3",
     "build": "wxt build",
-    "build:firefox": "wxt build -b firefox",
+    "build:firefox": "wxt build -b firefox --mv3",
     "zip": "wxt zip",
     "postinstall": "wxt prepare",
     "typecheck": "tsc --noEmit",

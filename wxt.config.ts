@@ -13,7 +13,7 @@ export default defineConfig({
     host_permissions: ['https://github.com/*', 'https://api.github.com/*'],
     optional_host_permissions: ['https://*/*'],
     ...(browser === 'firefox'
-      ? { browser_specific_settings: { gecko: { id: 'repo-group-for-github@thekonnen', strict_min_version: '115.0' } } }
+      ? { browser_specific_settings: { gecko: { id: 'repo-group-for-github@thekonnen', strict_min_version: '128.0' } } }
       : {}),
   }),
 });

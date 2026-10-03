@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { example, REPOS } from './fixtures';
-import { allRepos, avatarTone, buildTree, defaultExpanded, memoTree, nodeAt, searchRows, sideItems, treeRows, windowRange } from '../src/core/tree';
+import { allRepos, avatarTone, buildTree, defaultExpanded, flatRows, memoTree, nodeAt, searchRows, sideItems, treeRows, windowRange } from '../src/core/tree';
 import type { RepoInfo } from '../src/core/types';
 
 const at = (min: number) => new Date(Date.parse('2026-01-10T12:00:00Z') - min * 60000).toISOString();
@@ -90,5 +90,45 @@ describe('rows, search, defaults', () => {
     expect(windowRange(7600, 600, 76, 1000, 2)).toEqual({ start: 98, end: 110 });
     expect(windowRange(1e9, 600, 76, 50)).toEqual({ start: 50, end: 50 });
     void REPOS;
+  });
+});
+
+describe('"All repositories" flat list and sort orders', () => {
+  const m = buildTree(example().groups, [
+    { name: 'beta', pushedAt: at(10), stars: 5, openIssuesAndPrs: 1 },
+    { name: 'Alpha', pushedAt: at(30), stars: 9, openIssuesAndPrs: 7 },
+    { name: 'dagu', pushedAt: at(20), stars: 5, openIssuesAndPrs: 7, description: 'Jobs and crons' },
+    { name: 'dags-repo', pushedAt: at(5), stars: 0, openIssuesAndPrs: 0 },
+    { name: 'authentik', pushedAt: at(60), stars: 1, openIssuesAndPrs: 3 },
+    { name: 'archived-one', archived: true, pushedAt: at(1) },
+  ]);
+  const names = (key: string, sort: any, q = '') => flatRows(nodeAt(m, key ? key.split('/') : [])!, sort, q).map((r) => (r.kind === 'repo' ? r.repo.name : '?'));
+  it('lists every repository of the group, subgroups included, in the orders GitHub offers', async () => {
+    const { SORT_KEYS, SORT_LABEL } = await import('../src/core/tree');
+    expect(SORT_KEYS).toEqual(['pushed', 'name', 'stars', 'issues']);
+    expect(SORT_KEYS.map((k) => SORT_LABEL[k])).toEqual(['Last pushed', 'Name', 'Stars', 'Open issues & PRs']);
+  });
+  it('last pushed (default) is newest first; archived repositories stay hidden', () => {
+    expect(names('', 'pushed')).toEqual(['dags-repo', 'beta', 'dagu', 'Alpha', 'authentik']);
+  });
+  it('name is alphabetical ignoring case; stars and issues are descending with newest push as tie-break', () => {
+    expect(names('', 'name')).toEqual(['Alpha', 'authentik', 'beta', 'dags-repo', 'dagu']);
+    expect(names('', 'stars')).toEqual(['Alpha', 'beta', 'dagu', 'authentik', 'dags-repo']); // beta and dagu tie on 5: beta is newer
+    expect(names('', 'issues')).toEqual(['dagu', 'Alpha', 'authentik', 'beta', 'dags-repo']); // dagu and Alpha tie on 7: dagu is newer
+  });
+  it('is recursive and flat: a group page lists its subgroups\' repositories as one list', () => {
+    expect(names('infra', 'name')).toEqual(['authentik', 'dags-repo', 'dagu']);
+    expect(names('infra/dagu', 'name')).toEqual(['dags-repo', 'dagu']);
+  });
+  it('a query filters by name and description and keeps the chosen order', () => {
+    expect(names('', 'name', 'DAG')).toEqual(['dags-repo', 'dagu']);
+    expect(names('', 'pushed', 'crons')).toEqual(['dagu']);
+    expect(names('', 'pushed', 'zzz')).toEqual([]);
+  });
+  it('sortRepos does not mutate its input', async () => {
+    const { sortRepos } = await import('../src/core/tree');
+    const input = [{ name: 'b' }, { name: 'a' }];
+    sortRepos(input, 'name');
+    expect(input.map((r) => r.name)).toEqual(['b', 'a']);
   });
 });

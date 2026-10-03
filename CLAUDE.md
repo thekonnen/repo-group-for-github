@@ -91,7 +91,7 @@ Route: `https://github.com/orgs/<org>/repositories` (also when GitHub adds query
   - a **breadcrumb**;
   - a **group header**: avatar, name, description, and the buttons **Edit YAML** · **Edit group** (not on root) · **New group/New subgroup** · **New repository** (green);
   - a **stats row**: Repositories, Groups/Subgroups, Open issues, Open pull requests, Last push;
-  - **tabs**: *Groups and repositories* plus *Ungrouped (n)* on the root, or *Match rules (n)* on a group;
+  - **tabs**: *Groups and repositories* plus *Ungrouped (n)* on the root, or *Match rules (n)* on a group, and on both an **All repositories (n)** tab: GitHub's own flat list of every repository of the current group (subgroups included), with a sort selector (Last pushed by default, Name, Stars, Open issues & PRs) that is remembered per org;
   - **search**;
   - the **list box**.
 - **List rows:**

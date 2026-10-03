@@ -6,7 +6,10 @@ export interface TeamTag {
 }
 
 export interface Group {
+  /** The slug: URL, rules, paths. Lowercase letters, numbers, - _ . */
   name: string;
+  /** Optional display name (capitals, spaces, accents). Shown instead of `name` when present. */
+  title?: string;
   description: string;
   logo: string | null;
   teams: TeamTag[];

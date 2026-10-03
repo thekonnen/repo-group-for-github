@@ -3,6 +3,7 @@ import { buildHash, parseHash } from '../../core/layers';
 import type { IndexMeta } from '../../core/index-sync';
 import type { Access } from '../../core/access';
 import { finalName, type Edit } from '../../core/edit';
+import { writeConfig } from '../../core/yaml-write';
 import type { RepoInfo } from '../../core/types';
 import { defaultExpanded, memoTree, type TreeModel } from '../../core/tree';
 import { hasGithubFilter } from '../../github/route';
@@ -36,10 +37,25 @@ export interface State {
   query: string;
   access: Access | null;
   drawer: { mode: 'edit' | 'new'; path: string[] } | null;
+  yaml: { text: string } | null;
   toast: { text: string; kind: 'ok' | 'error' } | null;
 }
 
 export type SaveResult = { ok: true } | { ok: false; message: string; needsRepo?: boolean };
+
+export interface Conflict {
+  sha: string | null;
+  config: import('../../core/types').Config | null;
+}
+export type ApplyResult = SaveResult | { ok: false; conflict: Conflict };
+
+export interface YamlCheck {
+  config?: import('../../core/types').Config;
+  error?: string;
+  line?: number | null;
+  warnings: string[];
+  stripped: boolean;
+}
 
 export interface Env {
   call: Call;
@@ -73,6 +89,7 @@ export function createController(org: string, env: Env) {
     query: '',
     access: null,
     drawer: null,
+    yaml: null,
     toast: null,
   });
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
@@ -228,6 +245,13 @@ export function createController(org: string, env: Env) {
     }
   }
 
+  /** The saved file as the writer would emit it: what the YAML editor opens with and "Reset to saved file" returns to. */
+  function savedText(): string {
+    const s = store.get();
+    const cfg = s.config && s.config.exists && s.config.config ? s.config.config : { version: 1, index: 'api' as const, groups: [] };
+    return writeConfig(cfg, `${org}/.github/repo-groups.yml`);
+  }
+
   return {
     store,
     model,
@@ -241,6 +265,43 @@ export function createController(org: string, env: Env) {
       clearTimeout(toastTimer);
     },
     save,
+    savedText,
+    openYaml(text?: string) {
+      store.set({ drawer: null, yaml: { text: text ?? savedText() } });
+    },
+    closeYaml: () => store.set({ yaml: null }),
+    async validateYaml(text: string): Promise<YamlCheck> {
+      try {
+        return await env.call<YamlCheck>({ type: 'yaml:validate', org, text });
+      } catch (e) {
+        return { error: infoOf(e).message, warnings: [], stripped: false };
+      }
+    },
+    async applyYaml(text: string, changes: number, create = false): Promise<ApplyResult> {
+      try {
+        if (create) await env.call({ type: 'org:create-dotgithub', org });
+        const before = store.get();
+        const baseSha = before.config && before.config.exists ? before.config.sha : null;
+        const r = await env.call<any>({ type: 'org:apply-yaml', org, text, baseSha, changes });
+        if (r.status === 'needs-repo') return { ok: false, message: '', needsRepo: true };
+        if (r.status === 'conflict') return { ok: false, conflict: { sha: r.sha, config: r.config } };
+        store.set({ config: { exists: true, sha: r.sha, config: r.config, warnings: r.warnings }, indexVersion: before.indexVersion + 1, yaml: null });
+        showToast(`Committed to ${org}/.github/repo-groups.yml`);
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, message: infoOf(e).message };
+      }
+    },
+    /** "Reload and keep my text": adopt the file as it is on GitHub now, so the editor diffs against it. */
+    rebase(c: Conflict) {
+      const before = store.get();
+      const config: ConfigResult = c.config
+        ? { exists: true, sha: c.sha, config: c.config, warnings: [] }
+        : c.sha
+          ? { exists: true, sha: c.sha, error: 'The file on GitHub has a problem.', warnings: [] }
+          : { exists: false };
+      store.set({ config, indexVersion: before.indexVersion + 1 });
+    },
     async createRepoAndSave(edit: Edit): Promise<SaveResult> {
       try {
         await env.call({ type: 'org:create-dotgithub', org });

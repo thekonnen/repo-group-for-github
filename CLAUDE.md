@@ -453,7 +453,8 @@ Route: `https://github.com/organizations/<org>/repositories/new` (also `https://
 version: 1                 # integer, required on write; missing = 1 on read
 index: api                 # optional: "api" (default) or "action" (F14, uses repo-index.json)
 groups:                    # required list (may be empty)
-  - name: infra            # required; ^[a-z0-9._-]+$ ; unique among siblings
+  - name: infra            # required: the slug. ^[a-z0-9._-]+$ ; unique among siblings. Used in URLs, rules and paths
+    title: "Infra"         # optional display name, any characters (e.g. "Grupo: Competição" with slug grupo-competicao)
     description: "..."     # optional string
     logo: "logos/infra.png" # optional; path inside <org>/.github, or an https URL
     teams: ["konnen_team", { slug: "ai-squad", permission: "maintain" }]
@@ -467,7 +468,7 @@ groups:                    # required list (may be empty)
 - The personal **My groups** file (F13) uses the same schema without `index` and `teams`.
 - Unknown keys are ignored on read and dropped on write.
 - `repositories:` is reserved (AI context) and ignored.
-- The **writer** emits the canonical format: the order is `name, description, logo, teams, match, groups`; `teams` uses plain strings for `push` and the `{ slug, permission }` form otherwise; strings in double quotes; `match` in flow style (`["a", "b"]`); 2-space indentation; a leading comment line `# <org>/.github/repo-groups.yml`. See `yamlPreview()` in `mockup.js`. Write it by hand; do not ship a YAML dumper.
+- The **writer** emits the canonical format: the order is `name, title, description, logo, teams, match, groups`; `teams` uses plain strings for `push` and the `{ slug, permission }` form otherwise; strings in double quotes; `match` in flow style (`["a", "b"]`); 2-space indentation; a leading comment line `# <org>/.github/repo-groups.yml`. See `yamlPreview()` in `mockup.js`. Write it by hand; do not ship a YAML dumper.
 - The **reader** uses a real YAML parser (js-yaml), lazy-loaded.
 
 ### 5.2 Validation errors (copy from the mockup)

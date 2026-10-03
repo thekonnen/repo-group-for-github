@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { pathLabel, type Destination } from '../../core/newrepo';
+import type { Group } from '../../core/types';
 import { Avatar } from '../../ui/Avatar';
 import { Icon } from '../../ui/Icon';
 import { useStore } from '../store';
@@ -8,7 +9,7 @@ import type { NrController } from './controller';
 const AUTO = '';
 
 /** The sentence under the path; same text as destinationSentence() with code and bold. */
-function Sentence({ d }: { d: Destination }) {
+function Sentence({ d, groups }: { d: Destination; groups: Group[] }) {
   switch (d.kind) {
     case 'empty':
       return <>Type a name to see which group it lands in.</>;
@@ -19,7 +20,7 @@ function Sentence({ d }: { d: Destination }) {
     case 'same':
       return <>Already matches the rule <code>{d.rule}</code> of this group. repo-groups.yml stays the same.</>;
     case 'diff':
-      return <>Adds <code>{d.name}</code> to the match list of <b>{pathLabel(d.pickedKey)}</b> in repo-groups.yml (otherwise it would land in {d.autoKey ? pathLabel(d.autoKey) : 'Ungrouped'}).</>;
+      return <>Adds <code>{d.name}</code> to the match list of <b>{pathLabel(d.pickedKey, groups)}</b> in repo-groups.yml (otherwise it would land in {d.autoKey ? pathLabel(d.autoKey, groups) : 'Ungrouped'}).</>;
   }
 }
 
@@ -44,6 +45,7 @@ export function GroupField({ ctl }: { ctl: NrController }) {
   const keys = [AUTO, ...opts.map((o) => o.key)];
   const name = d.name || 'new-repository';
   const chain = d.destKey ? d.destKey.split('/') : [];
+  const chainLabels = d.destKey ? pathLabel(d.destKey, s.groups).split(' / ') : [];
 
   return (
     <div class="rg-nr" id="rg-nr-group" data-rg="new-repo-group">
@@ -66,15 +68,15 @@ export function GroupField({ ctl }: { ctl: NrController }) {
             {chain.map((c, i) => (
               <>
                 <span aria-hidden="true">/</span>
-                <Avatar key={'a' + i} name={c} cls="rg-mini-av" />
-                {c}
+                <Avatar key={'a' + i} name={c} label={chainLabels[i]} cls="rg-mini-av" />
+                {chainLabels[i]}
               </>
             ))}
             <span aria-hidden="true">/</span>
             <b>{name}</b>
           </div>
           <span class="rg-hint">
-            <Sentence d={d} />
+            <Sentence d={d} groups={s.groups} />
           </span>
         </div>
       </div>
@@ -145,7 +147,7 @@ function Picker({ ctl, open, setOpen, active, setActive, keys, btn, list }: Pick
   };
 
   const picked = s.pickedKey ? opts.find((o) => o.key === s.pickedKey) : null;
-  const auto = d.autoKey ? pathLabel(d.autoKey) : null;
+  const auto = d.autoKey ? pathLabel(d.autoKey, s.groups) : null;
   return (
     <div class="rg-picker-wrap">
       <button
@@ -163,8 +165,8 @@ function Picker({ ctl, open, setOpen, active, setActive, keys, btn, list }: Pick
         <span class="rg-lbl" id="rg-nr-picker-lbl">
           {picked ? (
             <span class="rg-lbl-in">
-              <Avatar name={picked.name} cls="rg-mini-av" />
-              {pathLabel(picked.key)}
+              <Avatar name={picked.name} label={picked.label} cls="rg-mini-av" />
+              {pathLabel(picked.key, s.groups)}
             </span>
           ) : (
             <span class="rg-lbl-in">
@@ -213,8 +215,8 @@ function Picker({ ctl, open, setOpen, active, setActive, keys, btn, list }: Pick
             onClick={() => choose(o.key)}
           >
             <span class="rg-tick">{s.pickedKey === o.key && <Icon name="check" />}</span>
-            <Avatar name={o.name} cls="rg-mini-av" />
-            <span>{o.name}</span>
+            <Avatar name={o.name} label={o.label} cls="rg-mini-av" />
+            <span>{o.label}</span>
             <span class="rg-count">{o.count}</span>
           </li>
         ))}

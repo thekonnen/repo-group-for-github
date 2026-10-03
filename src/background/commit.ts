@@ -1,4 +1,5 @@
 import { applyEdit, commitMessage, type Edit } from '../core/edit';
+import { yamlCommitMessage } from '../core/yaml-session';
 import type { Config } from '../core/types';
 import { loadYamlParser, readConfig } from '../core/yaml-read';
 import { writeConfig } from '../core/yaml-write';
@@ -11,7 +12,9 @@ export class EditError extends Error {}
 
 export type EditResult =
   | { status: 'ok'; sha: string | null; config: Config; warnings: string[] }
-  | { status: 'needs-repo' };
+  | { status: 'needs-repo' }
+  /** Edit YAML only: the file on GitHub is not the one the editor was opened on. `config` is the fresh file (null if none or invalid). */
+  | { status: 'conflict'; sha: string | null; config: Config | null };
 
 const FILE = 'repo-groups.yml';
 const enc = encodeURIComponent;
@@ -90,5 +93,54 @@ export async function createDotGithub(client: Client, org: string): Promise<void
     if (e instanceof GitHubError && (e.kind === 'forbidden' || e.kind === 'not-found'))
       throw new EditError(`You cannot create ${org}/.github. Ask an org owner to create it.`);
     throw e;
+  }
+}
+
+export interface YamlCheck {
+  config?: Config;
+  error?: string;
+  line?: number | null;
+  warnings: string[];
+  stripped: boolean;
+}
+
+/** Validates editor text (fences stripped, `repositories:` and unknown keys ignored). The page diffs the returned tree. */
+export async function checkYaml(org: string, text: string): Promise<YamlCheck> {
+  const r = readConfig(text, await loadYamlParser(), { org });
+  return { config: r.config, error: r.error, line: r.line, warnings: r.warnings, stripped: !!r.stripped };
+}
+
+/**
+ * Commits the YAML editor's text. Unlike the single-edit flow there is no automatic retry: if the file on GitHub is not
+ * the one the editor was opened on, the person decides ("The file changed on GitHub since you opened it").
+ */
+export async function commitYaml(client: Client, kv: KV, org: string, text: string, baseSha: string | null, changes: number): Promise<EditResult> {
+  const load = await loadYamlParser();
+  const draft = readConfig(text, load, { org });
+  if (!draft.config) throw new EditError(`The YAML has a problem: ${draft.error}`);
+
+  const conflict = async (): Promise<EditResult> => {
+    const f = await fetchFresh(client, org);
+    if (f === 'no-repo') return { status: 'needs-repo' };
+    const r = f.text.trim() ? readConfig(f.text, load, { org }) : null;
+    return { status: 'conflict', sha: f.sha, config: r?.config ?? null };
+  };
+
+  const fresh = await fetchFresh(client, org);
+  if (fresh === 'no-repo') return { status: 'needs-repo' };
+  if ((fresh.sha ?? null) !== baseSha) return conflict();
+
+  const out = writeConfig(draft.config, `${org}/.github/repo-groups.yml`);
+  try {
+    const res = await client.rest(`/repos/${enc(org)}/.github/contents/${FILE}`, {
+      method: 'PUT',
+      body: { message: yamlCommitMessage(changes), content: encodeBase64Utf8(out), ...(fresh.sha ? { sha: fresh.sha } : {}) },
+    });
+    const sha: string | null = res.data?.content?.sha ?? null;
+    await kv.set(`rg:file:${org}`, { exists: true, text: out, sha, etag: null } satisfies OrgFile);
+    return { status: 'ok', sha, config: draft.config, warnings: draft.warnings };
+  } catch (e) {
+    if (e instanceof GitHubError && e.kind === 'validation') return conflict();
+    friendly(e, org);
   }
 }

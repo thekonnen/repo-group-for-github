@@ -1,4 +1,4 @@
-import { describeDestination, PENDING_TTL_MS, type PendingRepo } from '../core/newrepo';
+import { describeDestination, pathLabel, PENDING_TTL_MS, type PendingRepo } from '../core/newrepo';
 import { loadYamlParser, readConfig } from '../core/yaml-read';
 import type { Client } from './api';
 import { commitEdit } from './commit';
@@ -10,6 +10,8 @@ const KEY = 'rg:pending-repo';
 /** Result for the toast on the repo page. */
 export interface FiledResult {
   groupKey: string; // '' = ungrouped
+  /** The group path with display names, for the toast. */
+  groupLabel?: string;
   committed: boolean;
   /** Plain-language reason when the commit failed. */
   error?: string;
@@ -40,11 +42,12 @@ export async function filePending(client: Client, kv: KV, org: string, repo: str
   const parsed = file?.exists ? readConfig(file.text, await loadYamlParser(), { org }) : null;
   if (!parsed?.config) return { groupKey: '', committed: false, teams: p.teams };
   const d = describeDestination(parsed.config.groups, p.repo, p.explicit ? p.groupPath : '');
-  if (!d.needsCommit) return { groupKey: d.destKey, committed: false, teams: p.teams }; // the rules already place it
+  const groupLabel = pathLabel(d.destKey, parsed.config.groups);
+  if (!d.needsCommit) return { groupKey: d.destKey, groupLabel, committed: false, teams: p.teams }; // the rules already place it
   try {
     await commitEdit(client, kv, org, { kind: 'file', path: d.pickedKey.split('/'), repo: p.repo });
-    return { groupKey: d.destKey, committed: true, teams: p.teams };
+    return { groupKey: d.destKey, groupLabel, committed: true, teams: p.teams };
   } catch (e) {
-    return { groupKey: d.destKey, committed: false, error: e instanceof Error ? e.message : String(e), teams: p.teams };
+    return { groupKey: d.destKey, groupLabel, committed: false, error: e instanceof Error ? e.message : String(e), teams: p.teams };
   }
 }

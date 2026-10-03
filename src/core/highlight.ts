@@ -65,7 +65,7 @@ export function highlightHtml(text: string): string {
   return (
     text
       .split('\n')
-      .map((l) => lineTokens(l).map((t) => (t.cls === 'plain' ? esc(t.text) : `<span class="t-${t.cls}">${esc(t.text)}</span>`)).join(''))
+      .map((l) => lineTokens(l).map((t) => (t.cls === 'plain' ? esc(t.text) : `<span class="rg-t-${t.cls}">${esc(t.text)}</span>`)).join(''))
       .join('\n') + '\n '
   );
 }

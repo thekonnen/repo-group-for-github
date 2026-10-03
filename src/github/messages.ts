@@ -22,6 +22,8 @@ export type Request =
   | { type: 'newrepo:pending'; entry: Omit<PendingRepo, 'createdAt'> }
   | { type: 'newrepo:discard' }
   | { type: 'newrepo:landed'; org: string; repo: string }
+  | { type: 'yaml:validate'; org: string; text: string }
+  | { type: 'org:apply-yaml'; org: string; text: string; baseSha: string | null; changes: number }
   | { type: 'prefs:get'; org: string }
   | { type: 'prefs:set'; org: string; prefs: Partial<OrgPrefs> };
 

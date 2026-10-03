@@ -54,7 +54,13 @@ function branchOutside(el: Element, column: Element, filterList: Element | null,
 /** The title row GitHub renders above its list ("All" + New repository). It can live outside the list column. */
 function findExtras(doc: Document, column: Element, filterList: Element | null): Element[] {
   const out = new Set<Element>();
-  const outsidePageChrome = (el: Element) => !el.closest('header, [role="banner"], .rg-root');
+  // GitHub renders the "All" title row inside a <header> too, so only the global header (the one with the logo) is skipped.
+  const LOGO = 'a[href="/"], a[href="https://github.com/"], a[aria-label*="Homepage" i]';
+  const outsidePageChrome = (el: Element) => {
+    if (el.closest('.rg-root')) return false;
+    const h = el.closest('header, [role="banner"]');
+    return !(h && h.querySelector(LOGO));
+  };
   const candidates: Element[] = [
     ...Array.from(doc.querySelectorAll(NEW_REPO)).filter((a) => norm(a.textContent) === 'New repository'),
     ...Array.from(doc.querySelectorAll('h1, h2, h3')).filter((h) => FILTER_TITLES.test(norm(h.textContent))),

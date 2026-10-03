@@ -4,7 +4,7 @@ import type { ConfigResult, ErrorInfo, OrgPrefs, OrgSnapshot, Progress, Request,
 import { createClient, explainTokenRejection, GitHubError, type FetchLike } from './api';
 import { describeToken, loadAuth, pollDeviceFlow, publicAuth, saveAuth, signOut, startDeviceFlow } from './auth';
 import type { KV } from './kv';
-import { commitEdit, createDotGithub, EditError } from './commit';
+import { checkYaml, commitEdit, commitYaml, createDotGithub, EditError } from './commit';
 import { discardPending, filePending, setPending } from './new-repo';
 import { probeAccess, readOrgFile, type OrgFile } from './org-data';
 import { refreshIndex, type IndexStore } from './repo-index';
@@ -101,6 +101,10 @@ export function createHandler(deps: Deps) {
       }
       case 'org:edit':
         return commitEdit(client, deps.kv, req.org, req.edit);
+      case 'yaml:validate':
+        return checkYaml(req.org, req.text);
+      case 'org:apply-yaml':
+        return commitYaml(client, deps.kv, req.org, req.text, req.baseSha, req.changes);
       case 'org:create-dotgithub':
         await createDotGithub(client, req.org);
         return { created: true };

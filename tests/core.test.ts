@@ -156,6 +156,7 @@ describe('highlight', () => {
   it('does not treat # inside strings as a comment and escapes HTML', () => {
     expect(lineTokens('d: "a # b"').some((t) => t.cls === 'com')).toBe(false);
     expect(highlightHtml('k: "<b>"')).toContain('&lt;b&gt;');
+    expect(highlightHtml('k: "v"')).toContain('<span class="rg-t-key">k</span>'); // prefixed like every extension class
   });
 });
 

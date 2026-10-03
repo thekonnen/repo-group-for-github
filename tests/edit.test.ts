@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { applyEdit, commitMessage, finalName, slugName, validateDraft, type Edit } from '../src/core/edit';
-import { example } from './fixtures';
+import { example, load } from './fixtures';
 import { findGroup } from '../src/core/placement';
 
 describe('group names', () => {
@@ -69,5 +69,85 @@ describe('commit messages (§7)', () => {
     expect(commitMessage({ kind: 'edit', path: ['infra', 'dagu'], name: 'jobs', description: '', match: [] })).toBe('chore(repo-groups): rename group infra/dagu to infra/jobs');
     expect(commitMessage({ kind: 'new', parent: [], name: 'Data', description: '', match: [] })).toBe('chore(repo-groups): add group data');
     expect(commitMessage({ kind: 'new', parent: ['infra'], name: 'n8n', description: '', match: [] })).toBe('chore(repo-groups): add subgroup infra/n8n');
+  });
+});
+
+describe('splitRules', () => {
+  it('splits on commas, spaces, semicolons and newlines, trims and removes duplicates', async () => {
+    const { splitRules } = await import('../src/core/edit');
+    expect(splitRules('dag,dagu,dags')).toEqual(['dag', 'dagu', 'dags']);
+    expect(splitRules(' dag , dagu;dags\nlitellm  dag ')).toEqual(['dag', 'dagu', 'dags', 'litellm']);
+    expect(splitRules('dags-*')).toEqual(['dags-*']);
+    expect(splitRules(' , ;')).toEqual([]);
+  });
+  it('the YAML reader splits a rule written with commas, so an old broken rule starts working', async () => {
+    const { readConfig } = await import('../src/core/yaml-read');
+    const r = readConfig('groups:\n  - name: a\n    match: ["dag,dagu,dags"]\n', (t) => load(t));
+    expect(r.config!.groups[0].match).toEqual(['dag', 'dagu', 'dags']);
+  });
+});
+
+describe('display names and slugs (like GitLab)', () => {
+  it('slugify builds the path from any text: "Grupo: Competição" -> "grupo-competicao"', async () => {
+    const { slugify } = await import('../src/core/edit');
+    const cases: [string, string][] = [
+      ['Grupo: Competição', 'grupo-competicao'],
+      ['Ação & Reação', 'acao-reacao'],
+      ['Ünïcödé Straße', 'unicode-strasse'],
+      ['  Équipe   de   Données  ', 'equipe-de-donnees'],
+      ['Ørsted Œuvre Łódź', 'orsted-oeuvre-lodz'],
+      ['infra_v2.0', 'infra_v2.0'],
+      ['---Edge---', 'edge'],
+      ['Já existe?!', 'ja-existe'],
+      ['日本語', ''],
+      ['', ''],
+    ];
+    for (const [input, out] of cases) expect(slugify(input), input).toBe(out);
+  });
+  it('cleanTitle drops empty titles and titles that only repeat the slug', async () => {
+    const { cleanTitle, displayName } = await import('../src/core/edit');
+    expect(cleanTitle('  Grupo   Competição ', 'grupo-competicao')).toBe('Grupo Competição');
+    expect(cleanTitle('infra', 'infra')).toBeUndefined();
+    expect(cleanTitle('   ', 'infra')).toBeUndefined();
+    expect(cleanTitle(undefined, 'infra')).toBeUndefined();
+    expect(displayName({ name: 'infra' })).toBe('infra');
+    expect(displayName({ name: 'grupo-competicao', title: 'Grupo: Competição' })).toBe('Grupo: Competição');
+  });
+  it('a new group stores the title next to the slug; editing the title does not move the slug', () => {
+    const a = applyEdit(example().groups, { kind: 'new', parent: [], name: 'grupo-competicao', title: 'Grupo: Competição', description: '', match: [] }) as any;
+    expect(a.groups[2]).toMatchObject({ name: 'grupo-competicao', title: 'Grupo: Competição' });
+    const b = applyEdit(a.groups, { kind: 'edit', path: ['grupo-competicao'], name: 'grupo-competicao', title: 'Competição 2025', description: '', match: [] }) as any;
+    expect(b.groups[2]).toMatchObject({ name: 'grupo-competicao', title: 'Competição 2025' });
+    const c = applyEdit(b.groups, { kind: 'edit', path: ['grupo-competicao'], name: 'grupo-competicao', title: 'grupo-competicao', description: '', match: [] }) as any;
+    expect('title' in c.groups[2]).toBe(false); // a title that repeats the slug is not stored
+    const d = applyEdit(b.groups, { kind: 'edit', path: ['grupo-competicao'], name: 'grupo-competicao', description: '', match: [] }) as any;
+    expect(d.groups[2].title).toBe('Competição 2025'); // no title given: untouched
+  });
+  it('validation asks for a slug when the name has no usable letters', () => {
+    const g = example().groups;
+    expect(validateDraft(g, { mode: 'new', path: [], name: '', title: '日本語' })).toBe('Could not make a slug from this name. Type one in the Slug field.');
+    expect(validateDraft(g, { mode: 'new', path: [], name: '', title: '' })).toBe('Name is required.');
+    expect(validateDraft(g, { mode: 'new', path: [], name: 'grupo-competicao', title: 'Grupo: Competição' })).toBeNull();
+  });
+  it('the file keeps name as the slug and title as the display name; both round-trip', async () => {
+    const { readConfig } = await import('../src/core/yaml-read');
+    const { writeConfig } = await import('../src/core/yaml-write');
+    const { load } = await import('./fixtures');
+    const text = 'groups:\n  - name: grupo-competicao\n    title: "Grupo: Competição"\n    match: ["copa-*"]\n    groups:\n      - name: sub\n        title: "Sub Ação"\n';
+    const cfg = readConfig(text, (t) => load(t)).config!;
+    expect(cfg.groups[0].title).toBe('Grupo: Competição');
+    expect(cfg.groups[0].groups[0].title).toBe('Sub Ação');
+    const out = writeConfig(cfg, 'o/.github/repo-groups.yml');
+    expect(out).toContain('  - name: grupo-competicao\n    title: "Grupo: Competição"\n    match: ["copa-*"]');
+    expect(readConfig(out, (t) => load(t)).config).toEqual(cfg);
+    // a group without a title writes none
+    expect(writeConfig(readConfig('groups:\n  - name: a\n', (t) => load(t)).config!, 'h')).not.toContain('title');
+  });
+  it('the diff reports a changed display name', async () => {
+    const { diffTrees } = await import('../src/core/diff');
+    const a = example().groups;
+    const b = structuredClone(a);
+    b[0].title = 'Infraestrutura';
+    expect(diffTrees(a, b, []).items).toEqual([{ k: '~', cls: 'chg', text: 'Name of infra', to: '“Infraestrutura”' }]);
   });
 });

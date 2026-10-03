@@ -162,3 +162,34 @@ describe('pending entry and post-create filing (F9)', () => {
     expect(t.session.data.has('rg:pending-repo')).toBe(false);
   });
 });
+
+describe('display names (titles) in the Group field', async () => {
+  const { pathLabel, pickerOptions, destinationSentence, describeDestination, filedMessage } = await import('../src/core/newrepo');
+  const { example } = await import('./fixtures');
+  const titled = () => {
+    const cfg = structuredClone(example());
+    cfg.groups[0].title = 'Infraestrutura';
+    cfg.groups[0].groups[0].title = 'Jobs: Crons e Ações';
+    return cfg.groups;
+  };
+  it('path labels use titles when the groups are given, slugs otherwise', () => {
+    expect(pathLabel('infra/dagu', titled())).toBe('Infraestrutura / Jobs: Crons e Ações');
+    expect(pathLabel('infra/dagu')).toBe('infra / dagu');
+    expect(pathLabel('infra/gone', titled())).toBe('Infraestrutura / gone');
+    expect(pathLabel('')).toBe('');
+  });
+  it('picker options carry the slug (name) and the display label', () => {
+    const o = pickerOptions(titled(), new Map());
+    expect(o[0]).toMatchObject({ key: 'infra', name: 'infra', label: 'Infraestrutura' });
+    expect(o[1]).toMatchObject({ key: 'infra/dagu', name: 'dagu', label: 'Jobs: Crons e Ações' });
+  });
+  it('the "adds to the match list" sentence names groups by title', () => {
+    const g = titled();
+    const d = describeDestination(g, 'konnen-n8n', 'infra/dagu');
+    expect(destinationSentence(d, g)).toBe('Adds konnen-n8n to the match list of Infraestrutura / Jobs: Crons e Ações in repo-groups.yml (otherwise it would land in Ungrouped).');
+  });
+  it('the toast prefers the label computed with titles', () => {
+    expect(filedMessage({ groupKey: 'infra/dagu', committed: true, groupLabel: 'Infraestrutura / Jobs: Crons e Ações' })).toBe('Filed in Infraestrutura / Jobs: Crons e Ações · repo-groups.yml updated');
+    expect(filedMessage({ groupKey: 'infra/dagu', committed: false })).toBe('Filed in infra / dagu');
+  });
+});

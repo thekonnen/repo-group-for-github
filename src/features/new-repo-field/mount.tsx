@@ -120,7 +120,7 @@ export async function mountRepoToast(org: string, repo: string, env?: Partial<Ne
   root.className = 'rg-root';
   root.dataset.rg = 'repo-toast';
   const failed = !!res.error;
-  const text = failed ? `Created ${org}/${repo}, but repo-groups.yml was not updated. ${res.error}` : filedMessage({ groupKey: res.groupKey, committed: res.committed });
+  const text = failed ? `Created ${org}/${repo}, but repo-groups.yml was not updated. ${res.error}` : filedMessage({ groupKey: res.groupKey, committed: res.committed, groupLabel: res.groupLabel });
   render(
     <div class={`rg-toast${failed ? ' rg-err' : ''}`} role="status">
       <span>{text}</span>

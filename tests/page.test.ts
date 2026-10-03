@@ -13,6 +13,7 @@ const body = html.replace(/<!--[\s\S]*?-->/, '');
 const load = (h = body) => (document.documentElement.innerHTML = h);
 
 import { at, fakeCall, repos } from './page-helpers';
+import { example } from './fixtures';
 
 const settle = () => vi.waitFor(() => expect(document.querySelector('.rg-root[data-rg="view"] .rg-view')).toBeTruthy());
 const names = () => [...document.querySelectorAll('.rg-root[data-rg="view"] .rg-row .rg-row-title a')].map((a) => (a.textContent ?? '').trim());
@@ -109,9 +110,26 @@ describe('title row outside the list column', () => {
     m.dispose();
   });
   it('does not hide the global header’s links or unrelated headings', () => {
-    load(headerOutside.replace('<header>', '<header><h2>All</h2><a href="/organizations/thekonnen/repositories/new">New repository</a>'));
+    load(headerOutside.replace('<header>', '<header><a href="/" aria-label="Homepage">logo</a><h2>All</h2><a href="/organizations/thekonnen/repositories/new">New repository</a>'));
     const m = locateOrgRepos(document)!;
     expect(m.extras.map((e) => e.id)).toEqual(['title-row']);
+  });
+});
+
+describe('title row rendered inside a <header> (real page)', () => {
+  const real = headerOutside
+    .replace('<header><a href="/thekonnen">thekonnen</a></header>', '<header><a href="/" aria-label="Homepage">logo</a><a href="/thekonnen">thekonnen</a></header>')
+    .replace('<div id="title-row">', '<header id="title-row" role="banner">')
+    .replace('New repository</a></div>\n      <div id="content"', 'New repository</a></header>\n      <div id="content"');
+  it('hides that title row but never the global header with the logo', async () => {
+    load(real);
+    const m = locateOrgRepos(document)!;
+    expect(m.extras.map((e) => e.id)).toEqual(['title-row']);
+    const { call } = fakeCall();
+    const mounted = (await mountOrgRepos('thekonnen', { call }, document, 200))!;
+    await vi.waitFor(() => expect(document.getElementById('title-row')!.classList.contains('rg-hidden')).toBe(true));
+    expect(document.querySelector('header a[aria-label="Homepage"]')!.closest('header')!.classList.contains('rg-hidden')).toBe(false);
+    mounted.dispose();
   });
 });
 
@@ -290,6 +308,43 @@ describe('grouped view on the page', () => {
     await vi.waitFor(() => expect(document.querySelector('.rg-status')!.textContent).toBe('Indexing 1,200 of about 3,400 repositories…'));
     release();
     await vi.waitFor(() => expect(document.querySelector('.rg-status')!.textContent).toMatch(/^Paused to respect GitHub’s rate limit — resumes at /));
+    m.dispose();
+  });
+});
+
+describe('display names (titles) with slugs underneath', () => {
+  const titled = () => {
+    const cfg = structuredClone(example());
+    cfg.groups[0].title = 'Infraestrutura';
+    cfg.groups[0].groups[0].title = 'Jobs: Crons e Ações';
+    return { exists: true, sha: 's', config: cfg, warnings: [] };
+  };
+  it('shows titles in the list, header, breadcrumb, sidebar and search; URLs keep the slug', async () => {
+    window.history.replaceState(null, '', '/orgs/thekonnen/repositories#infra/dagu');
+    const { call } = fakeCall({ config: titled() });
+    const m = (await mountOrgRepos('thekonnen', { call }, document, 200))!;
+    await vi.waitFor(() => expect(document.querySelector('.rg-view h1')!.textContent).toBe('Jobs: Crons e Ações'));
+    expect([...document.querySelectorAll('.rg-crumbs a, .rg-crumbs .rg-cur')].map((c) => c.textContent!.slice(1))).toEqual(['thekonnen', 'Infraestrutura', 'Jobs: Crons e Ações']);
+    expect(document.querySelector('.rg-big-av')!.textContent).toBe('J'); // letter from the display name
+    expect([...document.querySelectorAll('[data-rg="side"] .rg-nav-item span:nth-child(2)')].map((e) => e.textContent)).toContain('Jobs: Crons e Ações');
+    expect(window.location.hash).toBe('#infra/dagu'); // the slug, never the title
+    // searching from the root prefixes results with display names, not slugs
+    window.history.pushState(null, '', '/orgs/thekonnen/repositories');
+    window.dispatchEvent(new Event('popstate'));
+    await vi.waitFor(() => expect(document.querySelector('.rg-view h1')!.textContent).toBe('thekonnen'));
+    const input = document.getElementById('rg-search') as HTMLInputElement;
+    input.value = 'dagu';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await vi.waitFor(() => expect(names()[0]).toBe('Infraestrutura / Jobs: Crons e Ações / konnen-dagu'));
+    m.dispose();
+  });
+  it('group rows show the title and link to the slug path', async () => {
+    const { call } = fakeCall({ config: titled() });
+    const m = (await mountOrgRepos('thekonnen', { call }, document, 200))!;
+    await vi.waitFor(() => expect(names()).toContain('Infraestrutura'));
+    const link = [...document.querySelectorAll('.rg-row-title a.rg-grp')].find((a) => a.textContent === 'Jobs: Crons e Ações') as HTMLAnchorElement;
+    expect(link.getAttribute('href')).toBe('#infra/dagu');
+    expect(document.querySelector('.rg-chev[aria-label="Collapse Infraestrutura"]')).toBeTruthy();
     m.dispose();
   });
 });

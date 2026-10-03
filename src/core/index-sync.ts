@@ -70,3 +70,6 @@ export function rateLimitPause(remaining: number | null, resetEpochSec: number |
   if (remaining == null || remaining >= RATE_LIMIT_FLOOR) return { paused: false };
   return { paused: true, resumeAt: resetEpochSec ? new Date(resetEpochSec * 1000) : undefined };
 }
+
+/** REST gives no total; a different page count from the stored one means repos were added or removed. */
+export const pagesChanged = (meta: IndexMeta, lastPage: number): boolean => lastPage !== Math.max(1, Math.ceil(meta.total / PAGE_SIZE));

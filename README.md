@@ -34,4 +34,6 @@ Permissions: Metadata (read), Contents (read & write), Issues (read), Pull reque
 
 ## Status
 
-Milestones 1–2 done (scaffold, tested `core/`). Next: auth and data.
+Milestones 1–3 done: scaffold, tested `core/`, background worker (device flow, token fallback, parallel repo index with cache, `repo-groups.yml` reader, access detection) and a sign-in popup. Next: grouped view in the page (F1–F4).
+
+To try it: `npm run dev`, load the extension, open the popup and **Sign in with GitHub**. Requires the App settings above.

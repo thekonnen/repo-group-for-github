@@ -1,9 +1,10 @@
 import { APP_SLUG, GITHUB_CLIENT_ID } from '../config';
-import type { ErrorInfo, OrgSnapshot, Request, Response } from '../github/messages';
+import { loadYamlParser, readConfig } from '../core/yaml-read';
+import type { ConfigResult, ErrorInfo, OrgPrefs, OrgSnapshot, Progress, Request, Response } from '../github/messages';
 import { createClient, explainTokenRejection, GitHubError, type FetchLike } from './api';
 import { describeToken, loadAuth, pollDeviceFlow, publicAuth, saveAuth, signOut, startDeviceFlow } from './auth';
 import type { KV } from './kv';
-import { probeAccess, readOrgFile } from './org-data';
+import { probeAccess, readOrgFile, type OrgFile } from './org-data';
 import { refreshIndex, type IndexStore } from './repo-index';
 
 export interface Deps {
@@ -33,6 +34,7 @@ export function createHandler(deps: Deps) {
     if (f) await deps.kv.remove(FLOW_KEY);
     return undefined;
   };
+  const progress = new Map<string, Progress>();
   const tokenKind = async () => (await loadAuth(deps.kv))?.kind ?? 'oauth';
 
   async function handle(req: Request): Promise<unknown> {
@@ -66,7 +68,31 @@ export function createHandler(deps: Deps) {
         return (await deps.index.load(req.org)) satisfies OrgSnapshot | null;
       case 'org:refresh': {
         const publicOnly = !(await loadAuth(deps.kv));
-        return refreshIndex(client, req.org, deps.index, { force: req.force, concurrency: publicOnly ? 2 : 6 });
+        try {
+          return await refreshIndex(client, req.org, deps.index, {
+            force: req.force,
+            concurrency: publicOnly ? 2 : 6,
+            onProgress: (p) => progress.set(req.org, { loaded: p.loaded, estimatedTotal: p.estimatedTotal }),
+          });
+        } finally {
+          progress.delete(req.org);
+        }
+      }
+      case 'org:progress':
+        return progress.get(req.org) ?? null;
+      case 'org:config': {
+        const file = req.cachedOnly ? await deps.kv.get<OrgFile>(`rg:file:${req.org}`) : await readOrgFile(client, deps.kv, req.org);
+        if (!file) return null; // nothing cached yet
+        if (!file.exists) return { exists: false } satisfies ConfigResult;
+        const r = readConfig(file.text, await loadYamlParser(), { org: req.org });
+        return { exists: true, sha: file.sha, config: r.config, error: r.error, line: r.line, warnings: r.warnings } satisfies ConfigResult;
+      }
+      case 'prefs:get':
+        return (await deps.kv.get<Partial<OrgPrefs>>(`rg:prefs:${req.org}`)) ?? {};
+      case 'prefs:set': {
+        const next = { ...(await deps.kv.get<Partial<OrgPrefs>>(`rg:prefs:${req.org}`)), ...req.prefs };
+        await deps.kv.set(`rg:prefs:${req.org}`, next);
+        return next;
       }
       case 'org:file':
         return readOrgFile(client, deps.kv, req.org);

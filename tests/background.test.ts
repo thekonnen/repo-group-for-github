@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createClient, explainTokenRejection, GitHubError } from '../src/background/api';
 import { pollDeviceFlow, startDeviceFlow } from '../src/background/auth';
 import { memoryKV } from '../src/background/kv';
@@ -237,5 +237,47 @@ describe('message handler', () => {
     const r: any = await h2({ type: 'org:file', org: 'o' });
     expect(r.ok).toBe(false);
     expect(r.error.hint).toMatch(/SSO/);
+  });
+});
+
+describe('config, progress and prefs messages', () => {
+  const b64 = (s: string) => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
+  it('parses the org file in the background and reports invalid YAML without throwing', async () => {
+    let body = 'version: 1\ngroups:\n  - name: infra\n    match: ["dagu"]\n';
+    const f = fakeFetch((u) => (u.pathname.endsWith('/contents/repo-groups.yml') ? { json: { content: b64(body), sha: 's1' }, headers: { etag: `"${body.length}"` } } : undefined));
+    const h = createHandler({ fetch: f.fetch, kv: memoryKV(), index: memoryIndexStore(), clientId: 'c' });
+    const ok: any = await h({ type: 'org:config', org: 'o' });
+    expect(ok.data).toMatchObject({ exists: true, sha: 's1', config: { groups: [{ name: 'infra', match: ['dagu'] }] } });
+    body = 'groups: [x';
+    const bad: any = await h({ type: 'org:config', org: 'o' });
+    expect(bad.ok).toBe(true);
+    expect(bad.data.config).toBeUndefined();
+    expect(bad.data.error).toMatch(/line/);
+    const g = fakeFetch(() => ({ status: 404, json: {} }));
+    const h2 = createHandler({ fetch: g.fetch, kv: memoryKV(), index: memoryIndexStore(), clientId: 'c' });
+    expect(await h2({ type: 'org:config', org: 'o' })).toEqual({ ok: true, data: { exists: false } });
+  });
+  it('exposes indexing progress while a refresh runs, then clears it', async () => {
+    const f = fakeFetch(orgReposRoute('o', () => makeRepos(300)));
+    let open!: () => void;
+    const gate = new Promise<void>((r) => (open = r));
+    const gated = async (url: string, init?: RequestInit) => {
+      if (url.includes('page=2')) await gate; // page 1 is stored, the rest is held back
+      return f.fetch(url, init);
+    };
+    const h = createHandler({ fetch: gated, kv: memoryKV(), index: memoryIndexStore(), clientId: 'c' });
+    const run = h({ type: 'org:refresh', org: 'o' });
+    await vi.waitFor(async () => expect(((await h({ type: 'org:progress', org: 'o' })) as any).data).toEqual({ loaded: 100, estimatedTotal: 300 }));
+    open();
+    await run;
+    expect(await h({ type: 'org:progress', org: 'o' })).toEqual({ ok: true, data: null });
+  });
+  it('stores view preferences per org', async () => {
+    const h = createHandler({ fetch: fakeFetch().fetch, kv: memoryKV(), index: memoryIndexStore(), clientId: 'c' });
+    expect(await h({ type: 'prefs:get', org: 'o' })).toEqual({ ok: true, data: {} });
+    await h({ type: 'prefs:set', org: 'o', prefs: { view: 'list' } });
+    await h({ type: 'prefs:set', org: 'o', prefs: { expanded: ['infra'] } });
+    expect(await h({ type: 'prefs:get', org: 'o' })).toEqual({ ok: true, data: { view: 'list', expanded: ['infra'] } });
+    expect(await h({ type: 'prefs:get', org: 'other' })).toEqual({ ok: true, data: {} });
   });
 });

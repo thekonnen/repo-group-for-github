@@ -24,6 +24,8 @@
     "@types/chrome": "^0.3.4",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^26.6.4",
+    "happy-dom": "^20.14.5",
+    "playwright-core": "^1.63.0",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3",
     "wxt": "^0.21.4"

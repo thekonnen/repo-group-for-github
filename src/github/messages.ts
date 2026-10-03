@@ -1,6 +1,6 @@
 import type { Access } from '../core/access';
 import type { IndexMeta } from '../core/index-sync';
-import type { RepoInfo } from '../core/types';
+import type { Config, RepoInfo } from '../core/types';
 
 /** Content script / popup / options -> background. The token never leaves the background. */
 export type Request =
@@ -12,7 +12,27 @@ export type Request =
   | { type: 'org:cached'; org: string }
   | { type: 'org:refresh'; org: string; force?: boolean }
   | { type: 'org:file'; org: string }
-  | { type: 'org:access'; org: string };
+  | { type: 'org:access'; org: string }
+  | { type: 'org:config'; org: string; cachedOnly?: boolean }
+  | { type: 'org:progress'; org: string }
+  | { type: 'prefs:get'; org: string }
+  | { type: 'prefs:set'; org: string; prefs: Partial<OrgPrefs> };
+
+/** Per-org view preferences. The content script never touches storage; it asks the background. */
+export interface OrgPrefs {
+  view: 'grouped' | 'list';
+  expanded: string[];
+}
+
+/** The org's repo-groups.yml, parsed in the background so the page script stays small. */
+export type ConfigResult =
+  | { exists: false }
+  | { exists: true; sha: string | null; config?: Config; error?: string; line?: number | null; warnings: string[] };
+
+export interface Progress {
+  loaded: number;
+  estimatedTotal: number;
+}
 
 export type ErrorInfo = { kind: string; message: string; hint?: string; resetAt?: number };
 

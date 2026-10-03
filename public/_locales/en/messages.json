@@ -1,0 +1,4 @@
+{
+  "extName": { "message": "Repository Group for Github" },
+  "extDescription": { "message": "Organize the repositories of a GitHub organization into groups and subgroups, shared with the whole org." }
+}

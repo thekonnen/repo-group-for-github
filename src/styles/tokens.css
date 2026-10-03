@@ -1,0 +1,104 @@
+/*
+ * Repository Group for Github — design tokens
+ *
+ * Two layers:
+ *  1. `.rg-root` — used by content scripts injected into github.com. Every token reads
+ *     GitHub's own Primer CSS variable first, so the UI follows the user's GitHub theme
+ *     (light, dark, dimmed, high contrast, colorblind) automatically. The hex values are
+ *     only fallbacks (light theme) in case GitHub renames a variable.
+ *  2. `.rg-standalone` — used by extension pages that are NOT on github.com (options page,
+ *     popup, device-flow login). Light values by default, dark via prefers-color-scheme.
+ *     Values match the mockup in design/mockup/styles.css.
+ *
+ * Components must only use the --rg-* tokens, never literal colors.
+ */
+
+/* ---------- 1. Inside github.com ---------- */
+.rg-root {
+  --rg-bg: var(--bgColor-default, #ffffff);
+  --rg-bg-subtle: var(--bgColor-muted, #f6f8fa);
+  --rg-fg: var(--fgColor-default, #1f2328);
+  --rg-muted: var(--fgColor-muted, #59636e);
+  --rg-border: var(--borderColor-default, #d1d9e0);
+  --rg-border-muted: var(--borderColor-muted, #e3e8ed);
+  --rg-accent: var(--fgColor-accent, #0969da);
+  --rg-accent-emphasis: var(--bgColor-accent-emphasis, #0969da);
+  --rg-accent-subtle: var(--bgColor-accent-muted, #ddf4ff);
+  --rg-success: var(--bgColor-success-emphasis, #1f883d);
+  --rg-success-fg: var(--fgColor-success, #1a7f37);
+  --rg-danger-fg: var(--fgColor-danger, #d1242f);
+  --rg-on-emphasis: var(--fgColor-onEmphasis, #ffffff);
+  --rg-btn: var(--button-default-bgColor-rest, #f6f8fa);
+  --rg-btn-hover: var(--button-default-bgColor-hover, #eff2f5);
+  --rg-selected: var(--bgColor-neutral-muted, rgba(129, 139, 152, 0.15));
+  --rg-underline: var(--underlineNav-borderColor-active, #fd8c73);
+  --rg-overlay: var(--overlay-backdrop-bgColor, rgba(31, 35, 40, 0.5));
+  --rg-shadow: var(--shadow-floating-large, 0 8px 24px rgba(140, 149, 159, 0.2));
+  /* Marker for UI the extension adds (the "Repository Group" tag). Done/purple in Primer. */
+  --rg-ext: var(--bgColor-done-emphasis, #8250df);
+
+  /* Letter avatars (group initials). Primer "muted" scales per hue. */
+  --rg-av1-bg: var(--bgColor-accent-muted, #ddf4ff);    --rg-av1-fg: var(--fgColor-accent, #0550ae);
+  --rg-av2-bg: var(--bgColor-done-muted, #fbefff);      --rg-av2-fg: var(--fgColor-done, #6639ba);
+  --rg-av3-bg: var(--bgColor-success-muted, #dafbe1);   --rg-av3-fg: var(--fgColor-success, #116329);
+  --rg-av4-bg: var(--bgColor-severe-muted, #fff1e5);    --rg-av4-fg: var(--fgColor-severe, #953800);
+  --rg-av5-bg: var(--bgColor-sponsors-muted, #ffeff7);  --rg-av5-fg: var(--fgColor-sponsors, #99286e);
+
+  /* YAML syntax colors: GitHub's own code highlighting variables. */
+  --rg-syn-key: var(--color-prettylights-syntax-entity-tag, #116329);
+  --rg-syn-str: var(--color-prettylights-syntax-string, #0a3069);
+  --rg-syn-com: var(--color-prettylights-syntax-comment, #59636e);
+  --rg-syn-const: var(--color-prettylights-syntax-constant, #0550ae);
+  --rg-syn-dash: var(--color-prettylights-syntax-keyword, #cf222e);
+  --rg-syn-punc: var(--fgColor-muted, #59636e);
+
+  /* Crop overlay sits on top of a photo, so it is theme-independent on purpose. */
+  --rg-crop-dim: rgba(1, 4, 9, 0.6);
+  --rg-crop-line: rgba(255, 255, 255, 0.95);
+
+  --rg-font: var(--fontStack-system, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif);
+  --rg-mono: var(--fontStack-monospace, ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace);
+  --rg-radius: 6px;
+  --rg-radius-lg: 12px;
+}
+
+/* ---------- 2. Extension pages (options, popup, login) ---------- */
+.rg-standalone {
+  --rg-bg: #ffffff; --rg-bg-subtle: #f6f8fa; --rg-fg: #1f2328; --rg-muted: #59636e;
+  --rg-border: #d1d9e0; --rg-border-muted: #e3e8ed; --rg-accent: #0969da; --rg-accent-emphasis: #0969da;
+  --rg-accent-subtle: #ddf4ff; --rg-success: #1f883d; --rg-success-fg: #1a7f37; --rg-danger-fg: #d1242f;
+  --rg-on-emphasis: #ffffff; --rg-btn: #f6f8fa; --rg-btn-hover: #eff2f5; --rg-selected: rgba(129, 139, 152, 0.15);
+  --rg-underline: #fd8c73; --rg-overlay: rgba(31, 35, 40, 0.5); --rg-shadow: 0 8px 24px rgba(140, 149, 159, 0.2);
+  --rg-ext: #8250df;
+  --rg-av1-bg: #ddf4ff; --rg-av1-fg: #0550ae; --rg-av2-bg: #fbefff; --rg-av2-fg: #6639ba;
+  --rg-av3-bg: #dafbe1; --rg-av3-fg: #116329; --rg-av4-bg: #fff1e5; --rg-av4-fg: #953800;
+  --rg-av5-bg: #ffeff7; --rg-av5-fg: #99286e;
+  --rg-syn-key: #116329; --rg-syn-str: #0a3069; --rg-syn-com: #59636e; --rg-syn-const: #0550ae;
+  --rg-syn-dash: #cf222e; --rg-syn-punc: #59636e;
+  --rg-crop-dim: rgba(1, 4, 9, 0.6); --rg-crop-line: rgba(255, 255, 255, 0.95);
+  --rg-font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+  --rg-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --rg-radius: 6px; --rg-radius-lg: 12px;
+  color-scheme: light;
+  background: var(--rg-bg);
+  color: var(--rg-fg);
+  font-family: var(--rg-font);
+}
+@media (prefers-color-scheme: dark) {
+  .rg-standalone {
+    --rg-bg: #0d1117; --rg-bg-subtle: #151b23; --rg-fg: #f0f6fc; --rg-muted: #9198a1;
+    --rg-border: #3d444d; --rg-border-muted: #2a3038; --rg-accent: #4493f8; --rg-accent-emphasis: #1f6feb;
+    --rg-accent-subtle: rgba(56, 139, 253, 0.15); --rg-success: #238636; --rg-success-fg: #3fb950; --rg-danger-fg: #f85149;
+    --rg-btn: #212830; --rg-btn-hover: #262c36; --rg-selected: rgba(101, 108, 118, 0.2);
+    --rg-underline: #f78166; --rg-overlay: rgba(1, 4, 9, 0.8); --rg-shadow: 0 8px 24px #010409;
+    --rg-ext: #8957e5;
+    --rg-av1-bg: rgba(56, 139, 253, 0.18); --rg-av1-fg: #79c0ff;
+    --rg-av2-bg: rgba(163, 113, 247, 0.18); --rg-av2-fg: #d2a8ff;
+    --rg-av3-bg: rgba(46, 160, 67, 0.18); --rg-av3-fg: #7ee787;
+    --rg-av4-bg: rgba(219, 109, 40, 0.18); --rg-av4-fg: #ffa657;
+    --rg-av5-bg: rgba(219, 97, 162, 0.18); --rg-av5-fg: #ff9bce;
+    --rg-syn-key: #7ee787; --rg-syn-str: #a5d6ff; --rg-syn-com: #9198a1; --rg-syn-const: #79c0ff;
+    --rg-syn-dash: #ff7b72; --rg-syn-punc: #9198a1;
+    color-scheme: dark;
+  }
+}

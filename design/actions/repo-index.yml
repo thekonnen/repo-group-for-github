@@ -1,0 +1,70 @@
+# OPTIONAL — Repository Group for Github: pre-built repository index (CLAUDE.md → F14)
+#
+# Off by default. Copy to <org>/.github/.github/workflows/repo-index.yml only if you want it,
+# then set `index: action` in repo-groups.yml.
+#
+# PRIVACY: repo-index.json lists the name and description of EVERY repository the token can see,
+# including private ones. Anyone who can read the <org>/.github repository can read this file.
+# Only enable this in organizations where members already see every repository.
+#
+# Needs a secret RG_INDEX_TOKEN: a fine-grained token or GitHub App token with
+#   - Repository → Metadata: Read on all repositories of the org
+#   - Repository → Contents: Read & write on <org>/.github (to commit the file)
+#
+# Template only: not tested yet. The building agent should test it on a sandbox org first.
+name: repo-index
+
+on:
+  schedule:
+    - cron: "17 * * * *"      # hourly
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repo-index
+  cancel-in-progress: true
+
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build repo-index.json
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.RG_INDEX_TOKEN }}
+          script: |
+            const org = context.repo.owner;
+            const repos = await github.paginate(github.rest.repos.listForOrg, {
+              org, type: 'all', sort: 'pushed', direction: 'desc', per_page: 100,
+            });
+            // Same fields as the extension's local index (CLAUDE.md → F14).
+            const items = repos.map(r => ({
+              name: r.name,
+              description: r.description || '',
+              language: r.language || null,
+              private: r.private,
+              archived: r.archived,
+              fork: r.fork,
+              pushedAt: r.pushed_at,
+              stars: r.stargazers_count,
+              forks: r.forks_count,
+              openIssuesAndPrs: r.open_issues_count,
+            }));
+            const out = { version: 1, org, generatedAt: new Date().toISOString(), total: items.length, repos: items };
+            require('fs').writeFileSync('repo-index.json', JSON.stringify(out) + '\n');
+            core.info(`Indexed ${items.length} repositories`);
+
+      - name: Commit if changed
+        run: |
+          if git diff --quiet -- repo-index.json 2>/dev/null && git ls-files --error-unmatch repo-index.json >/dev/null 2>&1; then
+            echo "No changes"; exit 0
+          fi
+          git config user.name "repo-index[bot]"
+          git config user.email "repo-index[bot]@users.noreply.github.com"
+          git add repo-index.json
+          git commit -m "chore(repo-groups): refresh repo-index.json"
+          git push

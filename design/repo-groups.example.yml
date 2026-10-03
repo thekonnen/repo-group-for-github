@@ -1,0 +1,40 @@
+# thekonnen/.github/repo-groups.yml
+# Read and written by the "Repository Group for Github" browser extension.
+# Lives in the org's `.github` repository, so every member sees the same groups.
+#
+# Placement rules (see CLAUDE.md → "Placement algorithm"):
+#   1. An exact repository name in `match` always wins.
+#   2. Otherwise patterns with `*` are tried; the deepest matching group wins.
+#   3. Repositories that match nothing are shown as "Ungrouped".
+#
+# Teams (CLAUDE.md → F12):
+#   - A plain slug means that team gets "push" (Write).
+#   - Use { slug, permission } for pull | triage | push | maintain | admin.
+#   - Subgroups inherit their parents' teams; the closest definition of a slug wins.
+#   - "Sync access" only adds or raises access. It never removes or lowers it.
+version: 1
+# index: action   # optional (F14): use repo-index.json from the GitHub Action. Off by default.
+groups:
+  - name: infra
+    description: "Self-hosted platform services"
+    teams: ["konnen_team"]                       # Write on everything under infra
+    groups:
+      - name: dagu
+        description: "Jobs and crons (Airflow alternative)"
+        logo: "logos/infra-dagu.png"             # file committed next to this YAML
+        match: ["dagu", "dags-*", "konnen-dagu"]
+      - name: authentik
+        description: "SSO and identity"
+        match: ["*authentik*"]
+      - name: checkmate
+        description: "Uptime monitoring behind authentik SSO"
+        match: ["*checkmate*"]
+  - name: ai
+    description: "LLM gateways and routing"
+    teams: [{ slug: "ai-squad", permission: "maintain" }]           # example team
+    match: ["omniroute"]
+    groups:
+      - name: litellm
+        description: "LiteLLM proxy and the Konnen deployment"
+        teams: [{ slug: "konnen_team", permission: "pull" }]        # Read only, plus ai-squad from the parent
+        match: ["*litellm*"]

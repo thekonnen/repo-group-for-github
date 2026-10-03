@@ -10,6 +10,7 @@ export default defineBackground(() => {
     fetch: (input, init) => fetch(input, init),
     kv: areaKV(browser.storage.local as any),
     index: idbIndexStore,
+    session: areaKV((browser.storage as any).session ?? browser.storage.local),
   });
   browser.runtime.onMessage.addListener((msg: Request, _sender, sendResponse) => {
     handle(msg).then(sendResponse);

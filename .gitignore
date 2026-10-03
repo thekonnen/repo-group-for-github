@@ -9,3 +9,5 @@ dist/
 
 # Local agent worktrees
 .claude/worktrees/
+
+node_modules

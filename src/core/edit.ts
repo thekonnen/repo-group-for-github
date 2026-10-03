@@ -4,7 +4,9 @@ import type { Group } from './types';
 /** The single change behind Edit group / New group. Re-applied to a fresh file when a commit conflicts (§7). */
 export type Edit =
   | { kind: 'edit'; path: string[]; name: string; title?: string; description: string; match: string[] }
-  | { kind: 'new'; parent: string[]; name: string; title?: string; description: string; match: string[] };
+  | { kind: 'new'; parent: string[]; name: string; title?: string; description: string; match: string[] }
+  /** F9: adds the exact repo name to the match list of an existing group. */
+  | { kind: 'file'; path: string[]; repo: string };
 
 /** Letters that do not decompose into base + accent. */
 const FOLD: Record<string, string> = { ß: 'ss', æ: 'ae', œ: 'oe', ø: 'o', đ: 'd', ð: 'd', ł: 'l', þ: 'th', ı: 'i' };
@@ -60,6 +62,12 @@ const clone = (groups: Group[]): Group[] => structuredClone(groups);
 /** Applies an edit to a tree (never mutates the input). Logo, teams and subgroups of an edited group are kept. */
 export function applyEdit(groups: Group[], edit: Edit): { groups: Group[] } | { error: string } {
   const next = clone(groups);
+  if (edit.kind === 'file') {
+    const t = findGroup(next, edit.path);
+    if (!t) return { error: `The group "${edit.path.join('/')}" no longer exists. Reload the page and try again.` };
+    if (!t.match.some((m) => m.toLowerCase() === edit.repo.toLowerCase())) t.match.push(edit.repo);
+    return { groups: next };
+  }
   const name = finalName(edit.name);
   const match = edit.match.map((m) => m.trim()).filter(Boolean);
   if (edit.kind === 'new') {
@@ -87,10 +95,12 @@ export function applyEdit(groups: Group[], edit: Edit): { groups: Group[] } | { 
   return { groups: next };
 }
 
-export const editPath = (e: Edit): string => (e.kind === 'new' ? [...e.parent, finalName(e.name)] : [...e.path.slice(0, -1), finalName(e.name)]).join('/');
+export const editPath = (e: Edit): string =>
+  e.kind === 'file' ? e.path.join('/') : (e.kind === 'new' ? [...e.parent, finalName(e.name)] : [...e.path.slice(0, -1), finalName(e.name)]).join('/');
 
 /** `chore(repo-groups): edit group infra/dagu` (§7). */
 export function commitMessage(e: Edit): string {
+  if (e.kind === 'file') return `chore(repo-groups): file ${e.repo} in ${e.path.join('/')}`;
   if (e.kind === 'new') return `chore(repo-groups): add ${e.parent.length ? 'subgroup' : 'group'} ${editPath(e)}`;
   const from = e.path.join('/');
   const to = editPath(e);

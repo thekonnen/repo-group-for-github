@@ -5,6 +5,7 @@ import { createClient, explainTokenRejection, GitHubError, type FetchLike } from
 import { describeToken, loadAuth, pollDeviceFlow, publicAuth, saveAuth, signOut, startDeviceFlow } from './auth';
 import type { KV } from './kv';
 import { checkYaml, commitEdit, commitYaml, createDotGithub, EditError } from './commit';
+import { discardPending, filePending, setPending } from './new-repo';
 import { probeAccess, readOrgFile, type OrgFile } from './org-data';
 import { refreshIndex, type IndexStore } from './repo-index';
 
@@ -12,6 +13,7 @@ export interface Deps {
   fetch: FetchLike;
   kv: KV; // storage.local, background only
   index: IndexStore;
+  session?: KV; // storage.session, background only (pending new repository)
   clientId?: string;
 }
 
@@ -35,6 +37,15 @@ export function createHandler(deps: Deps) {
     if (f) await deps.kv.remove(FLOW_KEY);
     return undefined;
   };
+  // The pending new-repo entry lives in storage.session (falls back to local storage in tests). filePending also
+  // reads the org file cache, which is in local storage, so it gets a KV that routes by key.
+  const session: KV = deps.session
+    ? {
+        get: (k) => (k.startsWith('rg:pending') ? deps.session! : deps.kv).get(k),
+        set: (k, v) => (k.startsWith('rg:pending') ? deps.session! : deps.kv).set(k, v),
+        remove: (k) => (k.startsWith('rg:pending') ? deps.session! : deps.kv).remove(k),
+      }
+    : deps.kv;
   const progress = new Map<string, Progress>();
   const tokenKind = async () => (await loadAuth(deps.kv))?.kind ?? 'oauth';
 
@@ -97,6 +108,14 @@ export function createHandler(deps: Deps) {
       case 'org:create-dotgithub':
         await createDotGithub(client, req.org);
         return { created: true };
+      case 'newrepo:pending':
+        await setPending(session, req.entry);
+        return { saved: true };
+      case 'newrepo:discard':
+        await discardPending(session);
+        return { discarded: true };
+      case 'newrepo:landed':
+        return filePending(client, session, req.org, req.repo);
       case 'prefs:get':
         return (await deps.kv.get<Partial<OrgPrefs>>(`rg:prefs:${req.org}`)) ?? {};
       case 'prefs:set': {

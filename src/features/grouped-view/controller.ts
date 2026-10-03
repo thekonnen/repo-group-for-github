@@ -1,6 +1,8 @@
 import { ago } from '../../core/time';
 import { buildHash, parseHash } from '../../core/layers';
 import type { IndexMeta } from '../../core/index-sync';
+import type { Access } from '../../core/access';
+import { finalName, type Edit } from '../../core/edit';
 import type { RepoInfo } from '../../core/types';
 import { defaultExpanded, memoTree, type TreeModel } from '../../core/tree';
 import { hasGithubFilter } from '../../github/route';
@@ -32,7 +34,12 @@ export interface State {
   expandedTouched: boolean;
   tab: 'items' | 'ungrouped' | 'rules';
   query: string;
+  access: Access | null;
+  drawer: { mode: 'edit' | 'new'; path: string[] } | null;
+  toast: { text: string; kind: 'ok' | 'error' } | null;
 }
+
+export type SaveResult = { ok: true } | { ok: false; message: string; needsRepo?: boolean };
 
 export interface Env {
   call: Call;
@@ -64,7 +71,11 @@ export function createController(org: string, env: Env) {
     expandedTouched: false,
     tab: 'items',
     query: '',
+    access: null,
+    drawer: null,
+    toast: null,
   });
+  let toastTimer: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
   let prefsTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -133,8 +144,56 @@ export function createController(org: string, env: Env) {
     if (disposed) return;
     if (!auth.signedIn) return void store.set({ phase: 'signed-out' });
     store.set({ phase: 'ready' });
+    void loadAccess();
     await loadCached();
     await refresh();
+  }
+
+  /** Who may edit the org file; edit buttons stay hidden until we know. */
+  async function loadAccess() {
+    try {
+      const r = await env.call<{ access: Access }>({ type: 'org:access', org });
+      if (!disposed) store.set({ access: r.access });
+    } catch {
+      /* stays hidden */
+    }
+  }
+
+  function showToast(text: string, kind: 'ok' | 'error' = 'ok') {
+    clearTimeout(toastTimer);
+    store.set({ toast: { text, kind } });
+    toastTimer = setTimeout(() => store.set({ toast: null }), 6000);
+  }
+
+  async function save(edit: Edit): Promise<SaveResult> {
+    try {
+      const r = await env.call<any>({ type: 'org:edit', org, edit });
+      if (r.status === 'needs-repo') return { ok: false, message: '', needsRepo: true };
+      const before = store.get();
+      const next: Partial<State> = { config: { exists: true, sha: r.sha, config: r.config, warnings: r.warnings }, indexVersion: before.indexVersion + 1, drawer: null };
+      const expanded = new Set(before.expanded);
+      if (edit.kind === 'new' && edit.parent.length) expanded.add(edit.parent.join('/')); // creating a group expands its parent
+      if (edit.kind === 'edit') {
+        const old = edit.path.join('/');
+        const renamed = [...edit.path.slice(0, -1), finalName(edit.name)];
+        if (old !== renamed.join('/')) {
+          for (const k of [...expanded]) if (k === old || k.startsWith(old + '/')) (expanded.delete(k), expanded.add(renamed.join('/') + k.slice(old.length)));
+          if (before.path.join('/') === old || before.path.join('/').startsWith(old + '/')) {
+            const path = [...renamed, ...before.path.slice(edit.path.length)];
+            env.history.pushState(null, '', env.location.pathname + env.location.search + buildHash({ layer: 'org', path }));
+            next.path = path;
+          }
+        }
+      }
+      next.expanded = expanded;
+      next.expandedTouched = true;
+      store.set(next);
+      savePrefs({ expanded: [...expanded] });
+      showToast(`Committed to ${org}/.github/repo-groups.yml`);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, message: infoOf(e).message };
+    }
   }
 
   async function startSignIn() {
@@ -179,7 +238,20 @@ export function createController(org: string, env: Env) {
     dispose() {
       disposed = true;
       clearTimeout(prefsTimer);
+      clearTimeout(toastTimer);
     },
+    save,
+    async createRepoAndSave(edit: Edit): Promise<SaveResult> {
+      try {
+        await env.call({ type: 'org:create-dotgithub', org });
+      } catch (e) {
+        return { ok: false, message: infoOf(e).message };
+      }
+      return save(edit);
+    },
+    openDrawer: (mode: 'edit' | 'new', path: string[]) => store.set({ drawer: { mode, path } }),
+    closeDrawer: () => store.set({ drawer: null }),
+    dismissToast: () => (clearTimeout(toastTimer), store.set({ toast: null })),
     /** Hash changes (also back/forward): #infra/dagu. */
     syncHash() {
       const r = parseHash(env.location.hash);

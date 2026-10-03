@@ -158,7 +158,7 @@ async function chat(fetch: FetchLike, base: string, apiKey: string, model: strin
  * Sends a prompt and returns { text, model }. Gemini: tries the model that answered last, then the others in
  * `modelRank` order, putting a model that failed on a 10-minute cooldown. The first one that answers becomes the default.
  */
-export async function askLlm(deps: { fetch: FetchLike; kv: KV; now?: () => number }, prompt: string): Promise<{ text: string; model: string }> {
+export async function askLlm(deps: { fetch: FetchLike; kv: KV; now?: () => number; /** Models to try before giving up (default 5). */ maxTries?: number }, prompt: string): Promise<{ text: string; model: string }> {
   const c = await loadLlmConfig(deps.kv);
   if (!c?.apiKey) throw new LlmError('No AI key set. Add one in Options > AI assistant.');
   const now = (deps.now ?? Date.now)();
@@ -175,7 +175,7 @@ export async function askLlm(deps: { fetch: FetchLike; kv: KV; now?: () => numbe
   if (!pool.length) pool = order; // everything cooling down: try again rather than fail without asking
 
   let last = 'No model answered.';
-  for (const model of pool.slice(0, MAX_TRIES)) {
+  for (const model of pool.slice(0, deps.maxTries ?? MAX_TRIES)) {
     try {
       const text = await chat(deps.fetch, GEMINI_OPENAI, c.apiKey, model, prompt);
       await deps.kv.set(ACTIVE_KEY, model);
@@ -201,10 +201,12 @@ export interface GroupChoice {
   key: string;
   title?: string;
   description: string;
+  /** The org's own words for the group (repo-groups.yml `keywords`): they tell the AI what belongs there. */
+  keywords?: string[];
 }
 
 export function classifyPrompt(groups: GroupChoice[], repo: { name: string; description?: string | null }): string {
-  const list = groups.map((g) => `- ${g.key}: ${g.title ?? g.key}. ${g.description}`.trim()).join('\n');
+  const list = groups.map((g) => `- ${g.key}: ${g.title ?? g.key}. ${g.description}${g.keywords?.length ? ` Keywords: ${g.keywords.join(', ')}.` : ''}`.trim()).join('\n');
   return (
     `Pick the single best group for this repository. Answer with the group key only, exactly as written.\n` +
     `If no group fits, answer with one line instead: NEW: <slug-path> | <Title path> | <description of level 1> | <description of level 2> ... ` +

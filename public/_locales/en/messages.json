@@ -217,7 +217,7 @@
     "message": "Classify new repositories with the AI by default"
   },
   "optionsAiAutoHint": {
-    "message": "When no rule matches the name of a new repository, the AI runs on its own and files it in a group, or suggests a new one. Uncheck to run it only when you click AI. Each run sends the repository name to the provider."
+    "message": "When you leave the repository name field (or stop typing for a few seconds) and no rule matches, the AI runs once and files the repository in a group, or suggests a new one. Uncheck to run it only when you click AI. Each run sends the repository name to the provider. Answers are cached, and automatic runs pause for 10 minutes if the key runs out of quota."
   },
   "optionsAiAutoSaved": {
     "message": "Preference saved."

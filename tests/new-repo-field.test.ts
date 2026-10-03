@@ -547,27 +547,60 @@ describe('new group from the AI and AI by default', () => {
     expect($('#rg-nr-picker')!.textContent).toContain('Automatic');
   });
 
-  it('by default, asks the AI on its own once the name settles and no rule matches', async () => {
+  const leave = () => nameInput().dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+  const aiCalls = (f: { log: Request[] }) => f.log.filter((r) => r.type === 'suggest:group') as any[];
+
+  it('by default, asks the AI on its own once the person leaves the name field and no rule matches', async () => {
     const b = backend({ suggest: () => ({ source: 'llm', key: 'infra/dagsrv', model: 'm-1', score: 0, margin: 0, ranking: [] }) });
     const f = await open(undefined, { extra: b.extra });
     await ready();
     await vi.waitFor(() => expect(f.log.some((r) => r.type === 'llm:status')).toBe(true));
     type('zzz-brand-new');
-    expect(f.log.some((r) => r.type === 'suggest:group')).toBe(false); // waits for the typing to stop
-    await vi.waitFor(() => expect(pill('llm').getAttribute('aria-pressed')).toBe('true'), { timeout: 3000 });
-    expect(f.log.find((r) => r.type === 'suggest:group')).toMatchObject({ method: 'llm', repo: { name: 'zzz-brand-new' } });
+    await settled();
+    expect(aiCalls(f)).toHaveLength(0); // still typing: nothing is sent
+    leave();
+    await vi.waitFor(() => expect(pill('llm').getAttribute('aria-pressed')).toBe('true'));
+    expect(aiCalls(f)[0]).toMatchObject({ method: 'llm', auto: true, repo: { name: 'zzz-brand-new' } });
     expect(note()).toContain('(by default)');
     expect($('#rg-nr-picker')!.textContent).toContain('infra / dagsrv');
   });
 
-  it('keeps typing from sending every letter: only the settled name is sent', async () => {
+  it('also asks after a pause in typing (2.5 s), once', async () => {
     const b = backend({ suggest: () => ({ source: 'llm', key: 'infra/dagsrv', score: 0, margin: 0, ranking: [] }) });
     const f = await open(undefined, { extra: b.extra });
     await ready();
     await vi.waitFor(() => expect(f.log.some((r) => r.type === 'llm:status')).toBe(true));
-    for (const v of ['z', 'zz', 'zzz', 'zzz-n']) type(v);
-    await vi.waitFor(() => expect(f.log.filter((r) => r.type === 'suggest:group')).toHaveLength(1), { timeout: 3000 });
-    expect((f.log.find((r) => r.type === 'suggest:group') as any).repo.name).toBe('zzz-n');
+    type('zzz-brand-new');
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(aiCalls(f)).toHaveLength(0);
+    await vi.waitFor(() => expect(aiCalls(f)).toHaveLength(1), { timeout: 3000 });
+  }, 8000);
+
+  it('typing with pauses and leaving the field sends one request, with the final name', async () => {
+    const b = backend({ suggest: () => ({ source: 'llm', key: 'infra/dagsrv', score: 0, margin: 0, ranking: [] }) });
+    const f = await open(undefined, { extra: b.extra });
+    await ready();
+    await vi.waitFor(() => expect(f.log.some((r) => r.type === 'llm:status')).toBe(true));
+    for (const v of ['zzz', 'zzz-n', 'zzz-ne', 'zzz-new']) {
+      type(v);
+      await new Promise((r) => setTimeout(r, 40));
+    }
+    leave();
+    await vi.waitFor(() => expect(aiCalls(f)).toHaveLength(1));
+    expect(aiCalls(f)[0].repo.name).toBe('zzz-new');
+    leave(); // a second blur with the answer already there does not ask again
+    await settled();
+    expect(aiCalls(f)).toHaveLength(1);
+  });
+
+  it('ignores names shorter than 3 characters', async () => {
+    const f = await open(undefined, { extra: backend().extra });
+    await ready();
+    await vi.waitFor(() => expect(f.log.some((r) => r.type === 'llm:status')).toBe(true));
+    type('ab');
+    leave();
+    await settled();
+    expect(aiCalls(f)).toHaveLength(0);
   });
 
   it('does not run by default when turned off, when a rule matches, or after a manual pick', async () => {
@@ -576,31 +609,41 @@ describe('new group from the AI and AI by default', () => {
     await ready();
     await vi.waitFor(() => expect(f1.log.some((r) => r.type === 'llm:status')).toBe(true));
     type('zzz-brand-new');
-    await new Promise((r) => setTimeout(r, 1100));
-    expect(f1.log.some((r) => r.type === 'suggest:group')).toBe(false);
+    leave();
+    await settled();
+    expect(aiCalls(f1)).toHaveLength(0);
     mounted?.dispose();
 
     document.documentElement.innerHTML = html;
-    const on = backend();
-    const f2 = await open(undefined, { extra: on.extra });
+    const f2 = await open(undefined, { extra: backend().extra });
     await ready();
     await vi.waitFor(() => expect(f2.log.some((r) => r.type === 'llm:status')).toBe(true));
     type('dags-new'); // a rule catches it
-    await new Promise((r) => setTimeout(r, 1100));
-    expect(f2.log.some((r) => r.type === 'suggest:group')).toBe(false);
+    leave();
+    await settled();
+    expect(aiCalls(f2)).toHaveLength(0);
   });
 
   it('does not override a group the person picked by hand', async () => {
-    const on = backend();
-    const f = await open(undefined, { extra: on.extra });
+    const f = await open(undefined, { extra: backend().extra });
     await ready();
     await vi.waitFor(() => expect(f.log.some((r) => r.type === 'llm:status')).toBe(true));
     type('zzz-brand-new');
     $('#rg-nr-picker')!.click();
     ($$('#rg-nr-pop [role="option"]')[2] as HTMLElement).click();
-    await new Promise((r) => setTimeout(r, 1100));
-    expect(f.log.some((r) => r.type === 'suggest:group')).toBe(false);
+    leave();
     await settled();
+    expect(aiCalls(f)).toHaveLength(0);
+  });
+
+  it('a click on AI is not marked automatic', async () => {
+    const f = await open(undefined, { extra: backend({ suggest: () => ({ source: 'llm', key: 'infra/dagsrv', score: 0, margin: 0, ranking: [] }) }).extra });
+    await ready();
+    type('zzz-brand-new');
+    await vi.waitFor(() => expect(pill('llm').title).toMatch(/sends the name/));
+    pill('llm').click();
+    await vi.waitFor(() => expect(aiCalls(f)).toHaveLength(1));
+    expect(aiCalls(f)[0].auto).toBeUndefined();
   });
 
   const levelButtons = () => $$('.rg-create-group').map((b) => [b.dataset.depth, b.textContent, b.classList.contains('rg-rec')]);
@@ -641,7 +684,7 @@ describe('new group from the AI and AI by default', () => {
     ($$('.rg-create-group')[0]).click();
     await vi.waitFor(() => expect($('#rg-nr-proposal')).toBeNull());
     expect(b.edits).toHaveLength(0);
-    expect($('#rg-nr-picker')!.textContent).toContain('Infra');
+    expect($('#rg-nr-picker')!.textContent).toContain('infra'); // the existing group keeps its own display name
   });
 
   it('works with three levels', async () => {

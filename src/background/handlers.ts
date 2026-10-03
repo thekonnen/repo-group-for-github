@@ -1,5 +1,6 @@
 import { APP_SLUG, GITHUB_CLIENT_ID } from '../config';
 import { loadYamlParser, readConfig } from '../core/yaml-read';
+import type { Config } from '../core/types';
 import type { ConfigResult, ErrorInfo, GroupSuggestion, OrgPrefs, SuggestMethod, OrgSnapshot, Progress, Request, Response, TeamsResult } from '../github/messages';
 import { createClient, explainTokenRejection, GitHubError, type FetchLike } from './api';
 import { describeToken, loadAuth, pollDeviceFlow, publicAuth, saveAuth, signOut, startDeviceFlow } from './auth';
@@ -89,11 +90,78 @@ export function createHandler(deps: Deps) {
     }
   }
 
+  // AI calls started by the page on its own are cheap on purpose: cached, shared, capped and paused on failure.
+  const AUTO_PER_MINUTE = 6;
+  const PAUSE_MS = 10 * 60_000;
+  const CACHE_MAX = 50;
+  const CACHE_TTL_MS = 60 * 60_000;
+  const PAUSE_KEY = 'rg:llm:pause';
+  const CACHE_KEY = 'rg:llm:cache';
+  const autoRuns: number[] = [];
+  const inflight = new Map<string, Promise<GroupSuggestion>>();
+  const clock = () => (deps.now ?? Date.now)();
+  const hash = (text: string) => {
+    let h = 5381;
+    for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0;
+    return (h >>> 0).toString(36);
+  };
+  type CachedAnswer = { key?: string | null; newGroup?: GroupSuggestion['newGroup']; model?: string; none?: string };
+  const loadCache = async () => (await deps.kv.get<{ k: string; at: number; v: CachedAnswer }[]>(CACHE_KEY)) ?? [];
+
+  /** Asks the AI (cached by name + description + groups, one call at a time per question) and fills `out`. */
+  async function askGroups(cfg: Config, org: string, repo: { name: string; description?: string | null }, out: GroupSuggestion, auto: boolean): Promise<GroupSuggestion> {
+    const choices = postOrder(cfg.groups).map((n) => ({ key: n.key, title: n.group.title, description: n.group.description, keywords: n.group.keywords }));
+    const prompt = classifyPrompt(choices, repo);
+    const cacheKey = [org, repo.name.toLowerCase(), repo.description ?? '', hash(JSON.stringify(choices))].join('|');
+    const answer = (a: CachedAnswer): GroupSuggestion => {
+      if (a.key) return { ...out, source: 'llm', key: a.key, model: a.model };
+      if (a.newGroup) return { ...out, source: 'uncertain', key: null, model: a.model, newGroup: a.newGroup };
+      return { ...out, source: 'uncertain', key: null, model: a.model, llmError: `The AI found no fitting group (it answered: "${a.none ?? ''}").` };
+    };
+
+    const cached = (await loadCache()).find((e) => e.k === cacheKey && clock() - e.at < CACHE_TTL_MS);
+    if (cached) return answer(cached.v);
+
+    if (auto) {
+      const pause = await deps.kv.get<number>(PAUSE_KEY);
+      const now = clock();
+      while (autoRuns.length && now - autoRuns[0] > 60_000) autoRuns.shift();
+      if ((pause && pause > now) || autoRuns.length >= AUTO_PER_MINUTE) {
+        return { ...out, source: 'uncertain', key: null, llmError: 'Automatic AI is paused for a few minutes to protect your quota. Click AI to try now.' };
+      }
+    }
+    const running = inflight.get(cacheKey);
+    if (running) return running;
+
+    const run = (async (): Promise<GroupSuggestion> => {
+      try {
+        await requireLlmOrigin();
+        if (auto) autoRuns.push(clock());
+        const { text, model } = await askLlm({ fetch: deps.fetch, kv: deps.kv, now: deps.now, maxTries: auto ? 2 : undefined }, prompt);
+        const key = parseChoice(text, choices.map((c) => c.key));
+        const a: CachedAnswer = key ? { key, model } : { model, newGroup: parseNewGroup(text) ?? undefined, none: parseNewGroup(text) ? undefined : text.replace(/\s+/g, ' ').slice(0, 80) };
+        const list = (await loadCache()).filter((e) => e.k !== cacheKey && clock() - e.at < CACHE_TTL_MS);
+        await deps.kv.set(CACHE_KEY, [...list, { k: cacheKey, at: clock(), v: a }].slice(-CACHE_MAX));
+        await deps.kv.remove(PAUSE_KEY); // it worked: automatic runs may resume
+        return answer(a);
+      } catch (e) {
+        if (auto) await deps.kv.set(PAUSE_KEY, clock() + PAUSE_MS); // quota or outage: stop asking on our own for a while
+        return { ...out, source: 'uncertain', key: null, llmError: e instanceof Error ? e.message : String(e) }; // an explicit AI request that fails must not look answered
+      }
+    })();
+    inflight.set(cacheKey, run);
+    try {
+      return await run;
+    } finally {
+      inflight.delete(cacheKey);
+    }
+  }
+
   /**
    * Without `method`: rules, then the local score, then the AI (only when the score is unsure and a key is set).
    * `keywords` runs the local score alone; `llm` asks the AI right away, whatever the score says.
    */
-  async function suggestGroup(org: string, repo: { name: string; description?: string | null }, method?: SuggestMethod): Promise<GroupSuggestion> {
+  async function suggestGroup(org: string, repo: { name: string; description?: string | null }, method?: SuggestMethod, auto = false): Promise<GroupSuggestion> {
     const file = await readOrgFile(client, deps.kv, org);
     const cfg = file.exists ? readConfig(file.text, await loadYamlParser(), { org }).config : undefined;
     if (!cfg) throw new Error(`${org} has no valid repo-groups.yml to classify against.`);
@@ -101,20 +169,7 @@ export function createHandler(deps: Deps) {
     const out: GroupSuggestion = { source: s.source, key: s.key, rule: s.rule, score: s.score, margin: s.margin, ranking: s.ranking.slice(0, 3) };
     if (method === 'keywords') return out;
     if (method !== 'llm' && (s.source !== 'uncertain' || !(await loadLlmConfig(deps.kv))?.apiKey)) return out;
-    try {
-      await requireLlmOrigin();
-      const choices = postOrder(cfg.groups).map((n) => ({ key: n.key, title: n.group.title, description: n.group.description }));
-      const { text, model } = await askLlm({ fetch: deps.fetch, kv: deps.kv, now: deps.now }, classifyPrompt(choices, repo));
-      const key = parseChoice(text, choices.map((c) => c.key));
-      if (key) return { ...out, source: 'llm', key, model };
-      const newGroup = parseNewGroup(text);
-      if (newGroup) return { ...out, source: 'uncertain', key: null, model, newGroup };
-      // Show what the model said, so "it chose none" can be told apart from an answer that could not be read.
-      const said = text.replace(/\s+/g, ' ').slice(0, 80);
-      return { ...out, source: 'uncertain', key: null, model, llmError: `The AI found no fitting group (it answered: "${said}").` };
-    } catch (e) {
-      return { ...out, source: 'uncertain', key: null, llmError: e instanceof Error ? e.message : String(e) }; // an explicit AI request that fails must not look answered
-    }
+    return askGroups(cfg, org, repo, out, auto);
   }
 
   async function handle(req: Request): Promise<unknown> {
@@ -270,7 +325,7 @@ export function createHandler(deps: Deps) {
         return { model };
       }
       case 'suggest:group':
-        return suggestGroup(req.org, req.repo, req.method);
+        return suggestGroup(req.org, req.repo, req.method, req.auto);
       case 'org:file':
         return readOrgFile(client, deps.kv, req.org);
       case 'org:access':

@@ -277,3 +277,104 @@ describe('AI by default preference', () => {
     expect(((await handle({ type: 'llm:auto', auto: false })) as any).data.auto).toBe(false);
   });
 });
+
+describe('keeping the number of AI requests low', () => {
+  const yml = ['groups:', '  - name: infra', '    title: "Infra"', '    description: "Servers."', '    keywords: ["s3", "backup"]'].join('\n');
+  const file: Route = (u) => (u.pathname === '/repos/o/.github/contents/repo-groups.yml' ? { json: { content: btoa(yml), sha: 'abc' }, headers: { etag: '"e"' } } : undefined);
+  const setup = async (llm: Route, now = () => 1_000_000) => {
+    const f = fakeFetch(file, llm);
+    const kv = memoryKV();
+    await saveLlmConfig(kv, { mode: 'gemini', apiKey: 'k' });
+    const handle = createHandler({ fetch: f.fetch, kv, index: memoryIndexStore(), now });
+    const ask = (name: string, auto = false, description = '') => handle({ type: 'suggest:group', org: 'o', repo: { name, description }, method: 'llm', ...(auto ? { auto: true } : {}) }) as Promise<any>;
+    const chats = () => f.calls.filter((c) => c.url.includes('chat/completions')).length;
+    return { f, kv, ask, chats };
+  };
+
+  it('answers the same question from the cache', async () => {
+    const { ask, chats } = await setup(gemini({}, 'infra'));
+    expect((await ask('zzz-one')).data).toMatchObject({ source: 'llm', key: 'infra' });
+    expect((await ask('zzz-one')).data).toMatchObject({ source: 'llm', key: 'infra' });
+    expect((await ask('ZZZ-ONE')).data).toMatchObject({ key: 'infra' }); // case does not matter
+    expect(chats()).toBe(1);
+    await ask('zzz-two');
+    expect(chats()).toBe(2);
+  });
+
+  it('caches "no group" and new-group answers too, but never errors', async () => {
+    const none = await setup(gemini({}, 'none'));
+    await none.ask('x1');
+    await none.ask('x1');
+    expect(none.chats()).toBe(1);
+
+    const failing = await setup(gemini({ 'gemini-2.5-flash-lite': 429, 'gemini-2.5-flash': 429, 'gemini-2.5-pro': 429, 'gemini-3-flash-preview': 429 }));
+    await failing.ask('x2');
+    const before = failing.chats();
+    await failing.ask('x2');
+    expect(failing.chats()).toBeGreaterThan(before);
+  });
+
+  it('forgets cached answers when the groups change', async () => {
+    const a = await setup(gemini({}, 'infra'));
+    await a.ask('zzz-one');
+    // same org and name, different groups file => different question
+    const other = fakeFetch((u) => (u.pathname === '/repos/o/.github/contents/repo-groups.yml' ? { json: { content: btoa(yml + '\n  - name: apps\n    description: "Apps."'), sha: 'x' } } : undefined), gemini({}, 'infra'));
+    await a.kv.remove('rg:file:o');
+    const handle = createHandler({ fetch: other.fetch, kv: a.kv, index: memoryIndexStore() });
+    await handle({ type: 'suggest:group', org: 'o', repo: { name: 'zzz-one' }, method: 'llm' });
+    expect(other.calls.some((c) => c.url.includes('chat/completions'))).toBe(true);
+  });
+
+  it('shares one request between identical questions asked at the same time', async () => {
+    const { ask, chats } = await setup(gemini({}, 'infra'));
+    await Promise.all([ask('zzz-one', true), ask('zzz-one', true), ask('zzz-one')]);
+    expect(chats()).toBe(1);
+  });
+
+  it('tries at most 2 models for an automatic run, 5 for a click', async () => {
+    const allFail = { 'gemini-2.5-flash-lite': 429, 'gemini-2.5-flash': 429, 'gemini-2.5-pro': 429, 'gemini-3-flash-preview': 429 };
+    const auto = await setup(gemini(allFail));
+    await auto.ask('zzz-one', true);
+    expect(auto.chats()).toBe(2);
+    const click = await setup(gemini(allFail));
+    await click.ask('zzz-one');
+    expect(click.chats()).toBe(4); // only four models exist in this fake; the cap of 5 is not what stops it
+  });
+
+  it('pauses automatic runs for 10 minutes after a failure, and a click still works', async () => {
+    let t = 1_000_000;
+    const fail: Record<string, number> = { 'gemini-2.5-flash-lite': 429, 'gemini-2.5-flash': 429, 'gemini-2.5-pro': 429, 'gemini-3-flash-preview': 429 };
+    const { ask, chats } = await setup(gemini(fail), () => t);
+    await ask('zzz-one', true);
+    const afterFailure = chats();
+    const paused = (await ask('zzz-two', true)).data;
+    expect(paused.llmError).toMatch(/paused/);
+    expect(chats()).toBe(afterFailure); // no request while paused
+
+    for (const k of Object.keys(fail)) delete fail[k];
+    expect((await ask('zzz-two')).data.llmError).toMatch(/found no fitting group/); // a click is never blocked: the AI was really asked
+    expect(chats()).toBeGreaterThan(afterFailure);
+
+    t += 11 * 60_000;
+    expect((await ask('zzz-three', true)).data.llmError ?? '').not.toMatch(/paused/);
+  });
+
+  it('caps automatic runs at 6 per minute', async () => {
+    let t = 1_000_000;
+    const { ask, chats } = await setup(gemini({}, 'infra'), () => t);
+    for (let i = 0; i < 6; i++) await ask(`n-${i}`, true);
+    expect(chats()).toBe(6);
+    expect((await ask('n-6', true)).data.llmError).toMatch(/paused/);
+    expect(chats()).toBe(6);
+    expect((await ask('n-6')).data).toMatchObject({ key: 'infra' }); // a click goes through
+    t += 61_000;
+    expect((await ask('n-7', true)).data).toMatchObject({ key: 'infra' });
+  });
+
+  it('tells the AI the keywords of each group', async () => {
+    const { f, ask } = await setup(gemini({}, 'infra'));
+    await ask('zzz-one');
+    const body = JSON.parse(f.calls.find((c) => c.url.includes('chat/completions'))!.body!);
+    expect(body.messages[0].content).toContain('Keywords: s3, backup.');
+  });
+});

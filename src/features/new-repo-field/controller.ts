@@ -59,7 +59,9 @@ export interface Suggestion {
   auto?: boolean;
 }
 
-const AUTO_DELAY_MS = 800;
+/** AI by default waits for the name to be done: leaving the field, or this long without typing. */
+const AUTO_DELAY_MS = 2500;
+const AUTO_MIN_NAME = 3;
 
 export interface NrEnv {
   call: Call;
@@ -139,22 +141,28 @@ export function createNewRepoController(env: NrEnv) {
   }
 
   /**
-   * AI by default: a moment after the name stops changing, if no rule catches it and nothing was picked by hand,
-   * ask the AI. Only with a key set and the option on; it never creates a group by itself.
+   * AI by default: once the name is done (the person left the field, or stopped typing for a while), if no rule
+   * catches it and nothing was picked by hand, ask the AI. Only with a key set and the option on; it never creates
+   * a group by itself. One request per finished name, not one per pause while typing.
    */
-  function scheduleAuto() {
+  function scheduleAuto(committed = false) {
     clearTimeout(autoTimer);
     const s = store.get();
     if (s.phase !== 'ready' || !s.canWrite || !s.llmReady || !s.llmAuto) return;
     const name = finalName();
-    if (!name) return;
-    autoTimer = setTimeout(() => {
+    if (name.length < AUTO_MIN_NAME) return;
+    const fire = () => {
       const now = store.get();
       if (now.suggestion || now.pickedKey !== '' || finalName() !== name) return;
       if (destination().kind !== 'auto-miss') return;
       void classify('llm', true);
-    }, AUTO_DELAY_MS);
+    };
+    if (committed) fire();
+    else autoTimer = setTimeout(fire, AUTO_DELAY_MS);
   }
+
+  /** The person left the name field (Tab, click elsewhere or Enter): the name is final, no need to wait. */
+  const nameCommitted = () => scheduleAuto(true);
 
   const setName = (rawName: string) => {
     if (store.get().rawName === rawName) return;
@@ -181,7 +189,7 @@ export function createNewRepoController(env: NrEnv) {
     const mine = ++sseq;
     store.set({ suggestion: { method, status: 'loading', key: null, auto } });
     try {
-      const r = await env.call<GroupSuggestion>({ type: 'suggest:group', org: s.org, repo: { name }, method });
+      const r = await env.call<GroupSuggestion>({ type: 'suggest:group', org: s.org, repo: { name }, method, ...(auto ? { auto: true } : {}) });
       if (mine !== sseq) return;
       if (r.key && findGroup(store.get().groups, r.key.split('/'))) {
         pick(r.key);
@@ -256,5 +264,5 @@ export function createNewRepoController(env: NrEnv) {
     return { org: s.org, repo: name, groupPath: s.canWrite ? s.pickedKey : '', explicit: s.canWrite && !!s.pickedKey, teams: cleanTeams(s.teams).map((t) => ({ slug: t.slug, permission: t.permission })) };
   }
 
-  return { store, setOrg, setName, pick, classify, createSuggestedGroup, setTeams, destination, options, pendingEntry, finalName };
+  return { store, setOrg, setName, nameCommitted, pick, classify, createSuggestedGroup, setTeams, destination, options, pendingEntry, finalName };
 }

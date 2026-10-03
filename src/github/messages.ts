@@ -44,7 +44,7 @@ export type Request =
   | { type: 'llm:auto'; auto: boolean }
   | { type: 'llm:clear' }
   | { type: 'llm:test' }
-  | { type: 'suggest:group'; org: string; repo: { name: string; description?: string | null }; method?: SuggestMethod };
+  | { type: 'suggest:group'; org: string; repo: { name: string; description?: string | null }; method?: SuggestMethod; /** Started by the page on its own (AI by default), not by a click: cheaper and rate limited. */ auto?: boolean };
 
 /** Which classifier to run. Left out, the background tries rules, then the local score, then the AI only if the score is unsure. */
 export type SuggestMethod = 'keywords' | 'llm';

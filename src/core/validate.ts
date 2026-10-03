@@ -106,6 +106,7 @@ export function configFromObject(obj: unknown, opts: ValidateOptions = {}): Vali
       }
       out.push({
         name,
+        ...(typeof raw.title === 'string' && raw.title.trim() ? { title: raw.title.trim() } : {}),
         description: typeof raw.description === 'string' ? raw.description : '',
         logo: typeof raw.logo === 'string' && raw.logo.trim() ? raw.logo.trim() : null,
         teams,

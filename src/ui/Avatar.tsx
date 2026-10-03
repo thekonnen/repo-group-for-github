@@ -1,7 +1,10 @@
 import { avatarTone } from '../core/tree';
 
-/** Letter avatar; the tone comes from the name (sum of char codes mod 5). The org root uses the neutral tone. */
-export function Avatar({ name, cls, root }: { name: string; cls: string; root?: boolean }) {
+/**
+ * Letter avatar. The tone comes from the slug (sum of char codes mod 5), so it stays the same when the display name
+ * changes; the letter comes from the display name. The org root uses the neutral tone.
+ */
+export function Avatar({ name, label, cls, root }: { name: string; label?: string; cls: string; root?: boolean }) {
   const tone = root ? 'rg-av-repo' : `rg-av${avatarTone(name)}`;
-  return <span class={`${cls} ${tone}`}>{(name || '?')[0].toUpperCase()}</span>;
+  return <span class={`${cls} ${tone}`}>{(label || name || '?')[0].toUpperCase()}</span>;
 }

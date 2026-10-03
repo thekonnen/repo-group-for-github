@@ -1,13 +1,23 @@
 import { useMemo, useState } from 'preact/hooks';
-import { finalName, slugName, splitRules, validateDraft, type Edit } from '../../core/edit';
+import { displayName, finalName, slugify, slugName, splitRules, validateDraft, type Edit } from '../../core/edit';
 import { matches } from '../../core/glob';
-import { byPush, nodeAt } from '../../core/tree';
+import { byPush, nodeAt, type TreeModel } from '../../core/tree';
 import { Drawer } from '../../ui/Drawer';
 import { Icon } from '../../ui/Icon';
 import type { Controller, SaveResult } from '../grouped-view/controller';
 import { useStore } from '../store';
 
 const MAX_LISTED = 200;
+
+/** "infra/dagu" -> "Infra / Dagu" using display names. */
+const titled = (model: TreeModel, key: string): string =>
+  key
+    .split('/')
+    .map((_, i, parts) => {
+      const g = model.byKey.get(parts.slice(0, i + 1).join('/'))?.group;
+      return g ? displayName(g) : parts[i];
+    })
+    .join(' / ');
 
 /** Edit group (F5) and New group / New subgroup (F6): the same drawer in two modes. */
 export function GroupDrawer({ ctl }: { ctl: Controller }) {
@@ -24,7 +34,11 @@ function Form({ ctl, mode, path }: { ctl: Controller; mode: 'edit' | 'new'; path
   const node = mode === 'edit' ? nodeAt(model, path) : null;
   const parentKey = mode === 'new' ? path.join('/') : path.slice(0, -1).join('/');
 
-  const [name, setName] = useState(node?.group.name ?? '');
+  // Name is what people read ("Grupo: Competição"); the slug is the path used in URLs and files ("grupo-competicao").
+  const [title, setTitle] = useState(node ? displayName(node.group) : '');
+  const [slug, setSlug] = useState(node?.group.name ?? '');
+  // A new group's slug follows its name until the slug is edited; an existing slug never changes by itself (it is in URLs).
+  const [slugTouched, setSlugTouched] = useState(mode === 'edit');
   const [description, setDescription] = useState(node?.group.description ?? '');
   const [rules, setRules] = useState<string[]>(node?.group.match ?? []);
   const [ruleInput, setRuleInput] = useState('');
@@ -35,9 +49,22 @@ function Form({ ctl, mode, path }: { ctl: Controller; mode: 'edit' | 'new'; path
   // Text still sitting in the rule field when Save is pressed counts too.
   const allRules = [...new Set([...rules, ...splitRules(ruleInput)])];
 
-  const error = validateDraft(groups, { mode, path, name });
-  const showError = error && (touched || !error.startsWith('Name is required'));
-  const dirty = mode === 'new' || !node || name !== node.group.name || description !== node.group.description || allRules.join('\n') !== node.group.match.join('\n');
+  const error = validateDraft(groups, { mode, path, name: slug, title });
+  const nameError = error === 'Name is required.' ? error : null;
+  const slugError = error && !nameError ? error : null;
+  const dirty =
+    mode === 'new' ||
+    !node ||
+    title.trim() !== displayName(node.group) ||
+    finalName(slug) !== node.group.name ||
+    description !== node.group.description ||
+    allRules.join('\n') !== node.group.match.join('\n');
+
+  const onTitle = (v: string) => {
+    setTitle(v);
+    setProblem(null);
+    if (!slugTouched) setSlug(slugify(v));
+  };
 
   /** Reads the field itself, not state: a fast Enter after typing or pasting must not lose text. "a, b c" adds three rules. */
   const addRules = (v: string) => {
@@ -45,11 +72,14 @@ function Form({ ctl, mode, path }: { ctl: Controller; mode: 'edit' | 'new'; path
     if (add.length) setRules([...rules, ...add]);
     setRuleInput('');
   };
-  const hits = useMemo(() => s.repos.filter((r) => !r.archived && rules.length && matches(allRules, r.name)).sort(byPush), [s.repos, ruleInput, rules]);
+
+  const hits = useMemo(() => s.repos.filter((r) => !r.archived && allRules.length && matches(allRules, r.name)).sort(byPush), [s.repos, ruleInput, rules]);
   const here = mode === 'edit' ? path.join('/') : null;
 
   const edit: Edit =
-    mode === 'edit' ? { kind: 'edit', path, name, description, match: allRules } : { kind: 'new', parent: path, name, description, match: allRules };
+    mode === 'edit'
+      ? { kind: 'edit', path, name: slug, title, description, match: allRules }
+      : { kind: 'new', parent: path, name: slug, title, description, match: allRules };
 
   const submit = async (create = false) => {
     setTouched(true);
@@ -61,12 +91,12 @@ function Form({ ctl, mode, path }: { ctl: Controller; mode: 'edit' | 'new'; path
     setSaving(false); // on success the controller closed the drawer
   };
 
-  const fullPath = [s.org, ...(parentKey ? parentKey.split('/') : []), finalName(name) || '…'].join(' / ');
-  const title = mode === 'edit' ? `Edit group ${path.join(' / ')}` : path.length ? 'New subgroup' : 'New group';
+  const fullPath = [s.org, ...(parentKey ? titled(model, parentKey).split(' / ') : []), finalName(slug) || '…'].join(' / ');
+  const heading = mode === 'edit' ? `Edit group ${titled(model, path.join('/'))}` : path.length ? 'New subgroup' : 'New group';
 
   return (
     <Drawer
-      title={title}
+      title={heading}
       titleId="rg-drawer-title"
       onClose={() => ctl.closeDrawer()}
       footer={
@@ -82,9 +112,16 @@ function Form({ ctl, mode, path }: { ctl: Controller; mode: 'edit' | 'new'; path
       <form class="rg-form" onSubmit={(e) => (e.preventDefault(), submit())}>
         <div class="rg-field">
           <label for="rg-f-name">Name</label>
-          <input id="rg-f-name" class="rg-input rg-mono" value={name} autocomplete="off" aria-invalid={showError ? 'true' : undefined} aria-describedby="rg-f-name-hint"
-            onInput={(e) => (setName(slugName((e.target as HTMLInputElement).value)), setProblem(null))} onBlur={() => setTouched(true)} />
-          <span class="rg-hint" id="rg-f-name-hint">{showError ? <span class="rg-error" role="alert">{error}</span> : <>Lowercase letters, numbers, <code>-</code> <code>_</code> <code>.</code> · {fullPath}</>}</span>
+          <input id="rg-f-name" class="rg-input" value={title} autocomplete="off" aria-invalid={nameError && touched ? 'true' : undefined} aria-describedby="rg-f-name-hint"
+            onInput={(e) => onTitle((e.target as HTMLInputElement).value)} onBlur={() => setTouched(true)} />
+          <span class="rg-hint" id="rg-f-name-hint">{nameError && touched ? <span class="rg-error" role="alert">{nameError}</span> : 'Capitals, spaces and accents are fine, for example “Grupo: Competição”.'}</span>
+        </div>
+
+        <div class="rg-field">
+          <label for="rg-f-slug">Slug</label>
+          <input id="rg-f-slug" class="rg-input rg-mono" value={slug} autocomplete="off" aria-invalid={slugError ? 'true' : undefined} aria-describedby="rg-f-slug-hint"
+            onInput={(e) => (setSlug(slugName((e.target as HTMLInputElement).value)), setSlugTouched(true), setProblem(null))} />
+          <span class="rg-hint" id="rg-f-slug-hint">{slugError ? <span class="rg-error" role="alert">{slugError}</span> : <>Used in the URL and in the file: lowercase letters, numbers, <code>-</code> <code>_</code> <code>.</code> · {fullPath}</>}</span>
         </div>
 
         <div class="rg-field">
@@ -125,14 +162,14 @@ function Form({ ctl, mode, path }: { ctl: Controller; mode: 'edit' | 'new'; path
                   <li key={r.name}>
                     <Icon name="repo" size={14} />
                     <span>{r.name}</span>
-                    {elsewhere && <span class="rg-moved">now in {at.split('/').join(' / ')}</span>}
+                    {elsewhere && <span class="rg-moved">now in {titled(model, at)}</span>}
                   </li>
                 );
               })}
               {hits.length > MAX_LISTED && <li class="rg-muted">and {hits.length - MAX_LISTED} more</li>}
             </ul>
           ) : (
-            <span class="rg-hint">{rules.length ? 'No repository matches these rules yet.' : 'Add a rule to see which repositories it catches.'}</span>
+            <span class="rg-hint">{allRules.length ? 'No repository matches these rules yet.' : 'Add a rule to see which repositories it catches.'}</span>
           )}
         </div>
 

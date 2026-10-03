@@ -21,20 +21,20 @@ const readAsDataUrl = (file: File) =>
  */
 export function LogoField({
   name,
+  label,
   current,
   hasLogo,
   draft,
   onChange,
   fetchLink,
-  autoFocus,
 }: {
-  name: string;
+  name: string; // slug: sets the letter's tone
+  label?: string; // display name: gives the letter
   current: string | null;
   hasLogo: boolean;
   draft: LogoDraft;
   onChange: (d: LogoDraft) => void;
   fetchLink: (url: string) => Promise<string>;
-  autoFocus?: boolean;
 }) {
   const [src, setSrc] = useState<string | null>(null); // image being cropped
   const [error, setError] = useState('');
@@ -101,10 +101,10 @@ export function LogoField({
           void pick(e.dataTransfer?.files?.[0]);
         }}
       >
-        {shown ? <img class="rg-big-av rg-logo-img" src={shown} alt="Current logo" /> : <Avatar name={name || '?'} cls="rg-big-av" />}
+        {shown ? <img class="rg-big-av rg-logo-img" src={shown} alt="Current logo" /> : <Avatar name={name || '?'} label={label} cls="rg-big-av" />}
         <div class="rg-stack">
           <div class="rg-y-tools">
-            <button type="button" class="rg-btn" id="rg-logo-upload" ref={upload} data-autofocus={autoFocus ? '' : undefined} onClick={() => fileInput.current?.click()}>
+            <button type="button" class="rg-btn" id="rg-logo-upload" ref={upload} onClick={() => fileInput.current?.click()}>
               <Icon name="image" />Upload image
             </button>
             <button type="button" class="rg-btn" aria-expanded={urlOpen} onClick={() => setUrlOpen(!urlOpen)}>

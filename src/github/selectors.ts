@@ -54,7 +54,13 @@ function branchOutside(el: Element, column: Element, filterList: Element | null,
 /** The title row GitHub renders above its list ("All" + New repository). It can live outside the list column. */
 function findExtras(doc: Document, column: Element, filterList: Element | null): Element[] {
   const out = new Set<Element>();
-  const outsidePageChrome = (el: Element) => !el.closest('header, [role="banner"], .rg-root');
+  // GitHub renders the "All" title row inside a <header> too, so only the global header (the one with the logo) is skipped.
+  const LOGO = 'a[href="/"], a[href="https://github.com/"], a[aria-label*="Homepage" i]';
+  const outsidePageChrome = (el: Element) => {
+    if (el.closest('.rg-root')) return false;
+    const h = el.closest('header, [role="banner"]');
+    return !(h && h.querySelector(LOGO));
+  };
   const candidates: Element[] = [
     ...Array.from(doc.querySelectorAll(NEW_REPO)).filter((a) => norm(a.textContent) === 'New repository'),
     ...Array.from(doc.querySelectorAll('h1, h2, h3')).filter((h) => FILTER_TITLES.test(norm(h.textContent))),
@@ -83,4 +89,67 @@ export function locateOrgRepos(doc: Document): OrgReposMount | null {
   // A column that would swallow the sidebar means we cannot isolate GitHub's list: do nothing.
   if (!column || column === search || isRoot(column) || (filterList && column.contains(filterList))) return null;
   return { column, extras: findExtras(doc, column, filterList), filterList };
+}
+
+/* ------------------------------------------------------------------------------------------------------------------
+ * "Create a new repository" (F9). Written from design/screenshots/github-new-repository.png, NOT from live HTML.
+ * ------------------------------------------------------------------------------------------------------------------ */
+
+const DESC_INPUT = 'input[name="repository[description]"], #repository_description, input[aria-label="Description" i], textarea[aria-label="Description" i]';
+const NAME_INPUT = 'input[name="repository[name]"], #repository-name-input, #repository_name, input[aria-label*="Repository name" i]';
+const COUNTER = /^\d[\d,]*\s*\/\s*\d+\s*characters?$/i;
+
+/** The control a <label> (matched by text) points at. */
+function inputByLabel(doc: Document, re: RegExp): HTMLInputElement | null {
+  for (const l of Array.from(doc.querySelectorAll('label'))) {
+    if (!re.test(norm(l.textContent))) continue;
+    const id = l.getAttribute('for');
+    const el = (id && doc.getElementById(id)) || l.parentElement?.querySelector('input, textarea');
+    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return el as HTMLInputElement;
+  }
+  return null;
+}
+
+export interface NewRepoMount {
+  /** The Group block goes right after this element: the "0 / 350 characters" counter, or the Description field. */
+  after: Element;
+  nameInput: HTMLInputElement | null;
+  description: HTMLInputElement;
+  form: HTMLFormElement | null;
+}
+
+/** Finds where the Group block goes. Null (inject nothing) when the Description field cannot be found. */
+export function locateNewRepo(doc: Document): NewRepoMount | null {
+  const description = (doc.querySelector(DESC_INPUT) as HTMLInputElement | null) ?? inputByLabel(doc, /^Description$/i);
+  if (!description) return null;
+  const nameInput = (doc.querySelector(NAME_INPUT) as HTMLInputElement | null) ?? inputByLabel(doc, /^Repository name\b/i);
+  // The counter lives in the same field block as the input, below it.
+  let counter: Element | null = null;
+  for (let box: Element | null = description.parentElement, i = 0; box && !counter && i < 4; box = box.parentElement, i++) {
+    if (box.querySelector(NAME_INPUT)) break; // climbed into another field
+    counter = Array.from(box.querySelectorAll('span, p, div, small')).find((e) => e.children.length === 0 && COUNTER.test(norm(e.textContent))) ?? null;
+  }
+  const form = description.closest('form');
+  return { after: counter ?? description, nameInput, description, form };
+}
+
+/** Login shown by the Owner dropdown ("thekonnen"), for /new where the owner is not in the URL. */
+export function findOwnerLogin(doc: Document): string | null {
+  for (const l of Array.from(doc.querySelectorAll('label, span, div, legend'))) {
+    if (l.children.length > 0 || !/^Owner\s*\*?$/i.test(norm(l.textContent))) continue;
+    for (let box = l.parentElement, i = 0; box && i < 3; box = box.parentElement, i++) {
+      const b = box.querySelector('button, summary, [role="combobox"]');
+      const t = norm(b?.textContent);
+      if (t) return t.split(' ')[0];
+    }
+  }
+  return null;
+}
+
+/** Name the person typed, as GitHub's input holds it. */
+export const readRepoName = (m: NewRepoMount): string => m.nameInput?.value ?? '';
+
+/** The button that submits the form (a second signal next to the form's submit event). */
+export function findCreateButton(doc: Document): HTMLButtonElement | null {
+  return (Array.from(doc.querySelectorAll('button')).find((b) => /^Create repository$/i.test(norm(b.textContent))) as HTMLButtonElement | undefined) ?? null;
 }

@@ -1,3 +1,4 @@
+import { displayName } from './edit';
 import { pickIn, postOrder } from './placement';
 import type { Group, RepoInfo } from './types';
 
@@ -100,7 +101,13 @@ export function searchRows(model: TreeModel, node: GroupNode, query: string): Ro
   const hits = allRepos(node).filter((r) => r.name.toLowerCase().includes(q) || (r.description ?? '').toLowerCase().includes(q));
   return hits.sort(byPush).map((repo) => {
     const key = model.placed.get(repo.name) ?? '';
-    const rel = key ? key.split('/').slice(node.path.length) : [];
+    const parts = key ? key.split('/') : [];
+    // Titles for people, slugs only as a fallback.
+    const rel = parts.slice(node.path.length).map((_, i) => {
+      const k = parts.slice(0, node.path.length + i + 1).join('/');
+      const g = model.byKey.get(k)?.group;
+      return g ? displayName(g) : parts[node.path.length + i];
+    });
     return { kind: 'repo' as const, repo, depth: 0, prefix: rel.length ? rel.join(' / ') + ' / ' : undefined };
   });
 }
@@ -113,7 +120,7 @@ export function defaultExpanded(model: TreeModel): Set<string> {
 
 export interface SideItem {
   key: string;
-  name: string;
+  name: string; // display name
   depth: number;
   total: number;
   logo: string | null;
@@ -124,7 +131,7 @@ export function sideItems(model: TreeModel): SideItem[] {
   const out: SideItem[] = [{ key: '', name: 'All groups', depth: 0, total: model.root.total, logo: null }];
   const walk = (n: GroupNode, depth: number) => {
     for (const c of n.children) {
-      out.push({ key: c.key, name: c.group.name, depth, total: c.total, logo: c.group.logo });
+      out.push({ key: c.key, name: displayName(c.group), depth, total: c.total, logo: c.group.logo });
       walk(c, depth + 1);
     }
   };

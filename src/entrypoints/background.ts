@@ -16,6 +16,7 @@ export default defineBackground(() => {
       has: (origin) => browser.permissions.contains({ origins: [origin] }),
       request: (origin) => browser.permissions.request({ origins: [origin] }),
     },
+    session: areaKV((browser.storage as any).session ?? browser.storage.local),
   });
   browser.runtime.onMessage.addListener((msg: Request, _sender, sendResponse) => {
     handle(msg).then(sendResponse);

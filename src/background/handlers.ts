@@ -4,10 +4,11 @@ import type { ConfigResult, ErrorInfo, OrgPrefs, OrgSnapshot, Progress, Request,
 import { createClient, explainTokenRejection, GitHubError, type FetchLike } from './api';
 import { describeToken, loadAuth, pollDeviceFlow, publicAuth, saveAuth, signOut, startDeviceFlow } from './auth';
 import type { KV } from './kv';
-import { commitEdit, createDotGithub, EditError } from './commit';
 import { commitEditWithLogo } from './commit-logo';
 import { createLogoService, memoryLogoCache, type LogoCache, type Origins } from './logos';
-import { editLogoPath, hasPng } from '../core/edit';
+import { hasPng, pngOf } from '../core/edit';
+import { checkYaml, commitEdit, commitYaml, createDotGithub, EditError } from './commit';
+import { discardPending, filePending, setPending } from './new-repo';
 import { probeAccess, readOrgFile, type OrgFile } from './org-data';
 import { refreshIndex, type IndexStore } from './repo-index';
 
@@ -15,6 +16,7 @@ export interface Deps {
   fetch: FetchLike;
   kv: KV; // storage.local, background only
   index: IndexStore;
+  session?: KV; // storage.session, background only (pending new repository)
   clientId?: string;
   logos?: LogoCache; // blob SHA -> data URL (IndexedDB in the browser)
   origins?: Origins; // optional host permissions for logo links
@@ -41,6 +43,15 @@ export function createHandler(deps: Deps) {
     if (f) await deps.kv.remove(FLOW_KEY);
     return undefined;
   };
+  // The pending new-repo entry lives in storage.session (falls back to local storage in tests). filePending also
+  // reads the org file cache, which is in local storage, so it gets a KV that routes by key.
+  const session: KV = deps.session
+    ? {
+        get: (k) => (k.startsWith('rg:pending') ? deps.session! : deps.kv).get(k),
+        set: (k, v) => (k.startsWith('rg:pending') ? deps.session! : deps.kv).set(k, v),
+        remove: (k) => (k.startsWith('rg:pending') ? deps.session! : deps.kv).remove(k),
+      }
+    : deps.kv;
   const progress = new Map<string, Progress>();
   const tokenKind = async () => (await loadAuth(deps.kv))?.kind ?? 'oauth';
 
@@ -97,8 +108,9 @@ export function createHandler(deps: Deps) {
       case 'org:edit': {
         if (!hasPng(req.edit)) return commitEdit(client, deps.kv, req.org, req.edit);
         const r = await commitEditWithLogo(client, deps.kv, req.org, req.edit);
-        if (r.status === 'ok' && r.logoSha && req.edit.logo && 'png' in req.edit.logo && editLogoPath(req.edit)) {
-          await logos.prime(req.org, r.logoSha, `data:image/png;base64,${req.edit.logo.png}`).catch(() => {});
+        const png = pngOf(req.edit);
+        if (r.status === 'ok' && r.logoSha && png) {
+          await logos.prime(req.org, r.logoSha, `data:image/png;base64,${png}`).catch(() => {});
         }
         return r;
       }
@@ -106,9 +118,21 @@ export function createHandler(deps: Deps) {
         return logos.load(req.org, req.srcs);
       case 'logo:fetch-link':
         return logos.fetchLink(req.url);
+      case 'yaml:validate':
+        return checkYaml(req.org, req.text);
+      case 'org:apply-yaml':
+        return commitYaml(client, deps.kv, req.org, req.text, req.baseSha, req.changes);
       case 'org:create-dotgithub':
         await createDotGithub(client, req.org);
         return { created: true };
+      case 'newrepo:pending':
+        await setPending(session, req.entry);
+        return { saved: true };
+      case 'newrepo:discard':
+        await discardPending(session);
+        return { discarded: true };
+      case 'newrepo:landed':
+        return filePending(client, session, req.org, req.repo);
       case 'prefs:get':
         return (await deps.kv.get<Partial<OrgPrefs>>(`rg:prefs:${req.org}`)) ?? {};
       case 'prefs:set': {

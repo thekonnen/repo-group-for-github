@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { langColor } from '../../core/lang-colors';
+import { displayName } from '../../core/edit';
 import { ago } from '../../core/time';
 import { allRepos, searchRows, treeRows, VIRTUALIZE_AFTER, windowRange, type GroupNode, type Row, type TreeModel } from '../../core/tree';
 import type { RepoInfo } from '../../core/types';
@@ -63,7 +64,7 @@ function SignInEmpty({ ctl, s }: { ctl: Controller; s: State }) {
 function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel }) {
   const node = (s.path.length && model.byKey.get(s.path.join('/'))) || model.root;
   const isRoot = node === model.root;
-  const name = isRoot ? s.org : node.group.name;
+  const name = isRoot ? s.org : displayName(node.group);
   const ungrouped = model.root.repos;
   const cfg = s.config;
 
@@ -97,7 +98,15 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
         </div>
       )}
       {cfg && !cfg.exists && (
-        <div class="rg-banner" role="status"><span class="rg-grow">No groups yet: <code>{s.org}/.github</code> has no <code>repo-groups.yml</code>, so every repository is shown as ungrouped.</span></div>
+        <div class="rg-banner" role="status">
+          <span class="rg-grow">No groups yet: <code>{s.org}/.github</code> has no <code>repo-groups.yml</code>, so every repository is shown as ungrouped.</span>
+          {s.access?.canWriteOrg && (
+            <>
+              <button type="button" class="rg-btn" onClick={() => ctl.openDrawer('new', [])}><Icon name="folder" />Create groups</button>
+              <button type="button" class="rg-btn" onClick={() => ctl.openYaml()}><Icon name="sparkle" />Start with AI</button>
+            </>
+          )}
+        </div>
       )}
       {cfg && cfg.exists && cfg.error && (
         <div class="rg-banner rg-banner-warn" role="alert"><span class="rg-grow"><b>repo-groups.yml has a problem:</b> {cfg.error}. Showing every repository as ungrouped.</span></div>
@@ -160,7 +169,7 @@ function IndexStatus({ ctl, s, model }: { ctl: Controller; s: State; model: Tree
 }
 
 function Crumbs({ ctl, s, model, node }: { ctl: Controller; s: State; model: TreeModel; node: GroupNode }) {
-  const chain = [{ key: '', path: [] as string[], label: s.org, root: true }, ...node.path.map((_, i) => ({ key: node.path.slice(0, i + 1).join('/'), path: node.path.slice(0, i + 1), label: node.path[i], root: false }))];
+  const chain = [{ key: '', path: [] as string[], label: s.org, slug: s.org, root: true }, ...node.path.map((_, i) => { const k = node.path.slice(0, i + 1).join('/'); const g = model.byKey.get(k)?.group; return { key: k, path: node.path.slice(0, i + 1), label: g ? displayName(g) : node.path[i], slug: node.path[i], root: false }; })];
   const logoOf = (key: string) => model.byKey.get(key)?.group.logo;
   return (
     <nav class="rg-crumbs" aria-label="Group path">
@@ -168,9 +177,9 @@ function Crumbs({ ctl, s, model, node }: { ctl: Controller; s: State; model: Tre
         <>
           {i > 0 && <span aria-hidden="true">/</span>}
           {i === chain.length - 1 ? (
-            <span class="rg-cur" style="display:inline-flex;gap:6px;align-items:center"><GroupAvatar logos={ctl.logos} name={c.label} logo={logoOf(c.key)} cls="rg-mini-av" root={c.root} />{c.label}</span>
+            <span class="rg-cur" style="display:inline-flex;gap:6px;align-items:center"><GroupAvatar logos={ctl.logos} name={c.slug} label={c.label} logo={logoOf(c.key)} cls="rg-mini-av" root={c.root} />{c.label}</span>
           ) : (
-            <a href={`#${c.path.join('/')}`} onClick={(e) => (e.preventDefault(), ctl.go(c.path))}><GroupAvatar logos={ctl.logos} name={c.label} logo={logoOf(c.key)} cls="rg-mini-av" root={c.root} />{c.label}</a>
+            <a href={`#${c.path.join('/')}`} onClick={(e) => (e.preventDefault(), ctl.go(c.path))}><GroupAvatar logos={ctl.logos} name={c.slug} label={c.label} logo={logoOf(c.key)} cls="rg-mini-av" root={c.root} />{c.label}</a>
           )}
         </>
       ))}
@@ -185,16 +194,17 @@ function Header({ ctl, s, node, name, isRoot }: { ctl: Controller; s: State; nod
     <div class="rg-g-head">
       <div class="rg-g-title">
         {canEdit && !isRoot ? (
-          <button type="button" class="rg-big-av-btn" aria-label="Edit logo" title="Edit logo" onClick={() => ctl.openDrawer('edit', node.path, 'logo')}>
-            <GroupAvatar logos={ctl.logos} name={name} logo={node.group.logo} cls="rg-big-av" />
+          <button type="button" class="rg-big-av-btn" aria-label={`Edit logo of ${name}`} title="Edit logo" onClick={() => ctl.openDrawer('edit', node.path, 'logo')}>
+            <GroupAvatar logos={ctl.logos} name={node.group.name} label={name} logo={node.group.logo} cls="rg-big-av" />
             <span class="rg-pen"><Icon name="pencil" size={12} /></span>
           </button>
         ) : (
-          <GroupAvatar logos={ctl.logos} name={name} logo={node.group.logo} cls="rg-big-av" root={isRoot} />
+          <GroupAvatar logos={ctl.logos} name={isRoot ? name : node.group.name} label={name} logo={node.group.logo} cls="rg-big-av" root={isRoot} />
         )}
         <div style="min-width:0"><h1>{name}</h1><p>{node.group.description}</p></div>
       </div>
       <div class="rg-g-actions">
+        {canEdit && <button type="button" class="rg-btn" onClick={() => ctl.openYaml()}><Icon name="code" />Edit YAML</button>}
         {canEdit && !isRoot && <button type="button" class="rg-btn" onClick={() => ctl.openDrawer('edit', node.path)}><Icon name="pencil" />Edit group</button>}
         {canEdit && <button type="button" class="rg-btn" onClick={() => ctl.openDrawer('new', node.path)}><Icon name="folder" />{isRoot ? 'New group' : 'New subgroup'}</button>}
         <a class="rg-btn rg-btn-primary" href={`https://github.com/organizations/${s.org}/repositories/new${q}`}>New repository</a>
@@ -291,18 +301,18 @@ function GroupRow({ ctl, row, fixed }: { ctl: Controller; row: Extract<Row, { ki
   const sub = node.subgroups;
   return (
     <div class={`rg-row${fixed ? ' rg-fixed' : ''}`} style={{ '--rg-depth': depth } as any}>
-      <button type="button" class="rg-chev" aria-expanded={open} aria-label={`${open ? 'Collapse' : 'Expand'} ${node.group.name}`} onClick={() => ctl.toggleGroup(node.key)}><Icon name="chev" /></button>
-      <GroupAvatar logos={ctl.logos} name={node.group.name} logo={node.group.logo} cls="rg-av" />
+      <button type="button" class="rg-chev" aria-expanded={open} aria-label={`${open ? 'Collapse' : 'Expand'} ${displayName(node.group)}`} onClick={() => ctl.toggleGroup(node.key)}><Icon name="chev" /></button>
+      <GroupAvatar logos={ctl.logos} name={node.group.name} label={displayName(node.group)} logo={node.group.logo} cls="rg-av" />
       <div class="rg-row-main">
         <div class="rg-row-title">
-          <a href={`#${node.key}`} class="rg-grp" onClick={(e) => (e.preventDefault(), ctl.go(node.path))}>{node.group.name}</a>
+          <a href={`#${node.key}`} class="rg-grp" onClick={(e) => (e.preventDefault(), ctl.go(node.path))}>{displayName(node.group)}</a>
           <span class="rg-label">Group</span>
         </div>
         {node.group.description && <p class="rg-desc">{node.group.description}</p>}
         <div class="rg-meta">
           <span><Icon name="repo" size={14} />{plural(n, 'repository', 'repositories')}</span>
           {sub > 0 && <span><Icon name="folder" size={14} />{plural(sub, 'subgroup', 'subgroups')}</span>}
-          <span>Updated {ago(node.latest)}</span>
+          <span>{node.latest ? `Updated ${ago(node.latest)}` : 'No pushes yet'}</span>
         </div>
       </div>
       <div class="rg-row-side"><span>Rules: {node.group.match.length ? node.group.match.join(', ') : '—'}</span></div>

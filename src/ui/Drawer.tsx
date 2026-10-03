@@ -5,12 +5,12 @@ import { Icon } from './Icon';
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /** Right-side modal drawer: role=dialog, closes on Esc or backdrop click, keeps Tab inside, returns focus. */
-export function Drawer({ title, titleId, onClose, children, footer }: { title: string; titleId: string; onClose: () => void; children: ComponentChildren; footer: ComponentChildren }) {
+export function Drawer({ title, titleId, onClose, children, footer, wide, focus }: { title: string; titleId: string; onClose: () => void; children: ComponentChildren; footer: ComponentChildren; wide?: boolean; focus?: string }) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null;
-    const first = ref.current?.querySelector<HTMLElement>('[data-autofocus]') ?? ref.current?.querySelector<HTMLElement>('.rg-drawer-body input, .rg-drawer-body textarea, .rg-drawer-body button') ?? ref.current;
+    const first = (focus && ref.current?.querySelector<HTMLElement>(focus)) || ref.current?.querySelector<HTMLElement>('.rg-drawer-body input, .rg-drawer-body textarea, .rg-drawer-body button') || ref.current;
     first?.focus();
     return () => opener?.focus?.();
   }, []);
@@ -32,7 +32,7 @@ export function Drawer({ title, titleId, onClose, children, footer }: { title: s
 
   return (
     <div class="rg-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div class="rg-drawer" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={ref} tabIndex={-1} onKeyDown={onKey}>
+      <div class={`rg-drawer${wide ? ' rg-wide' : ''}`} role="dialog" aria-modal="true" aria-labelledby={titleId} ref={ref} tabIndex={-1} onKeyDown={onKey}>
         <div class="rg-drawer-head">
           <h2 id={titleId}>{title}</h2>
           <button type="button" class="rg-chev" aria-label="Close" onClick={onClose}><Icon name="x" /></button>

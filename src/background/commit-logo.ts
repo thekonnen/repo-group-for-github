@@ -1,4 +1,4 @@
-import { applyEdit, commitMessage, editLogoPath, type Edit } from '../core/edit';
+import { applyEdit, commitMessage, editLogoPath, pngOf, type Edit } from '../core/edit';
 import type { Config } from '../core/types';
 import { loadYamlParser, readConfig } from '../core/yaml-read';
 import { writeConfig } from '../core/yaml-write';
@@ -20,7 +20,7 @@ export type LogoEditResult = EditResult & { logoSha?: string };
  * edit is re-applied, once (§7).
  */
 export async function commitEditWithLogo(client: Client, kv: KV, org: string, edit: Edit): Promise<LogoEditResult> {
-  const png = edit.logo && 'png' in edit.logo ? edit.logo.png : null;
+  const png = pngOf(edit);
   const logoFile = editLogoPath(edit);
   if (!png || !logoFile) throw new EditError('There is no new logo to save.');
   const load = await loadYamlParser();

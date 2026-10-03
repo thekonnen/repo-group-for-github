@@ -24,4 +24,4 @@ npm run build && npm run size   # budgets from CLAUDE.md §10
 
 ## Open items
 
-`src/config.ts` needs the GitHub App client id and slug (CLAUDE.md §15). Nothing that talks to GitHub works without it.
+Create the GitHub App first: see [docs/github-app.md](docs/github-app.md) (pre-filled links for a personal account or an org). Then set the client id and slug in `src/config.ts`. Nothing that talks to GitHub works without them.

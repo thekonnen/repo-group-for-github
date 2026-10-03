@@ -1,0 +1,38 @@
+<!--
+  Hand-written to mirror design/screenshots/github-new-repository.png. It was NOT captured from live GitHub:
+  the real page is React and its markup will differ. Update src/github/selectors.ts when it does.
+-->
+<head><title>Create a new repository</title></head>
+<body>
+<header role="banner"><a href="/thekonnen">thekonnen</a></header>
+<main>
+  <h1>Create a new repository</h1>
+  <form id="new_repository" action="/organizations/thekonnen/repositories" method="post">
+    <section aria-labelledby="g">
+      <h2 id="g">General</h2>
+      <div class="row">
+        <div class="owner">
+          <label id="owner-label">Owner *</label>
+          <button type="button" id="owner-btn">thekonnen <svg width="8" height="8"></svg></button>
+        </div>
+        <span>/</span>
+        <div class="name">
+          <label for="repository-name-input">Repository name *</label>
+          <input id="repository-name-input" name="repository[name]" autocomplete="off" />
+        </div>
+      </div>
+      <p class="suggest">Great repository names are short and memorable.</p>
+      <div class="field" id="desc-field">
+        <label for="repository_description">Description</label>
+        <input id="repository_description" name="repository[description]" maxlength="350" />
+        <span class="counter" id="counter">0 / 350 characters</span>
+      </div>
+    </section>
+    <section aria-labelledby="c">
+      <h2 id="c">Configuration</h2>
+      <div><b>Choose visibility *</b><button type="button">Private</button></div>
+    </section>
+    <button type="submit" id="create">Create repository</button>
+  </form>
+</main>
+</body>

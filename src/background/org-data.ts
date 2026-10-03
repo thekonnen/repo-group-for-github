@@ -11,6 +11,13 @@ export interface OrgFile {
 
 export const decodeBase64Utf8 = (b64: string): string => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\s/g, '')), (c) => c.charCodeAt(0)));
 
+export function encodeBase64Utf8(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
 /** Reads <org>/.github/repo-groups.yml with an ETag cache, so a 304 costs no rate limit. */
 export async function readOrgFile(client: Client, kv: KV, org: string): Promise<OrgFile> {
   const key = `rg:file:${org}`;

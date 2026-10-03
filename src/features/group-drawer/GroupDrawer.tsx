@@ -4,6 +4,8 @@ import { matches } from '../../core/glob';
 import { byPush, nodeAt } from '../../core/tree';
 import { Drawer } from '../../ui/Drawer';
 import { Icon } from '../../ui/Icon';
+import { LogoField, type LogoDraft } from '../logo-cropper/LogoField';
+import { useLogoSrc } from '../logos/logo-store';
 import type { Controller, SaveResult } from '../grouped-view/controller';
 import { useStore } from '../store';
 
@@ -14,10 +16,10 @@ export function GroupDrawer({ ctl }: { ctl: Controller }) {
   const s = useStore(ctl.store);
   const d = s.drawer;
   if (!d) return null;
-  return <Form key={`${d.mode}:${d.path.join('/')}`} ctl={ctl} mode={d.mode} path={d.path} />;
+  return <Form key={`${d.mode}:${d.path.join('/')}`} ctl={ctl} mode={d.mode} path={d.path} focusLogo={d.focus === 'logo'} />;
 }
 
-function Form({ ctl, mode, path }: { ctl: Controller; mode: 'edit' | 'new'; path: string[] }) {
+function Form({ ctl, mode, path, focusLogo }: { ctl: Controller; mode: 'edit' | 'new'; path: string[]; focusLogo: boolean }) {
   const s = ctl.store.get();
   const model = ctl.model()!;
   const groups = s.config && s.config.exists && s.config.config ? s.config.config.groups : [];
@@ -28,13 +30,15 @@ function Form({ ctl, mode, path }: { ctl: Controller; mode: 'edit' | 'new'; path
   const [description, setDescription] = useState(node?.group.description ?? '');
   const [rules, setRules] = useState<string[]>(node?.group.match ?? []);
   const [ruleInput, setRuleInput] = useState('');
+  const [logo, setLogo] = useState<LogoDraft>({ kind: 'keep' });
+  const currentLogo = useLogoSrc(ctl.logos, node?.group.logo);
   const [touched, setTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState<{ message: string; needsRepo?: boolean } | null>(null);
 
   const error = validateDraft(groups, { mode, path, name });
   const showError = error && (touched || !error.startsWith('Name is required'));
-  const dirty = mode === 'new' || !node || name !== node.group.name || description !== node.group.description || rules.join('\n') !== node.group.match.join('\n');
+  const dirty = mode === 'new' || !node || name !== node.group.name || description !== node.group.description || rules.join('\n') !== node.group.match.join('\n') || logo.kind !== 'keep';
 
   /** Reads the field itself, not state: a fast Enter after typing or pasting must not lose text. */
   const addRule = (v: string) => {
@@ -46,8 +50,11 @@ function Form({ ctl, mode, path }: { ctl: Controller; mode: 'edit' | 'new'; path
   const hits = useMemo(() => s.repos.filter((r) => !r.archived && rules.length && matches(rules, r.name)).sort(byPush), [s.repos, rules]);
   const here = mode === 'edit' ? path.join('/') : null;
 
+  const logoChange = logo.kind === 'png' ? { png: logo.png } : logo.kind === 'remove' ? { remove: true as const } : undefined;
   const edit: Edit =
-    mode === 'edit' ? { kind: 'edit', path, name, description, match: rules } : { kind: 'new', parent: path, name, description, match: rules };
+    mode === 'edit'
+      ? { kind: 'edit', path, name, description, match: rules, ...(logoChange && { logo: logoChange }) }
+      : { kind: 'new', parent: path, name, description, match: rules, ...(logoChange && { logo: logoChange }) };
 
   const submit = async (create = false) => {
     setTouched(true);
@@ -78,9 +85,11 @@ function Form({ ctl, mode, path }: { ctl: Controller; mode: 'edit' | 'new'; path
       }
     >
       <form class="rg-form" onSubmit={(e) => (e.preventDefault(), submit())}>
+        <LogoField name={finalName(name) || '?'} current={currentLogo} hasLogo={!!node?.group.logo} draft={logo} onChange={setLogo} fetchLink={ctl.fetchLogoLink} autoFocus={focusLogo} />
+
         <div class="rg-field">
           <label for="rg-f-name">Name</label>
-          <input id="rg-f-name" class="rg-input rg-mono" value={name} autocomplete="off" aria-invalid={showError ? 'true' : undefined} aria-describedby="rg-f-name-hint"
+          <input id="rg-f-name" class="rg-input rg-mono" value={name} data-autofocus={focusLogo ? undefined : ''} autocomplete="off" aria-invalid={showError ? 'true' : undefined} aria-describedby="rg-f-name-hint"
             onInput={(e) => (setName(slugName((e.target as HTMLInputElement).value)), setProblem(null))} onBlur={() => setTouched(true)} />
           <span class="rg-hint" id="rg-f-name-hint">{showError ? <span class="rg-error" role="alert">{error}</span> : <>Lowercase letters, numbers, <code>-</code> <code>_</code> <code>.</code> · {fullPath}</>}</span>
         </div>

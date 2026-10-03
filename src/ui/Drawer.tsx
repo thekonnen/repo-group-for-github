@@ -10,7 +10,7 @@ export function Drawer({ title, titleId, onClose, children, footer }: { title: s
 
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null;
-    const first = ref.current?.querySelector<HTMLElement>('.rg-drawer-body input, .rg-drawer-body textarea, .rg-drawer-body button') ?? ref.current;
+    const first = ref.current?.querySelector<HTMLElement>('[data-autofocus]') ?? ref.current?.querySelector<HTMLElement>('.rg-drawer-body input, .rg-drawer-body textarea, .rg-drawer-body button') ?? ref.current;
     first?.focus();
     return () => opener?.focus?.();
   }, []);

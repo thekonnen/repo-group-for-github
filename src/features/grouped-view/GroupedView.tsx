@@ -290,7 +290,7 @@ function useSlashFocus() {
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
-      const t = e.target as HTMLElement | null;
+      const t = (e.composedPath?.()[0] ?? e.target) as HTMLElement | null; // composedPath sees through shadow roots
       if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
       const input = document.getElementById('rg-search') as HTMLInputElement | null;
       if (!input) return;

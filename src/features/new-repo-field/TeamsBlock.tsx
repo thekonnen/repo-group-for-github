@@ -10,7 +10,7 @@ import { ExtTag } from './GroupField';
  */
 export function TeamsBlock({ ctl }: { ctl: NrController }) {
   const s = useStore(ctl.store);
-  if (s.phase !== 'ready') return null;
+  if (s.phase !== 'ready' || s.personal) return null;
   const set = (i: number, permission: string) => ctl.setTeams(s.teams.map((t, j) => (j === i ? { ...t, permission } : t)));
   return (
     <div class="rg-nr" id="rg-nr-teams" data-rg="new-repo-teams">

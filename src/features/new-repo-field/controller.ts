@@ -26,6 +26,8 @@ export interface NrState {
   teamsTouched: boolean;
   /** Org owners can always give teams access; others need admin on the new repo (they usually have it as its creator). */
   isOwner: boolean;
+  /** The owner is the signed-in user's own account: no teams. */
+  personal: boolean;
   /** The org's teams for the picker; null when they could not be read (then a slug can be typed). */
   teamList: OrgTeam[] | null;
   customRoles: string[];
@@ -41,7 +43,7 @@ export type NrController = ReturnType<typeof createNewRepoController>;
 
 /** State of the Group field on "Create a new repository" (F9). The page glue feeds it the name and the owner. */
 export function createNewRepoController(env: NrEnv) {
-  const store: Store<NrState> = createStore<NrState>({ org: null, phase: 'loading', groups: [], repos: [], canWrite: true, rawName: '', pickedKey: '', teams: [], teamsTouched: false, isOwner: false, teamList: null, customRoles: [] });
+  const store: Store<NrState> = createStore<NrState>({ org: null, phase: 'loading', groups: [], repos: [], canWrite: true, rawName: '', pickedKey: '', teams: [], teamsTouched: false, isOwner: false, personal: false, teamList: null, customRoles: [] });
   let seq = 0;
 
   /** (Re)loads the org's file, index cache and access. An org without a repo-groups.yml hides the field. */
@@ -61,7 +63,7 @@ export function createNewRepoController(env: NrEnv) {
       if (!groups) return store.set({ phase: 'hidden', groups: [], pickedKey: '' });
       const canWrite = acc ? acc.access.canWriteOrg : true;
       const preset = env.presetGroup && findGroup(groups, env.presetGroup.split('/')) ? env.presetGroup : '';
-      store.set({ phase: 'ready', groups, repos: snap?.repos ?? [], canWrite, isOwner: acc?.access.level === 'owner', pickedKey: canWrite ? preset : '' });
+      store.set({ phase: 'ready', groups, repos: snap?.repos ?? [], canWrite, isOwner: acc?.access.level === 'owner', personal: !!acc?.access.personal, pickedKey: canWrite ? preset : '' });
       syncTeams();
       void loadTeamList(org, mine);
     } catch (e) {

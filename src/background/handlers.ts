@@ -1,6 +1,6 @@
 import { APP_SLUG, GITHUB_CLIENT_ID } from '../config';
 import { loadYamlParser, readConfig } from '../core/yaml-read';
-import type { ConfigResult, ErrorInfo, OrgPrefs, OrgSnapshot, Progress, Request, Response } from '../github/messages';
+import type { ConfigResult, ErrorInfo, OrgPrefs, OrgSnapshot, Progress, Request, Response, TeamsResult } from '../github/messages';
 import { createClient, explainTokenRejection, GitHubError, type FetchLike } from './api';
 import { describeToken, loadAuth, pollDeviceFlow, publicAuth, saveAuth, signOut, startDeviceFlow } from './auth';
 import type { KV } from './kv';
@@ -12,7 +12,7 @@ import { discardPending, filePending, setPending } from './new-repo';
 import { probeAccess, readOrgFile, type OrgFile } from './org-data';
 import { clearCache, loadSettings, saveSettings, withinInterval } from './cache';
 import { listOrgs } from './orgs';
-import { refreshIndex, type IndexStore } from './repo-index';
+import { ownerListPath, refreshIndex, type IndexStore } from './repo-index';
 import { refreshActionIndex } from './action-index';
 import { loadDetails } from './details';
 import { cachedTeamSlugs, grantTeam, loadTeamAccess, loadTeams } from './teams-data';
@@ -74,6 +74,8 @@ export function createHandler(deps: Deps) {
     }
   };
   const tokenKind = async () => (await loadAuth(deps.kv))?.kind ?? 'oauth';
+  /** The signed-in user's own account (github.com/<login>), as opposed to an organization. */
+  const isSelf = async (owner: string) => (await loadAuth(deps.kv))?.login?.toLowerCase() === owner.toLowerCase();
 
   async function handle(req: Request): Promise<unknown> {
     switch (req.type) {
@@ -118,13 +120,15 @@ export function createHandler(deps: Deps) {
           if (cached && !confirming && withinInterval(cached.meta, (await loadSettings(deps.kv)).refreshMinutes, (deps.now ?? Date.now)())) return { status: 'ok', mode: 'incremental', repos: cached.repos, meta: cached.meta };
         }
         try {
+          const self = await isSelf(req.org);
           const opts = {
+            listPath: self ? ownerListPath : undefined,
             force: req.force,
             now: deps.now,
             concurrency: publicOnly ? 2 : 6,
             onProgress: (p: { loaded: number; estimatedTotal: number; phase?: 'action' }) => progress.set(req.org, { loaded: p.loaded, estimatedTotal: p.estimatedTotal, phase: p.phase }),
           };
-          if (await wantsActionIndex(req.org)) return await refreshActionIndex(client, req.org, deps.index, { ...opts, publicOnly });
+          if (!self && (await wantsActionIndex(req.org))) return await refreshActionIndex(client, req.org, deps.index, { ...opts, publicOnly });
           return await refreshIndex(client, req.org, deps.index, opts);
         } finally {
           progress.delete(req.org);
@@ -149,7 +153,7 @@ export function createHandler(deps: Deps) {
         const load = await loadYamlParser();
         let r = readConfig(file.text, load, { org: req.org });
         // Unknown team slugs are only a warning. The team list is fetched when the file tags teams (cached, 5 min).
-        if (r.config && teamSlugs(r.config.groups).length) {
+        if (r.config && teamSlugs(r.config.groups).length && !(await isSelf(req.org))) {
           const t = await loadTeams(client, deps.kv, req.org, { now: deps.now }).catch(() => null);
           if (t) r = readConfig(file.text, load, { org: req.org, knownTeams: t.teams.map((x) => x.slug) });
         }
@@ -169,8 +173,10 @@ export function createHandler(deps: Deps) {
       case 'logo:fetch-link':
         return logos.fetchLink(req.url);
       case 'org:teams':
+        if (await isSelf(req.org)) return { teams: [], customRoles: null } satisfies TeamsResult; // a personal account has no teams
         return loadTeams(client, deps.kv, req.org, { force: req.force, now: deps.now });
       case 'team:access':
+        if (await isSelf(req.org)) return {};
         return loadTeamAccess(client, deps.kv, req.org, req.slugs, { force: req.force, now: deps.now });
       case 'team:grant':
         return grantTeam(client, deps.kv, req.org, req.team, req.repo, req.permission);
@@ -179,7 +185,7 @@ export function createHandler(deps: Deps) {
       case 'org:apply-yaml':
         return commitYaml(client, deps.kv, req.org, req.text, req.baseSha, req.changes);
       case 'org:create-dotgithub':
-        await createDotGithub(client, req.org);
+        await createDotGithub(client, req.org, await isSelf(req.org));
         return { created: true };
       case 'newrepo:pending':
         await setPending(session, req.entry);
@@ -210,7 +216,7 @@ export function createHandler(deps: Deps) {
       case 'org:file':
         return readOrgFile(client, deps.kv, req.org);
       case 'org:access':
-        return probeAccess(client, req.org, (await tokenKind()) as 'oauth' | 'pat');
+        return probeAccess(client, req.org, (await tokenKind()) as 'oauth' | 'pat', await isSelf(req.org));
     }
   }
 

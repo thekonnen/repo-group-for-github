@@ -64,9 +64,15 @@ export function toRepoInfo(r: any): RepoInfo {
   };
 }
 
+/** Repos of an organization. A personal account lists its own repos (private ones included) instead: see ownerListPath. */
 const pagePath = (org: string, page: number) => `/orgs/${encodeURIComponent(org)}/repos?type=all&sort=pushed&direction=desc&per_page=100&page=${page}`;
 
+/** Personal account (the signed-in user's own login): `GET /user/repos` returns the private repos too. */
+export const ownerListPath = (page: number): string => `/user/repos?affiliation=owner&sort=pushed&direction=desc&per_page=100&page=${page}`;
+
 export interface IndexOptions {
+  /** Path of one page of the repo list. Defaults to the organization's `/orgs/{org}/repos`. */
+  listPath?: (page: number) => string;
   concurrency?: number; // 6 normally, 2 in public-only mode
   now?: () => number;
   /** `phase: 'action'` = confirming the organization index file; loaded/estimatedTotal are then a percentage (0-100). */
@@ -80,13 +86,13 @@ const iso = (now: () => number) => new Date(now()).toISOString();
 /** First index: page 1, then the remaining pages in parallel batches; replaces the index at the end. */
 export async function fullIndex(client: Client, org: string, store: IndexStore, opts: IndexOptions = {}): Promise<{ repos: RepoInfo[]; meta: IndexMeta }> {
   const now = opts.now ?? Date.now;
-  const first = await client.rest<any[]>(pagePath(org, 1));
+  const first = await client.rest<any[]>((opts.listPath ?? ((n) => pagePath(org, n)))(1));
   const last = lastPageFromLink(first.headers.get('link'));
   let fresh = first.data.map(toRepoInfo);
   const progress = () => opts.onProgress?.({ loaded: fresh.length, estimatedTotal: Math.max(fresh.length, last * 100), repos: sortByPush(fresh) });
   progress();
   for (const group of batches(remainingPages(last), opts.concurrency ?? 6)) {
-    const pages = await Promise.all(group.map((p) => client.rest<any[]>(pagePath(org, p))));
+    const pages = await Promise.all(group.map((p) => client.rest<any[]>((opts.listPath ?? ((n) => pagePath(org, n)))(p))));
     for (const p of pages) fresh = fresh.concat(p.data.map(toRepoInfo));
     progress();
   }
@@ -107,7 +113,7 @@ export async function incrementalRefresh(client: Client, org: string, store: Ind
   let incoming: RepoInfo[] = [];
   let lastPage = 1;
   for (;;) {
-    const res = await client.rest<any[]>(pagePath(org, page));
+    const res = await client.rest<any[]>((opts.listPath ?? ((n) => pagePath(org, n)))(page));
     if (page === 1) lastPage = lastPageFromLink(res.headers.get('link'));
     const batch = res.data.map(toRepoInfo);
     incoming = incoming.concat(batch);

@@ -253,3 +253,27 @@ export const readRepoName = (m: NewRepoMount): string => m.nameInput?.value ?? '
 export function findCreateButton(doc: Document): HTMLButtonElement | null {
   return (Array.from(doc.querySelectorAll('button')).find((b) => /^Create repository$/i.test(norm(b.textContent))) as HTMLButtonElement | undefined) ?? null;
 }
+
+
+/**
+ * A user's own Repositories tab, /<login>?tab=repositories. Mirrors the saved page (classic server-rendered markup):
+ * a toolbar (`form[aria-label=Repositories]` with the Type / Language / Sort menus, plus a "New" button), then
+ * `#user-repositories-list` (a `ul` with one `li` per repository) and a `.paginate-container`.
+ * Our view goes where the list was; the toolbar and the pagination are hidden with it. The profile sidebar stays.
+ */
+export function locateUserRepos(doc: Document): (OrgReposMount & { inherit: false }) | null {
+  const root = doc.querySelector('main') ?? doc.body;
+  const column = root.querySelector('#user-repositories-list') ?? root.querySelector('ul[data-filterable-for]')?.parentElement ?? null;
+  if (!column) return null;
+  const form = root.querySelector('form[aria-label="Repositories"]') ?? root.querySelector('input#your-repos-filter')?.closest('form') ?? null;
+  const extras: Element[] = [];
+  if (form && !form.contains(column) && !column.contains(form)) {
+    // The toolbar row that holds the search form and the New button (not the whole column).
+    let bar: Element = form;
+    while (bar.parentElement && bar.parentElement !== column.parentElement && !bar.parentElement.contains(column)) bar = bar.parentElement;
+    extras.push(bar);
+  }
+  const pager = column.parentElement?.querySelector(':scope > .paginate-container');
+  if (pager) extras.push(pager);
+  return { column, extras, filterList: null, inherit: false };
+}

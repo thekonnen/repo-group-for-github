@@ -90,6 +90,51 @@ describe('routing and selectors', () => {
   });
 });
 
+// The real page keeps the "All" title row and the New repository button outside the list column.
+const headerOutside = body
+  .replace('<div class="head"><h2>All</h2><a href="/organizations/thekonnen/repositories/new">New repository</a></div>', '')
+  .replace('<main>\n      <div id="content">', '<main>\n      <div id="title-row"><h2>All</h2><a href="/organizations/thekonnen/repositories/new">New repository</a></div>\n      <div id="content" class="Content-x9 mx-auto" style="max-width: 720px; padding: 0 24px">');
+
+describe('title row outside the list column', () => {
+  it('is found as an extra part and hidden with the column, then restored', async () => {
+    load(headerOutside);
+    const m = locateOrgRepos(document)!;
+    expect(m.column.id).toBe('content');
+    expect(m.extras.map((e) => e.id)).toEqual(['title-row']);
+    const { call } = fakeCall();
+    const mounted = (await mountOrgRepos('thekonnen', { call }, document, 200))!;
+    await vi.waitFor(() => expect(document.getElementById('title-row')!.classList.contains('rg-hidden')).toBe(true));
+    expect(document.getElementById('content')!.classList.contains('rg-hidden')).toBe(true);
+    mounted.dispose();
+    expect(document.getElementById('title-row')!.classList.contains('rg-hidden')).toBe(false);
+  });
+  it('shows GitHub’s own title and list again in list mode', async () => {
+    load(headerOutside);
+    const { call } = fakeCall();
+    const m = (await mountOrgRepos('thekonnen', { call }, document, 200))!;
+    await vi.waitFor(() => expect(document.querySelector('.rg-view-seg')).toBeTruthy());
+    (document.querySelector('.rg-view-seg button[title="GitHub list view"]') as HTMLElement).click();
+    await vi.waitFor(() => expect(document.getElementById('title-row')!.classList.contains('rg-hidden')).toBe(false));
+    m.dispose();
+  });
+  it('our container takes the column’s classes and inline style, so GitHub’s margins apply', async () => {
+    load(headerOutside);
+    const { call } = fakeCall();
+    const m = (await mountOrgRepos('thekonnen', { call }, document, 200))!;
+    const root = document.querySelector('.rg-root[data-rg="view"]')!;
+    expect(root.classList.contains('Content-x9')).toBe(true);
+    expect(root.classList.contains('mx-auto')).toBe(true);
+    expect(root.classList.contains('rg-hidden')).toBe(false);
+    expect(root.getAttribute('style')).toContain('max-width: 720px');
+    m.dispose();
+  });
+  it('does not hide the global header’s links or unrelated headings', () => {
+    load(headerOutside.replace('<header>', '<header><h2>All</h2><a href="/organizations/thekonnen/repositories/new">New repository</a>'));
+    const m = locateOrgRepos(document)!;
+    expect(m.extras.map((e) => e.id)).toEqual(['title-row']);
+  });
+});
+
 describe('navigation helpers', () => {
   it('watchUrl fires on turbo:load and on hash changes, and stops after unsubscribe', () => {
     const cb = vi.fn();

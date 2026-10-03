@@ -1,4 +1,146 @@
 {
-  "extName": { "message": "Repository Group for Github" },
-  "extDescription": { "message": "Organize the repositories of a GitHub organization into groups and subgroups, shared with the whole org." }
+  "extName": {
+    "message": "Repository Group for Github"
+  },
+  "extDescription": {
+    "message": "Organize the repositories of a GitHub organization into groups and subgroups, shared with the whole org."
+  },
+  "signInHint": {
+    "message": "Sign in to see your organization's repositories in groups."
+  },
+  "signIn": {
+    "message": "Sign in with GitHub"
+  },
+  "signOut": {
+    "message": "Sign out"
+  },
+  "deviceHint": {
+    "message": "Enter this code on GitHub to finish signing in."
+  },
+  "openDevicePage": {
+    "message": "Open github.com/login/device"
+  },
+  "deviceWaiting": {
+    "message": "Waiting for you to authorize…"
+  },
+  "accountKindToken": {
+    "message": "token"
+  },
+  "accountKindApp": {
+    "message": "GitHub App"
+  },
+  "popupOpenGrouped": {
+    "message": "Open grouped view for $ORG$",
+    "placeholders": {
+      "org": {
+        "content": "$1"
+      }
+    }
+  },
+  "popupOrgsHeading": {
+    "message": "Organizations with groups"
+  },
+  "popupOrgsLoading": {
+    "message": "Loading organizations…"
+  },
+  "popupOrgsEmpty": {
+    "message": "None of your organizations has a repo-groups.yml yet."
+  },
+  "popupOptions": {
+    "message": "Options"
+  },
+  "optionsTitle": {
+    "message": "Options"
+  },
+  "optionsAccount": {
+    "message": "Account"
+  },
+  "optionsSignedOut": {
+    "message": "You are not signed in."
+  },
+  "optionsTokenHeading": {
+    "message": "Personal access token"
+  },
+  "optionsTokenIntro": {
+    "message": "Use a token instead of the GitHub App sign-in. It is stored in this browser and only the extension background reads it."
+  },
+  "optionsTokenLabel": {
+    "message": "Token"
+  },
+  "optionsTokenSave": {
+    "message": "Use this token"
+  },
+  "optionsTokenSaved": {
+    "message": "Token saved. You are signed in as $LOGIN$.",
+    "placeholders": {
+      "login": {
+        "content": "$1"
+      }
+    }
+  },
+  "optionsTokenKinds": {
+    "message": "Use a classic token with the repo and read:org scopes, or a fine-grained token whose resource owner is the organization."
+  },
+  "optionsTokenPolicy": {
+    "message": "Whether an organization accepts the token depends on its policy: fine-grained tokens may need owner approval, classic tokens may be blocked, and organizations with SAML SSO require you to authorize the token for SSO."
+  },
+  "optionsCacheHeading": {
+    "message": "Cache"
+  },
+  "optionsCacheIntro": {
+    "message": "Repository lists and organization files are kept in this browser so pages open instantly. Clearing them does not sign you out or reset your settings."
+  },
+  "optionsCacheClear": {
+    "message": "Clear cache"
+  },
+  "optionsCacheCleared": {
+    "message": "Cache cleared. Data reloads on your next visit."
+  },
+  "optionsIntervalLabel": {
+    "message": "Refresh interval (minutes)"
+  },
+  "optionsIntervalHint": {
+    "message": "A visit inside this interval uses the cached data and makes no request to GitHub. The default is 5."
+  },
+  "optionsIntervalSaved": {
+    "message": "Saved."
+  },
+  "optionsOrgsHeading": {
+    "message": "Organizations"
+  },
+  "optionsOrgsSignedOut": {
+    "message": "Sign in to list your organizations."
+  },
+  "optionsOrgsLoading": {
+    "message": "Loading organizations…"
+  },
+  "optionsOrgsEmpty": {
+    "message": "No organizations found for this account."
+  },
+  "optionsOrgGrouped": {
+    "message": "Show grouped view by default"
+  },
+  "optionsOrgGroupedHint": {
+    "message": "Applies when you have not picked a view for this organization. A GitHub filter in the URL still opens GitHub's own list."
+  },
+  "optionsOrgNoFile": {
+    "message": "no repo-groups.yml yet"
+  },
+  "optionsActionHeading": {
+    "message": "Action index"
+  },
+  "optionsActionBody": {
+    "message": "Large organizations can let a GitHub Action write repo-index.json to the .github repository. It is off by default. An org file editor turns it on by setting index: action in repo-groups.yml; there is nothing to switch here."
+  },
+  "optionsActionWarning": {
+    "message": "Everyone who can read <org>/.github can read the names and descriptions of all repositories in the file, including private ones they cannot open. Only enable it in organizations where members already see every repository."
+  },
+  "optionsLoadError": {
+    "message": "Could not load organizations: $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  }
 }

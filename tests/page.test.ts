@@ -287,6 +287,25 @@ describe('grouped view on the page', () => {
     await vi.waitFor(() => expect(document.querySelector('.rg-banner')).toBeTruthy());
     m2.dispose();
   });
+  it('groupedByDefault=false opens the list only when no view is saved; a URL filter always wins', async () => {
+    const mountWith = async (prefs: any, search = '') => {
+      window.history.replaceState(null, '', `/orgs/thekonnen/repositories${search}`);
+      const b = fakeCall();
+      b.call.mockImplementation(async (req: Request) => (req.type === 'prefs:get' ? prefs : await fakeCall().call(req)));
+      const m = (await mountOrgRepos('thekonnen', { call: b.call }, document, 200))!;
+      await settle().catch(() => {});
+      await new Promise((r) => setTimeout(r, 30));
+      const list = !!document.querySelector('.rg-banner');
+      m.dispose();
+      load();
+      return list;
+    };
+    expect(await mountWith({ groupedByDefault: false })).toBe(true);
+    expect(await mountWith({ groupedByDefault: false, view: 'grouped' })).toBe(false);
+    expect(await mountWith({ groupedByDefault: true })).toBe(false);
+    expect(await mountWith({})).toBe(false);
+    expect(await mountWith({ groupedByDefault: true, view: 'grouped' }, '?type=public')).toBe(true);
+  });
   it('a New repository button links to the native page, with the group preselected on group pages', async () => {
     window.history.replaceState(null, '', '/orgs/thekonnen/repositories#infra/dagu');
     const { call } = fakeCall();

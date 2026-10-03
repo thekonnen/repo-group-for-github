@@ -1,4 +1,4 @@
-import { idbGet, idbSet } from '../storage/idb';
+import { idbDeleteWhere, idbGet, idbSet } from '../storage/idb';
 import type { IndexStore } from './repo-index';
 
 export const idbIndexStore: IndexStore = {
@@ -7,5 +7,8 @@ export const idbIndexStore: IndexStore = {
   },
   async save(org, repos, meta) {
     await idbSet(`repos:${org}`, { repos, meta });
+  },
+  async clear() {
+    await idbDeleteWhere((k) => k.startsWith('repos:'));
   },
 };

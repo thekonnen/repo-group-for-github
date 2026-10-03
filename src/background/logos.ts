@@ -6,11 +6,13 @@ import { EditError } from './commit';
 export interface LogoCache {
   get(key: string): Promise<any>;
   set(key: string, value: unknown): Promise<void>;
+  /** Removes every cached logo (Options > Clear cache). */
+  clear?(): Promise<void>;
 }
 
 export function memoryLogoCache(): LogoCache & { data: Map<string, unknown> } {
   const data = new Map<string, unknown>();
-  return { data, get: async (k) => data.get(k), set: async (k, v) => void data.set(k, v) };
+  return { data, get: async (k) => data.get(k), set: async (k, v) => void data.set(k, v), clear: async () => data.clear() };
 }
 
 /** Optional host permission for an image link's origin (needs a user gesture). */

@@ -1,0 +1,20 @@
+@import '../../ext-pages/ext.css';
+
+main { max-width: 640px; margin: 0 auto; padding: 24px 16px 48px; display: grid; gap: 24px; }
+h1 { font-size: 24px; margin: 0; display: flex; gap: 12px; align-items: center; font-weight: 600; }
+h1 img { width: 32px; height: 32px; }
+section { display: grid; gap: 12px; padding-top: 16px; border-top: 1px solid var(--rg-border-muted); }
+h2 { font-size: 16px; margin: 0; font-weight: 600; }
+p { margin: 0; }
+.field { display: grid; gap: 4px; }
+.field label { font-weight: 600; font-size: 12px; }
+.inline { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.inline .rg-ext-input { flex: 1 1 200px; }
+.rg-ext-input.narrow { flex: none; width: 96px; }
+.orgs { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.orgs li { border: 1px solid var(--rg-border); border-radius: var(--rg-radius); padding: 8px 12px; display: grid; gap: 4px; }
+.rg-ext-check { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.rg-ext-check input { width: 16px; height: 16px; margin: 0; }
+.notice { border: 1px solid var(--rg-border); background: var(--rg-bg-subtle); border-radius: var(--rg-radius); padding: 8px 12px; }
+.notice.warn { border-color: var(--rg-underline); }
+@media (max-width: 480px) { main { padding: 16px 16px 32px; gap: 16px; } h1 { font-size: 20px; } }

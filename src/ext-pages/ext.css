@@ -1,0 +1,26 @@
+@import '../styles/tokens.css';
+
+/* Shared look of the popup and the options page. Colors come only from --rg-* tokens (see .rg-standalone). */
+.rg-standalone { margin: 0; font-size: 14px; line-height: 1.5; }
+.rg-standalone *, .rg-standalone *::before, .rg-standalone *::after { box-sizing: border-box; }
+.rg-ext-muted { color: var(--rg-muted); font-size: 12px; }
+.rg-ext-err { color: var(--rg-danger-fg); font-size: 12px; margin: 0; }
+.rg-ext-ok { color: var(--rg-success-fg); font-size: 12px; margin: 0; }
+.rg-ext-row { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.rg-ext-row .grow { flex: 1; min-width: 0; }
+.rg-ext-av { width: 24px; height: 24px; border-radius: 50%; flex: none; background: var(--rg-bg-subtle); }
+.rg-ext-code { font: 600 22px var(--rg-mono); letter-spacing: 2px; text-align: center; padding: 8px; border: 1px solid var(--rg-border); border-radius: var(--rg-radius); }
+.rg-ext-btn, .rg-ext-input {
+  height: 32px; border-radius: var(--rg-radius); border: 1px solid var(--rg-border); font: inherit; color: var(--rg-fg);
+}
+.rg-ext-btn { padding: 0 12px; background: var(--rg-btn); cursor: pointer; white-space: nowrap; flex: none; }
+.rg-ext-btn:hover { background: var(--rg-btn-hover); }
+.rg-ext-btn.primary { background: var(--rg-success); border-color: var(--rg-success); color: var(--rg-on-emphasis); }
+.rg-ext-btn:disabled { opacity: 0.6; cursor: default; }
+.rg-ext-input { padding: 0 8px; background: var(--rg-bg); min-width: 0; }
+.rg-ext-btn:focus-visible, .rg-ext-input:focus-visible, .rg-ext-link:focus-visible, .rg-ext-check input:focus-visible {
+  outline: 2px solid var(--rg-accent); outline-offset: 2px;
+}
+.rg-ext-link { color: var(--rg-accent); text-decoration: none; background: none; border: 0; padding: 0; font: inherit; cursor: pointer; }
+.rg-ext-link:hover { text-decoration: underline; }
+@media (prefers-reduced-motion: reduce) { .rg-standalone * { transition: none !important; animation: none !important; } }

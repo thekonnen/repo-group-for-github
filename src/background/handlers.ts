@@ -10,6 +10,8 @@ import { hasPng, pngOf } from '../core/edit';
 import { checkYaml, commitEdit, commitYaml, createDotGithub, EditError } from './commit';
 import { discardPending, filePending, setPending } from './new-repo';
 import { probeAccess, readOrgFile, type OrgFile } from './org-data';
+import { clearCache, loadSettings, saveSettings, withinInterval } from './cache';
+import { listOrgs } from './orgs';
 import { refreshIndex, type IndexStore } from './repo-index';
 import { cachedTeamSlugs, grantTeam, loadTeamAccess, loadTeams } from './teams-data';
 import { teamSlugs } from '../core/teams';
@@ -89,9 +91,15 @@ export function createHandler(deps: Deps) {
         return (await deps.index.load(req.org)) satisfies OrgSnapshot | null;
       case 'org:refresh': {
         const publicOnly = !(await loadAuth(deps.kv));
+        if (!req.force) {
+          // Inside the refresh interval a visit costs no request: serve the cached snapshot.
+          const cached = await deps.index.load(req.org);
+          if (cached && withinInterval(cached.meta, (await loadSettings(deps.kv)).refreshMinutes, (deps.now ?? Date.now)())) return { status: 'ok', mode: 'incremental', repos: cached.repos, meta: cached.meta };
+        }
         try {
           return await refreshIndex(client, req.org, deps.index, {
             force: req.force,
+            now: deps.now,
             concurrency: publicOnly ? 2 : 6,
             onProgress: (p) => progress.set(req.org, { loaded: p.loaded, estimatedTotal: p.estimatedTotal }),
           });
@@ -155,6 +163,17 @@ export function createHandler(deps: Deps) {
         await deps.kv.set(`rg:prefs:${req.org}`, next);
         return next;
       }
+      case 'orgs:list': {
+        const auth = await loadAuth(deps.kv);
+        if (!auth) return { orgs: [], fetchedAt: 0 };
+        return listOrgs(client, deps.kv, { minutes: (await loadSettings(deps.kv)).refreshMinutes, now: (deps.now ?? Date.now)(), user: auth.login, force: req.force });
+      }
+      case 'cache:clear':
+        return clearCache(deps.kv, deps.index, deps.logos);
+      case 'settings:get':
+        return loadSettings(deps.kv);
+      case 'settings:set':
+        return saveSettings(deps.kv, req.settings);
       case 'org:file':
         return readOrgFile(client, deps.kv, req.org);
       case 'org:access':

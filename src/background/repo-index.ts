@@ -5,6 +5,8 @@ import type { Client } from './api';
 export interface IndexStore {
   load(org: string): Promise<{ repos: RepoInfo[]; meta: IndexMeta } | null>;
   save(org: string, repos: RepoInfo[], meta: IndexMeta): Promise<void>;
+  /** Removes every stored index (Options > Clear cache). */
+  clear(): Promise<void>;
 }
 
 export function memoryIndexStore(): IndexStore {
@@ -15,6 +17,9 @@ export function memoryIndexStore(): IndexStore {
     },
     async save(org, repos, meta) {
       m.set(org, { repos: structuredClone(repos), meta: { ...meta } });
+    },
+    async clear() {
+      m.clear();
     },
   };
 }

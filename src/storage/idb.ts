@@ -24,3 +24,21 @@ async function run<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRe
 export const idbGet = <T>(key: string) => run<T | undefined>('readonly', (s) => s.get(key));
 export const idbSet = (key: string, value: unknown) => run('readwrite', (s) => s.put(value, key)).then(() => undefined);
 export const idbDelete = (key: string) => run('readwrite', (s) => s.delete(key)).then(() => undefined);
+
+/** Deletes every key accepted by `match` (keys are strings like "repos:<org>"). */
+export async function idbDeleteWhere(match: (key: string) => boolean): Promise<void> {
+  const db = await open();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    const store = tx.objectStore(STORE);
+    const cur = store.openKeyCursor();
+    cur.onsuccess = () => {
+      const c = cur.result;
+      if (!c) return;
+      if (match(String(c.key))) store.delete(c.key);
+      c.continue();
+    };
+    tx.oncomplete = () => (db.close(), resolve());
+    tx.onerror = tx.onabort = () => (db.close(), reject(tx.error));
+  });
+}

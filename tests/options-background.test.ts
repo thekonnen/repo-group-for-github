@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createHandler } from '../src/background/handlers';
 import { memoryKV } from '../src/background/kv';
+import { memoryLogoCache } from '../src/background/logos';
 import { memoryIndexStore } from '../src/background/repo-index';
 import { orgFromUrl } from '../src/ext-pages/tab-org';
 import { englishMessage } from '../src/i18n';
@@ -85,6 +86,19 @@ describe('cache:clear', () => {
     expect(kv.data.get('rg:settings')).toEqual({ refreshMinutes: 15 });
     expect(kv.data.has('rg:pending-repo')).toBe(true);
     expect(await h({ type: 'auth:status' })).toMatchObject({ ok: true, data: { signedIn: true, login: 'ana' } });
+  });
+});
+
+describe('cache:clear and logos', () => {
+  it('also empties the logo cache', async () => {
+    const logos = memoryLogoCache();
+    await logos.set('logo:abc', 'data:image/png;base64,AA');
+    const kv = memoryKV();
+    const h = createHandler({ fetch: fakeFetch().fetch, kv, index: memoryIndexStore(), logos, clientId: 'c' });
+    await kv.set('rg:auth', { token: 't', kind: 'pat' });
+    expect((await h({ type: 'cache:clear' })).ok).toBe(true);
+    expect(logos.data.size).toBe(0);
+    expect(kv.data.has('rg:auth')).toBe(true);
   });
 });
 

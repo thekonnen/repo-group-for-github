@@ -37,9 +37,10 @@ export function withinInterval(meta: Pick<IndexMeta, 'lastIncrementalSync'> | nu
 const CACHE_PREFIXES = ['rg:file:', 'rg:teams:', 'rg:config:', 'rg:orgs'];
 
 /** Removes the repo indexes and every org file / teams / org-list cache. Never touches the token, prefs or settings. */
-export async function clearCache(kv: KV, index: IndexStore): Promise<{ removed: number }> {
+export async function clearCache(kv: KV, index: IndexStore, logos?: { clear?(): Promise<void> }): Promise<{ removed: number }> {
   const keys = ((await kv.keys?.()) ?? []).filter((k) => CACHE_PREFIXES.some((p) => k.startsWith(p)));
   for (const k of keys) await kv.remove(k);
   await index.clear();
+  await logos?.clear?.();
   return { removed: keys.length };
 }

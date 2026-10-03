@@ -2,6 +2,7 @@ import { browser } from 'wxt/browser';
 import { defineBackground } from 'wxt/utils/define-background';
 import { createHandler } from '../background/handlers';
 import { idbIndexStore } from '../background/idb-index-store';
+import { idbDeleteWhere, idbGet, idbSet } from '../storage/idb';
 import { areaKV } from '../background/kv';
 import type { Request } from '../github/messages';
 
@@ -10,6 +11,11 @@ export default defineBackground(() => {
     fetch: (input, init) => fetch(input, init),
     kv: areaKV(browser.storage.local as any),
     index: idbIndexStore,
+    logos: { get: (k) => idbGet(`logos:${k}`), set: (k, v) => idbSet(`logos:${k}`, v), clear: () => idbDeleteWhere((k) => k.startsWith('logos:')) },
+    origins: {
+      has: (origin) => browser.permissions.contains({ origins: [origin] }),
+      request: (origin) => browser.permissions.request({ origins: [origin] }),
+    },
     session: areaKV((browser.storage as any).session ?? browser.storage.local),
   });
   browser.runtime.onMessage.addListener((msg: Request, _sender, sendResponse) => {

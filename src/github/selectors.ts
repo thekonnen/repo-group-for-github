@@ -38,6 +38,8 @@ export interface OrgReposMount {
   extras: Element[];
   /** Sidebar filter list; our Groups tree goes right after it. May be missing. */
   filterList: Element | null;
+  /** False when the column's own classes and style (a bordered box) must not be copied onto our view. */
+  inherit?: boolean;
 }
 
 const FILTER_TITLES = /^(All|Contributed by me|Admin access|Public|Private|Sources|Forks|Archived|Templates)$/i;
@@ -92,34 +94,101 @@ export function locateOrgRepos(doc: Document): OrgReposMount | null {
 }
 
 /**
- * F12: GitHub's team repositories page, /orgs/<org>/teams/<slug>/repositories. NOT written from a screenshot (the spec has
- * none): the locators lean on structure and hrefs, and the fixture in tests/fixtures/team-repos.html was written by hand.
- * We keep GitHub's team header and tabs and take over only the list column.
+ * F12: GitHub's team repositories page, /orgs/<org>/teams/<slug>/repositories. Mirrors a screenshot the user sent (dark theme),
+ * not captured HTML: a single centered column with the heading "Repositories with direct access", a row with a
+ * "Find a repository…" field and a green "Add repository" button, then a bordered list box ("Select all" header, one row per
+ * repository with the full `org/repo` name and a "Role: Write" menu). There is no sidebar.
+ * Grouped mode hides the search field and the list box and keeps the heading and "Add repository"; our view goes where
+ * the list box was. The locator does not depend on rows (an empty team still has the search field).
  */
-const TEAM_TABS = 'a[href*="/teams/"][href$="/members"], a[href*="/teams/"][href$="/discussions"], a[href*="/teams/"][href$="/teams"], a[href*="/teams/"][href$="/projects"]';
-const TEAM_SEARCH = 'input[placeholder*="repositor" i], input[aria-label*="repositor" i], input[placeholder*="Find" i], input[type="search"]';
+const TEAM_SEARCH = 'input[placeholder*="Find a repository" i], input[aria-label*="Find a repository" i], input[placeholder*="repositor" i], input[aria-label*="repositor" i]';
+const ADD_REPO = /^Add repositor(y|ies)$/i;
 
-export function locateTeamRepos(doc: Document, org: string): OrgReposMount | null {
+/** Display name of the team ("Konnen_Team") from the breadcrumb or header; the slug always comes from the URL. */
+export function findTeamName(doc: Document, org: string, slug: string): string | null {
+  // The real page names the team in its "Add repository to Konnen_Team" dialog.
+  const dialog = doc.querySelector('details-dialog[aria-label^="Add repository to "]')?.getAttribute('aria-label');
+  const fromDialog = norm(dialog?.replace(/^Add repository to /i, ''));
+  if (fromDialog) return fromDialog;
+  const want = `/orgs/${org}/teams/${slug}`.toLowerCase();
+  for (const a of Array.from(doc.querySelectorAll('a[href]'))) {
+    const path = (a.getAttribute('href') ?? '').replace(/^https:\/\/github\.com/, '').split(/[?#]/)[0].replace(/\/$/, '').toLowerCase();
+    const t = norm(a.textContent);
+    if (path === want && t) return t;
+  }
+  return null;
+}
+
+/**
+ * Classic server-rendered markup of the real page (stable class names): `form.subnav-search`, `.table-list-header` (Select all)
+ * and `#org-team-repositories` / `ul.team-listing` (the rows). Our view goes before the first of the list parts, which is
+ * right after the `.subnav` toolbar; the heading and the "Add repository" button stay. Nothing is moved or removed:
+ * GitHub's bulk-actions script lives on the container around them.
+ */
+function locateTeamReposClassic(doc: Document): (OrgReposMount & { inherit: false }) | null {
+  const root = doc.querySelector('main') ?? doc.body;
+  const list = root.querySelector('#org-team-repositories') ?? root.querySelector('ul.team-listing');
+  const header = root.querySelector('.table-list-header');
+  const search = root.querySelector('form.subnav-search') ?? root.querySelector('input.js-team-search-field')?.closest('form') ?? null;
+  const parts = [header, list].filter((e): e is Element => !!e && !e.contains(search) && !(search && search.contains(e)));
+  if (!parts.length) return null;
+  parts.sort((a, b) => (a.compareDocumentPosition(b) & 4 ? -1 : 1)); // document order
+  const extras = [...parts.slice(1), ...(search ? [search] : [])];
+  return { column: parts[0], extras, filterList: null, inherit: false };
+}
+
+export function locateTeamRepos(doc: Document, org: string): (OrgReposMount & { inherit: false }) | null {
+  return locateTeamReposClassic(doc) ?? locateTeamReposGeneric(doc, org);
+}
+
+function locateTeamReposGeneric(doc: Document, org: string): (OrgReposMount & { inherit: false }) | null {
   const root = doc.querySelector('main') ?? doc.body;
   const isRoot = (el: Element) => el === root || el === doc.body || el === doc.documentElement;
-  const tabLink = root.querySelector(TEAM_TABS);
-  const tabs = tabLink?.closest('nav, ul, [role="tablist"], [role="navigation"]') ?? tabLink?.parentElement ?? null;
-  const heading = root.querySelector('h1');
-  const isRepoLink = (a: Element) => {
-    const href = a.getAttribute('href') ?? '';
-    const path = href.replace(/^https:\/\/github\.com/, '').split(/[?#]/)[0].replace(/\/$/, '');
-    const m = path.match(/^\/([^/]+)\/([^/]+)$/);
-    return !!m && m[1].toLowerCase() === org.toLowerCase() && !tabs?.contains(a);
-  };
-  const search = Array.from(root.querySelectorAll(TEAM_SEARCH)).find((i) => !tabs?.contains(i)) ?? null;
-  const link = Array.from(root.querySelectorAll('a[href]')).find(isRepoLink) ?? null;
-  const anchor = (search && link && commonAncestor(search, link)) || search || link;
-  if (!anchor || isRoot(anchor)) return null;
-  // Climb to the widest element that still holds neither the team header nor the tabs.
-  let column: Element = anchor;
-  while (column.parentElement && !isRoot(column.parentElement) && !(tabs && column.parentElement.contains(tabs)) && !(heading && column.parentElement.contains(heading))) column = column.parentElement;
-  if (column === search || column === link || /^(A|INPUT|BUTTON)$/.test(column.tagName)) return null; // cannot isolate the list
-  return { column, extras: [], filterList: null };
+  const heading = Array.from(root.querySelectorAll('h1, h2, h3, h4')).find((h) => /^Repositories with direct access$/i.test(norm(h.textContent))) ?? null;
+  const search = root.querySelector(TEAM_SEARCH);
+  if (!heading && !search) return null;
+  const addBtn = Array.from(root.querySelectorAll('a, button')).find((b) => ADD_REPO.test(norm(b.textContent))) ?? null;
+
+  // The list box: the "Select all" header, or else the first repository link (`/<org>/<repo>`).
+  const selectAll = Array.from(root.querySelectorAll('label, span, div, button')).find((e) => e.children.length < 3 && /^Select all$/i.test(norm(e.textContent))) ?? null;
+  const repoLink =
+    Array.from(root.querySelectorAll('a[href]')).find((a) => {
+      const path = (a.getAttribute('href') ?? '').replace(/^https:\/\/github\.com/, '').split(/[?#]/)[0].replace(/\/$/, '');
+      const m = path.match(/^\/([^/]+)\/([^/]+)$/);
+      return !!m && m[1].toLowerCase() === org.toLowerCase() && !/^(teams|people|settings)$/i.test(m[2]);
+    }) ?? null;
+  const anchor = selectAll ?? repoLink;
+  const keepsOthers = (el: Element) => !!((search && el.contains(search)) || (heading && el.contains(heading)) || (addBtn && el.contains(addBtn)));
+  let box: Element | null = null;
+  if (anchor) {
+    box = anchor;
+    while (box.parentElement && !isRoot(box.parentElement) && !keepsOthers(box.parentElement)) box = box.parentElement;
+    if (keepsOthers(box)) box = null;
+  }
+  if (!box) {
+    // Empty team: the blank state is whatever follows the search row.
+    let row: Element | null = search;
+    const together = search && addBtn ? commonAncestor(search, addBtn) : null;
+    if (together && !isRoot(together)) row = together;
+    else while (row && row.parentElement && !isRoot(row.parentElement) && !(heading && row.parentElement.contains(heading))) row = row.parentElement;
+    box = row?.nextElementSibling ?? null;
+  }
+  if (!box || isRoot(box)) return null;
+
+  // GitHub's search field (without the "Add repository" button next to it).
+  const extras: Element[] = [];
+  if (search) {
+    let field: Element = search;
+    while (field.parentElement && !isRoot(field.parentElement) && !((heading && field.parentElement.contains(heading)) || (addBtn && field.parentElement.contains(addBtn))) && !field.parentElement.contains(box)) field = field.parentElement;
+    if (!field.contains(box) && field !== box) extras.push(field);
+  }
+  // The rows can sit in a sibling of the "Select all" header: hide that block too.
+  if (repoLink && !box.contains(repoLink)) {
+    let rows: Element | null = repoLink;
+    while (rows && rows.parentElement !== box.parentElement) rows = rows.parentElement;
+    if (rows && rows !== box && !extras.includes(rows)) extras.push(rows);
+  }
+  return { column: box, extras, filterList: null, inherit: false };
 }
 
 /* ------------------------------------------------------------------------------------------------------------------

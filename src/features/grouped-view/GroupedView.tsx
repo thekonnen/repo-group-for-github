@@ -68,7 +68,7 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
   const node = (s.path.length && model.byKey.get(s.path.join('/'))) || model.root;
   const isRoot = node === model.root;
   const team = ctl.teams.team; // F12: team repositories page
-  const name = isRoot ? team ?? s.org : displayName(node.group);
+  const name = isRoot ? ctl.teams.label ?? s.org : displayName(node.group);
   const ungrouped = model.root.repos;
   const cfg = s.config;
 
@@ -175,7 +175,7 @@ function IndexStatus({ ctl, s, model }: { ctl: Controller; s: State; model: Tree
 }
 
 function Crumbs({ ctl, s, model, node }: { ctl: Controller; s: State; model: TreeModel; node: GroupNode }) {
-  const chain = [{ key: '', path: [] as string[], label: ctl.teams.team ?? s.org, slug: ctl.teams.team ?? s.org, root: true }, ...node.path.map((_, i) => { const k = node.path.slice(0, i + 1).join('/'); const g = model.byKey.get(k)?.group; return { key: k, path: node.path.slice(0, i + 1), label: g ? displayName(g) : node.path[i], slug: node.path[i], root: false }; })];
+  const chain = [{ key: '', path: [] as string[], label: ctl.teams.label ?? s.org, slug: ctl.teams.team ?? s.org, root: true }, ...node.path.map((_, i) => { const k = node.path.slice(0, i + 1).join('/'); const g = model.byKey.get(k)?.group; return { key: k, path: node.path.slice(0, i + 1), label: g ? displayName(g) : node.path[i], slug: node.path[i], root: false }; })];
   const logoOf = (key: string) => model.byKey.get(key)?.group.logo;
   return (
     <nav class="rg-crumbs" aria-label="Group path">
@@ -210,7 +210,7 @@ function Header({ ctl, s, node, name, isRoot }: { ctl: Controller; s: State; nod
         ) : (
           <GroupAvatar logos={ctl.logos} name={isRoot ? name : node.group.name} label={name} logo={node.group.logo} cls="rg-big-av" root={isRoot} />
         )}
-        <div style="min-width:0"><h1>{name}</h1><p>{isRoot && team ? `Repositories this team can access, in ${s.org}’s groups` : node.group.description}</p>{!isRoot && <TeamChips org={s.org} teams={chips} active={team} onSync={(slug) => void ctl.teams.openSync({ teams: [slug], groupKey: node.key })} />}</div>
+        <div style="min-width:0"><h1>{name}</h1><p>{isRoot && team ? `Repositories this team can access, in the groups of ${s.org}` : node.group.description}</p>{!isRoot && <TeamChips org={s.org} teams={chips} active={team} onSync={(slug) => void ctl.teams.openSync({ teams: [slug], groupKey: node.key })} />}</div>
       </div>
       <div class="rg-g-actions">
         {canEdit && <button type="button" class="rg-btn" onClick={() => ctl.openYaml()}><Icon name="code" />Edit YAML</button>}

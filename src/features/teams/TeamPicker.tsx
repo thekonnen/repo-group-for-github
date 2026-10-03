@@ -74,12 +74,12 @@ export function TeamPicker({ teams, exclude = [], onPick, label = 'Add team', lo
   };
 
   return (
-    <div class="rg-picker" ref={box}>
+    <div class="rg-tpicker" ref={box}>
       <button type="button" class="rg-btn" ref={btn} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)}>
         <Icon name="plus" />{label}
       </button>
       {open && (
-        <div class="rg-pop">
+        <div class="rg-tpop">
           <input
             ref={input}
             class="rg-input"

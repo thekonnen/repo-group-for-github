@@ -184,8 +184,8 @@
 .rg-root .rg-trow-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .rg-root .rg-icon-btn { width: 28px; height: 28px; padding: 0; justify-content: center; }
 .rg-root .rg-field .rg-hint.rg-warn { color: var(--rg-danger-fg); }
-.rg-root .rg-picker { position: relative; display: inline-block; }
-.rg-root .rg-pop { position: absolute; top: calc(100% + 4px); left: 0; z-index: 6; width: min(300px, 80vw); padding: 8px; display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--rg-border); border-radius: 6px; background: var(--rg-bg); box-shadow: var(--rg-shadow); }
+.rg-root .rg-tpicker { position: relative; display: inline-block; }
+.rg-root .rg-tpop { position: absolute; top: calc(100% + 4px); left: 0; z-index: 6; width: min(300px, 80vw); padding: 8px; display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--rg-border); border-radius: 6px; background: var(--rg-bg); box-shadow: var(--rg-shadow); }
 .rg-root .rg-listbox { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow-y: auto; }
 .rg-root .rg-listbox li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; font-size: 13px; cursor: pointer; }
 .rg-root .rg-listbox li.rg-active { background: var(--rg-selected); }
@@ -286,3 +286,4 @@
 .rg-root .rg-y-scope { height: 32px; border: 1px solid var(--rg-border); border-radius: 6px; background: var(--rg-btn); color: var(--rg-fg); padding: 0 8px; font: inherit; }
 .rg-root .rg-y-scopewrap { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--rg-muted); }
 .rg-root .rg-y-scopewarn { font-size: 12px; color: var(--rg-av4-fg); background: var(--rg-av4-bg); padding: 6px 10px; border-radius: 6px; }
+.rg-root .rg-toast a { color: inherit; text-decoration: underline; margin-left: 8px; white-space: nowrap; }

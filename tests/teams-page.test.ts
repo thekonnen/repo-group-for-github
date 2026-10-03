@@ -8,12 +8,15 @@ import { memoryIndexStore } from '../src/background/repo-index';
 import { mountOrgRepos, mountTeamRepos, type Mounted } from '../src/features/mount';
 import { CallError } from '../src/github/client';
 import type { Request } from '../src/github/messages';
-import { locateTeamRepos } from '../src/github/selectors';
+import { findTeamName, locateTeamRepos } from '../src/github/selectors';
 import { example } from './fixtures';
 import { fakeFetch, type Route } from './fake-github';
 import { fakeCall, memberAccess } from './page-helpers';
 
-const read = (f: string) => readFileSync(join(process.cwd(), 'tests/fixtures', f), 'utf8').replace(/<!--[\s\S]*?-->/, '');
+const read = (f: string) => {
+  const t = readFileSync(join(process.cwd(), 'tests/fixtures', f), 'utf8').replace(/<!--[\s\S]*?-->/g, '');
+  return t.match(/<body[\s\S]*<\/body>/)?.[0] ?? t;
+};
 const orgHtml = read('org-repos.html');
 const teamHtml = read('team-repos.html');
 let mounted: Mounted | null = null;
@@ -93,26 +96,39 @@ async function openTeam(be: ReturnType<typeof backend>, opts: Parameters<typeof 
   return h;
 }
 
-describe('team page selectors', () => {
+describe('team page selectors (real saved page, sanitized)', () => {
   beforeEach(() => (document.documentElement.innerHTML = teamHtml));
-  it('takes over the list column and keeps GitHub’s team header and tabs', () => {
+  const parts = () => {
     const m = locateTeamRepos(document, 'thekonnen')!;
-    expect(m.column.id).toBe('team-content');
+    return [m.column, ...m.extras];
+  };
+  it('hides exactly the search, the Select all header and the list; our view goes right after the toolbar', () => {
+    const m = locateTeamRepos(document, 'thekonnen')!;
+    expect(m.inherit).toBe(false);
     expect(m.filterList).toBeNull();
-    expect(m.column.contains($('nav.tabs'))).toBe(false);
-    expect(m.column.contains($('h1'))).toBe(false);
+    expect(m.column.classList.contains('table-list-header')).toBe(true);
+    expect(m.column.previousElementSibling!.classList.contains('subnav')).toBe(true);
+    expect(parts().map((e) => e.id || e.className.split(' ')[0]).sort()).toEqual(['org-team-repositories', 'subnav-search', 'table-list-header']);
+    for (const keep of ['main h3', 'summary.btn-primary', 'nav[aria-label="Local"]', '.subnav']) for (const p of parts()) expect(p.contains($(keep))).toBe(false);
   });
-  it('works without a search box (falls back to the first repository link) and ignores tab links', () => {
-    $('.toolbar')!.remove();
-    expect(locateTeamRepos(document, 'thekonnen')!.column.id).toBe('team-content');
+  it('reads the display name from the Add repository dialog; the slug is the fallback', () => {
+    expect(findTeamName(document, 'thekonnen', 'konnen_team')).toBe('Konnen_Team');
+    $('details-dialog')!.remove();
+    expect(findTeamName(document, 'thekonnen', 'konnen_team')).toBeNull();
   });
-  it('does nothing when there is no list to take over', () => {
-    $('#team-content')!.remove();
-    expect(locateTeamRepos(document, 'thekonnen')).toBeNull();
-    // an empty team has no repository links: the search box alone is enough to mount (banners may still apply)
-    document.documentElement.innerHTML = '<body><main><h1>t</h1><div id="x"><input placeholder="Search repositories"></div></main></body>';
-    expect(locateTeamRepos(document, 'thekonnen')!.column.id).toBe('x');
-    document.documentElement.innerHTML = '<body><main><h1>t</h1><div id="x"><p>No repositories</p></div></main></body>';
+  it('does not need any rows (an empty team)', () => {
+    document.querySelectorAll('li.table-list-item').forEach((l) => l.remove());
+    expect(parts().map((e) => e.id || e.className.split(' ')[0]).sort()).toEqual(['org-team-repositories', 'subnav-search', 'table-list-header']);
+  });
+  it('falls back to the heading, search field and repository links when the class names change', () => {
+    document.querySelectorAll('[class]').forEach((e) => e.removeAttribute('class'));
+    $('#org-team-repositories')!.removeAttribute('id');
+    const m = locateTeamRepos(document, 'thekonnen')!;
+    expect([m.column, ...m.extras].some((e) => e.querySelector('a[href$="/thekonnen/thekonnen.com"]'))).toBe(true);
+    expect(m.extras.some((e) => e.querySelector('input[placeholder^="Find a repository"]'))).toBe(true);
+  });
+  it('does nothing when the structure is unrecognizable', () => {
+    document.documentElement.innerHTML = '<body><main><div><p>Nothing here</p></div></main></body>';
     expect(locateTeamRepos(document, 'thekonnen')).toBeNull();
   });
 });
@@ -121,9 +137,12 @@ describe('team repositories page (F12)', () => {
   it('shows only what the team can access, in the org’s groups, with its permission on each row', async () => {
     await openTeam(backend({ konnen_team: KT }));
     await vi.waitFor(() => expect(names()).toContain('infra'));
-    expect($('#team-content')!.classList.contains('rg-hidden')).toBe(true); // GitHub's list is replaced
-    expect($('nav.tabs')!.classList.contains('rg-hidden')).toBe(false); // the team header and tabs stay
-    expect($('.rg-view h1')!.textContent).toBe('konnen_team');
+    // GitHub's search field and list box are replaced; the heading, "Add repository", the header and the tabs stay
+    for (const hidden of ['#org-team-repositories', 'form.subnav-search', '.table-list-header']) expect($(hidden)!.classList.contains('rg-hidden')).toBe(true);
+    for (const keep of ['main h3', 'summary.btn-primary', '.subnav', 'nav[aria-label="Local"]']) expect($(keep)!.classList.contains('rg-hidden')).toBe(false);
+    expect($('.table-list-header')!.previousElementSibling).toBe($('.rg-root[data-rg="view"]')); // our view goes right after the toolbar
+    expect($('.rg-root[data-rg="view"]')!.className).toBe('rg-root'); // the box's own classes are not copied
+    expect($('.rg-view h1')!.textContent).toBe('Konnen_Team'); // the display name, not the org
     expect(names()).toEqual(['infra', 'dagu', 'authentik', 'keep_supabase_alive']); // ai and checkmate hold nothing the team reaches
     expect($$('.rg-root[data-rg="view"] .rg-repo-label, .rg-root[data-rg="view"] .rg-row .rg-label').map((l) => l.textContent)).toContain('Write');
     expect($('[data-rg="side"]')).toBeNull();
@@ -274,7 +293,9 @@ describe('team repositories page (F12)', () => {
     expect(btn('Edit group')).toBeUndefined(); // the team page is a read-only view of the tree
     expect(btn('New repository')).toBeUndefined();
     ($('.rg-view-seg button[title="GitHub list view"]') as HTMLElement).click();
-    await vi.waitFor(() => expect($('#team-content')!.classList.contains('rg-hidden')).toBe(false));
+    await vi.waitFor(() => expect($('#org-team-repositories')!.classList.contains('rg-hidden')).toBe(false));
+    expect($('form.subnav-search')!.classList.contains('rg-hidden')).toBe(false);
+    expect($('.table-list-header')!.classList.contains('rg-hidden')).toBe(false);
     expect($('.rg-banner')!.textContent).toContain('GitHub’s default list');
   });
 

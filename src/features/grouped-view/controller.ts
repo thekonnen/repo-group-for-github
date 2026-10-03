@@ -68,6 +68,8 @@ export interface Env {
   sleep?: (ms: number) => Promise<void>;
   /** Team repositories page (F12): the slug of the team whose page is open. */
   team?: string;
+  /** Display name of that team ("Konnen_Team"), when the page shows it. */
+  teamName?: string;
 }
 
 export type Controller = ReturnType<typeof createController>;
@@ -99,7 +101,7 @@ export function createController(org: string, env: Env) {
     yaml: null,
     toast: null,
   });
-  const teams = createTeamsController({ org, team: env.team, call: env.call, store, afterAccess: () => applyDefaults() });
+  const teams = createTeamsController({ org, team: env.team, teamName: env.teamName, call: env.call, store, afterAccess: () => applyDefaults() });
   // Logos load through the background; every config change asks for the references it has not seen yet (F7).
   const logos = createLogoStore(env.call, org);
   let logoCfg: unknown;

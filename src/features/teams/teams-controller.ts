@@ -48,6 +48,8 @@ export interface TeamsHost {
   org: string;
   /** The team whose repositories page is open (F12), if any. */
   team?: string;
+  /** Display name of the team, for titles. */
+  teamName?: string;
   call: Call;
   store: Store<State>;
   /** Called after a team's access is in: the page can now build its tree (default expanded groups). */
@@ -264,6 +266,8 @@ export function createTeamsController(host: TeamsHost) {
   return {
     store,
     team,
+    /** What people read for the team: its display name, or the slug. */
+    label: host.teamName || team,
     ensureList,
     loadAccess,
     teamModel,

@@ -272,7 +272,7 @@ describe('New group and subgroup (F6)', () => {
     expect((fc.log.find((r) => r.type === 'org:edit') as any).edit).toMatchObject({ kind: 'new', parent: [], name: 'data' });
     await vi.waitFor(() => expect(names()).toContain('data'));
   });
-  it('offers to create <org>/.github when it does not exist, then saves', async () => {
+  it('creates <org>/.github when it does not exist and saves, in one click', async () => {
     let calls = 0;
     const fc = await open('', { edit: (req) => (++calls === 1 ? { status: 'needs-repo' } : okEdit((g) => g.push({ name: 'data', description: '', logo: null, teams: [], match: [], groups: [] }))(req)) });
     await vi.waitFor(() => expect(btn('New group')).toBeTruthy());
@@ -281,10 +281,8 @@ describe('New group and subgroup (F6)', () => {
     type($('#rg-f-name') as HTMLInputElement, 'data');
     await vi.waitFor(() => expect(($('.rg-drawer-foot .rg-btn-primary') as HTMLButtonElement).disabled).toBe(false));
     ($('.rg-drawer-foot .rg-btn-primary') as HTMLElement).click();
-    await vi.waitFor(() => expect($('.rg-callout')!.textContent).toContain('does not exist yet'));
-    expect(fc.log.some((r) => r.type === 'org:create-dotgithub')).toBe(false); // never created without a click
-    btn(/Create thekonnen\/\.github and save/).click();
     await vi.waitFor(() => expect(drawer()).toBeNull());
+    expect($('.rg-callout')).toBeNull();
     expect(fc.log.map((r: Request) => r.type).filter((t) => t === 'org:create-dotgithub' || t === 'org:edit')).toEqual(['org:edit', 'org:create-dotgithub', 'org:edit']);
   });
 });

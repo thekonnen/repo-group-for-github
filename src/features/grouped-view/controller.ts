@@ -48,7 +48,7 @@ export interface State {
   toast: { text: string; kind: 'ok' | 'error' } | null;
 }
 
-export type SaveResult = { ok: true } | { ok: false; message: string; needsRepo?: boolean };
+export type SaveResult = { ok: true } | { ok: false; message: string };
 
 export interface Conflict {
   sha: string | null;
@@ -218,10 +218,15 @@ export function createController(org: string, env: Env) {
     toastTimer = setTimeout(() => store.set({ toast: null }), 6000);
   }
 
-  async function save(edit: Edit): Promise<SaveResult> {
+  async function save(edit: Edit, created = false): Promise<SaveResult> {
     try {
       const r = await env.call<any>({ type: 'org:edit', org, edit });
-      if (r.status === 'needs-repo') return { ok: false, message: '', needsRepo: true };
+      if (r.status === 'needs-repo') {
+        // <owner>/.github does not exist yet: create it (private) and save again, in the same click.
+        if (created) return { ok: false, message: `Could not create ${org}/.github.` };
+        await env.call({ type: 'org:create-dotgithub', org });
+        return save(edit, true);
+      }
       const before = store.get();
       const logoFile = editLogoPath(edit);
       const png = pngOf(edit);
@@ -339,13 +344,17 @@ export function createController(org: string, env: Env) {
         return { error: infoOf(e).message, warnings: [], stripped: false };
       }
     },
-    async applyYaml(text: string, changes: number, create = false): Promise<ApplyResult> {
+    async applyYaml(text: string, changes: number, created = false): Promise<ApplyResult> {
       try {
-        if (create) await env.call({ type: 'org:create-dotgithub', org });
         const before = store.get();
         const baseSha = before.config && before.config.exists ? before.config.sha : null;
         const r = await env.call<any>({ type: 'org:apply-yaml', org, text, baseSha, changes });
-        if (r.status === 'needs-repo') return { ok: false, message: '', needsRepo: true };
+        if (r.status === 'needs-repo') {
+          // <owner>/.github does not exist yet: create it (private) and apply again, in the same click.
+          if (created) return { ok: false, message: `Could not create ${org}/.github.` };
+          await env.call({ type: 'org:create-dotgithub', org });
+          return this.applyYaml(text, changes, true);
+        }
         if (r.status === 'conflict') return { ok: false, conflict: { sha: r.sha, config: r.config } };
         store.set({ config: { exists: true, sha: r.sha, config: r.config, warnings: r.warnings }, indexVersion: before.indexVersion + 1, yaml: null });
         showToast(`Committed to ${org}/.github/repo-groups.yml`);
@@ -363,14 +372,6 @@ export function createController(org: string, env: Env) {
           ? { exists: true, sha: c.sha, error: 'The file on GitHub has a problem.', warnings: [] }
           : { exists: false };
       store.set({ config, indexVersion: before.indexVersion + 1 });
-    },
-    async createRepoAndSave(edit: Edit): Promise<SaveResult> {
-      try {
-        await env.call({ type: 'org:create-dotgithub', org });
-      } catch (e) {
-        return { ok: false, message: infoOf(e).message };
-      }
-      return save(edit);
     },
     openDrawer: (mode: 'edit' | 'new', path: string[], focus?: 'logo') => store.set({ drawer: { mode, path, ...(focus ? { focus } : {}) } }),
     closeDrawer: () => store.set({ drawer: null }),

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { aiPrompt, aiText } from '../../core/ai-prompt';
+import { aiText } from '../../core/ai-prompt';
 import { diffTrees } from '../../core/diff';
 import { highlightHtml } from '../../core/highlight';
 import { allRepos, nodeAt } from '../../core/tree';
@@ -16,7 +16,7 @@ export function YamlDrawer({ ctl }: { ctl: Controller }) {
   return <Editor ctl={ctl} initial={s.yaml.text} />;
 }
 
-type CopyKind = 'all' | 'prompt' | 'yaml';
+type CopyKind = 'all' | 'yaml';
 
 function Editor({ ctl, initial }: { ctl: Controller; initial: string }) {
   const s = useStore(ctl.store);
@@ -27,7 +27,7 @@ function Editor({ ctl, initial }: { ctl: Controller; initial: string }) {
   const [copied, setCopied] = useState<CopyKind | null>(null);
   const [fallback, setFallback] = useState<string | null>(null);
   const [conflict, setConflict] = useState<Conflict | null>(null);
-  const [problem, setProblem] = useState<{ message: string; needsRepo?: boolean } | null>(null);
+  const [problem, setProblem] = useState<{ message: string } | null>(null);
   const [saving, setSaving] = useState(false);
 
   const ta = useRef<HTMLTextAreaElement>(null);
@@ -62,7 +62,7 @@ function Editor({ ctl, initial }: { ctl: Controller; initial: string }) {
   const warning = scopeWarning(scope.repos.length);
 
   const copy = async (kind: CopyKind) => {
-    const payload = kind === 'all' ? aiText(s.org, text, scope.repos, scoped) : kind === 'prompt' ? aiPrompt(s.org, { scoped }) : text;
+    const payload = kind === 'all' ? aiText(s.org, text, scope.repos, scoped) : text;
     try {
       await navigator.clipboard.writeText(payload);
       setFallback(null);
@@ -73,14 +73,14 @@ function Editor({ ctl, initial }: { ctl: Controller; initial: string }) {
     }
   };
 
-  const apply = async (create = false) => {
-    if (!create && !canApply) return;
+  const apply = async () => {
+    if (!canApply) return;
     setSaving(true);
     setProblem(null);
-    const r = await ctl.applyYaml(text, changes, create);
+    const r = await ctl.applyYaml(text, changes);
     if (!r.ok) {
       if ('conflict' in r) setConflict(r.conflict);
-      else setProblem({ message: r.message, needsRepo: r.needsRepo });
+      else setProblem({ message: r.message });
     }
     setSaving(false); // on success the controller closed the drawer
   };
@@ -115,7 +115,7 @@ function Editor({ ctl, initial }: { ctl: Controller; initial: string }) {
       onClose={() => ctl.closeYaml()}
       footer={
         <>
-          <span class="rg-grow">Commits to <code>{s.org}/.github</code> on the default branch.</span>
+          <span class="rg-grow">Commits to <code>{s.org}/.github</code> on the default branch. If that repository does not exist, it is created as private.</span>
           <button type="button" class="rg-btn" onClick={() => ctl.closeYaml()}>Cancel</button>
           <button type="button" class="rg-btn rg-btn-primary" id="rg-y-apply" disabled={!canApply} onClick={() => apply()}>
             <Icon name="check" />{saving ? 'Committing…' : 'Apply and commit'}
@@ -136,10 +136,7 @@ function Editor({ ctl, initial }: { ctl: Controller; initial: string }) {
           </select>
         </label>
         <button type="button" class="rg-btn rg-btn-accent" data-copy="all" onClick={() => copy('all')}><Icon name="sparkle" />{copied === 'all' ? 'Copied' : 'Copy prompt for AI + YML'}</button>
-        <span class="rg-copy-split">
-          <button type="button" class="rg-btn" data-copy="prompt" onClick={() => copy('prompt')}><Icon name="copy" />{copied === 'prompt' ? 'Copied' : 'Copy prompt for AI'}</button>
-          <button type="button" class="rg-btn" data-copy="yaml" onClick={() => copy('yaml')}><Icon name="copy" />{copied === 'yaml' ? 'Copied' : 'Copy YML'}</button>
-        </span>
+        <button type="button" class="rg-btn" data-copy="yaml" onClick={() => copy('yaml')}><Icon name="copy" />{copied === 'yaml' ? 'Copied' : 'Copy YML'}</button>
         <span class="rg-grow" />
         <button type="button" class="rg-linkish" onClick={() => (setText(ctl.savedText()), setConflict(null))}>Reset to saved file</button>
       </div>
@@ -174,14 +171,7 @@ function Editor({ ctl, initial }: { ctl: Controller; initial: string }) {
           <span><button type="button" class="rg-btn" onClick={() => (ctl.rebase(conflict), setConflict(null))}>Reload and keep my text</button></span>
         </div>
       )}
-      {problem?.needsRepo ? (
-        <div class="rg-callout" role="alert">
-          <span>The repository <code>{s.org}/.github</code> does not exist yet. Create it as a private repository to store <code>repo-groups.yml</code>?</span>
-          <span><button type="button" class="rg-btn rg-btn-primary" disabled={saving} onClick={() => apply(true)}>Create {s.org}/.github and commit</button></span>
-        </div>
-      ) : (
-        problem && <p class="rg-error" role="alert">{problem.message}</p>
-      )}
+      {problem && <p class="rg-error" role="alert">{problem.message}</p>}
     </Drawer>
   );
 }

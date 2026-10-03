@@ -62,7 +62,7 @@ function Form({ ctl, mode, path, focusLogo }: { ctl: Controller; mode: 'edit' | 
   const currentLogo = useLogoSrc(ctl.logos, node?.group.logo);
   const [touched, setTouched] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [problem, setProblem] = useState<{ message: string; needsRepo?: boolean } | null>(null);
+  const [problem, setProblem] = useState<{ message: string } | null>(null);
 
   // Text still sitting in the rule field when Save is pressed counts too.
   const allRules = [...new Set([...rules, ...splitRules(ruleInput)])];
@@ -102,13 +102,13 @@ function Form({ ctl, mode, path, focusLogo }: { ctl: Controller; mode: 'edit' | 
       ? { kind: 'edit', path, name: slug, title, description, match: allRules, ...(logoChange && { logo: logoChange }), ...(teamsDirty ? { teams } : {}) }
       : { kind: 'new', parent: path, name: slug, title, description, match: allRules, ...(logoChange && { logo: logoChange }), ...(teams.length ? { teams } : {}) };
 
-  const submit = async (create = false) => {
+  const submit = async () => {
     setTouched(true);
     if (error || saving) return;
     setSaving(true);
     setProblem(null);
-    const r: SaveResult = create ? await ctl.createRepoAndSave(edit) : await ctl.save(edit);
-    if (!r.ok) setProblem({ message: r.message, needsRepo: r.needsRepo });
+    const r: SaveResult = await ctl.save(edit);
+    if (!r.ok) setProblem({ message: r.message });
     setSaving(false); // on success the controller closed the drawer
   };
 
@@ -136,7 +136,7 @@ function Form({ ctl, mode, path, focusLogo }: { ctl: Controller; mode: 'edit' | 
       focus={focusLogo ? '#rg-logo-upload' : '#rg-f-name'}
       footer={
         <>
-          <span class="rg-grow">Saved as a commit to <code>{s.org}/.github</code>. Everyone in the organization sees the change.</span>
+          <span class="rg-grow">Saved as a commit to <code>{s.org}/.github</code>, created as private if it does not exist. Everyone in the organization sees the change.</span>
           <button type="button" class="rg-btn" onClick={() => ctl.closeDrawer()}>Cancel</button>
           <button type="button" class="rg-btn rg-btn-primary" disabled={saving || !!error || !dirty} onClick={() => submit()}>
             {saving ? 'Saving…' : 'Save changes'}
@@ -224,14 +224,7 @@ function Form({ ctl, mode, path, focusLogo }: { ctl: Controller; mode: 'edit' | 
 
         <div><button type="button" class="rg-linkish" onClick={openInYaml}><Icon name="code" size={14} />Edit .github/repo-groups.yml</button></div>
 
-        {problem?.needsRepo ? (
-          <div class="rg-callout" role="alert">
-            <span>The repository <code>{s.org}/.github</code> does not exist yet. Create it as a private repository to store <code>repo-groups.yml</code>?</span>
-            <span><button type="button" class="rg-btn rg-btn-primary" disabled={saving} onClick={() => submit(true)}>Create {s.org}/.github and save</button></span>
-          </div>
-        ) : (
-          problem && <p class="rg-error" role="alert">{problem.message}</p>
-        )}
+        {problem && <p class="rg-error" role="alert">{problem.message}</p>}
       </form>
     </Drawer>
   );

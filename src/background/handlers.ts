@@ -188,7 +188,7 @@ export function createHandler(deps: Deps) {
         await discardPending(session);
         return { discarded: true };
       case 'newrepo:landed':
-        return filePending(client, session, req.org, req.repo);
+        return filePending(client, session, req.org, req.repo, deps.index);
       case 'prefs:get':
         return (await deps.kv.get<Partial<OrgPrefs>>(`rg:prefs:${req.org}`)) ?? {};
       case 'prefs:set': {

@@ -6,7 +6,7 @@ import { editLogoPath, finalName, pngOf, type Edit } from '../../core/edit';
 import type { Group } from '../../core/types';
 import { writeConfig } from '../../core/yaml-write';
 import type { RepoInfo } from '../../core/types';
-import { defaultExpanded, memoTree, type TreeModel } from '../../core/tree';
+import { defaultExpanded, memoTree, SORT_KEYS, type SortKey, type TreeModel } from '../../core/tree';
 import { hasGithubFilter } from '../../github/route';
 import { CallError, type Call } from '../../github/client';
 import type { ConfigResult, ErrorInfo, OrgPrefs, OrgSnapshot, Progress } from '../../github/messages';
@@ -37,7 +37,8 @@ export interface State {
   view: 'grouped' | 'list';
   expanded: Set<string>;
   expandedTouched: boolean;
-  tab: 'items' | 'ungrouped' | 'rules';
+  tab: 'items' | 'ungrouped' | 'rules' | 'all';
+  sort: SortKey;
   query: string;
   access: Access | null;
   /** Separate open issue / PR counts (F14), loaded lazily for small groups. */
@@ -98,6 +99,7 @@ export function createController(org: string, env: Env) {
     expanded: new Set(),
     expandedTouched: false,
     tab: 'items',
+    sort: 'pushed',
     query: '',
     access: null,
     details: {},
@@ -185,6 +187,7 @@ export function createController(org: string, env: Env) {
   async function init() {
     const prefs = await env.call<Partial<OrgPrefs>>({ type: 'prefs:get', org: prefsOrg }).catch(() => ({}) as Partial<OrgPrefs>);
     if (prefs.expanded) store.set({ expanded: new Set(prefs.expanded), expandedTouched: true });
+    if (prefs.sort && SORT_KEYS.includes(prefs.sort)) store.set({ sort: prefs.sort });
     if (!hasGithubFilter(env.location.search)) {
       // A saved view wins; otherwise Options > "Show grouped view by default" (default on) decides.
       const view = prefs.view ?? (prefs.groupedByDefault === false ? 'list' : undefined);
@@ -400,6 +403,10 @@ export function createController(org: string, env: Env) {
       prefsTimer = setTimeout(() => savePrefs({ expanded: [...expanded] }), 300);
     },
     setTab: (tab: State['tab']) => store.set({ tab, query: '' }),
+    setSort(sort: SortKey) {
+      store.set({ sort });
+      savePrefs({ sort });
+    },
     setQuery: (query: string) => store.set({ query }),
     updatedText: (meta: IndexMeta | null) => (meta?.lastIncrementalSync ? ago(meta.lastIncrementalSync) : ''),
   };

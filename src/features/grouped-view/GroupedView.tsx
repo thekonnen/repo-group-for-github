@@ -3,7 +3,7 @@ import { langColor } from '../../core/lang-colors';
 import { displayName } from '../../core/edit';
 import { detailTotals, DETAILS_MAX_REPOS } from '../../core/details';
 import { ago } from '../../core/time';
-import { allRepos, searchRows, treeRows, VIRTUALIZE_AFTER, windowRange, type GroupNode, type Row, type TreeModel } from '../../core/tree';
+import { allRepos, flatRows, searchRows, SORT_KEYS, SORT_LABEL, treeRows, VIRTUALIZE_AFTER, windowRange, type GroupNode, type Row, type SortKey, type TreeModel } from '../../core/tree';
 import type { RepoInfo } from '../../core/types';
 import { GroupAvatar } from '../logos/GroupAvatar';
 import { Icon } from '../../ui/Icon';
@@ -85,8 +85,12 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
   let rows: Row[];
   let head: preact.ComponentChild;
   if (s.query.trim()) {
-    rows = searchRows(model, node, s.query);
+    // In the "All repositories" tab a search stays a flat list in the chosen order, like GitHub's own.
+    rows = tab === 'all' ? flatRows(node, s.sort, s.query) : searchRows(model, node, s.query);
     head = `${plural(rows.length, 'result', 'results')} for “${s.query.trim()}”`;
+  } else if (tab === 'all') {
+    rows = flatRows(node, s.sort);
+    head = plural(rows.length, 'repository', 'repositories');
   } else if (tab === 'ungrouped') {
     rows = ungrouped.map((repo) => ({ kind: 'repo' as const, repo, depth: 0 }));
     head = <>{plural(ungrouped.length, 'ungrouped repository', 'ungrouped repositories')} <span class="rg-muted">· no group rule matches these yet</span></>;
@@ -141,6 +145,7 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
       <div class="rg-tabs" role="tablist">
         <Tab ctl={ctl} id="items" current={tab} label="Groups and repositories" />
         {isRoot ? <Tab ctl={ctl} id="ungrouped" current={tab} label="Ungrouped" count={ungrouped.length} /> : <Tab ctl={ctl} id="rules" current={tab} label="Match rules" count={node.group.match.length} />}
+        <Tab ctl={ctl} id="all" current={tab} label="All repositories" count={node.total} />
       </div>
       {tab === 'rules' && !s.query ? (
         <RulesPanel node={node} />
@@ -148,7 +153,7 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
         <>
           <Toolbar ctl={ctl} s={s} placeholder={`Search in ${name}`} />
           <div class="rg-box">
-            <div class="rg-box-head"><span>{head}</span><span class="rg-muted">Sort: Last pushed</span></div>
+            <div class="rg-box-head"><span>{head}</span>{tab === 'all' ? <SortSelect ctl={ctl} value={s.sort} /> : <span class="rg-muted">Sort: Last pushed</span>}</div>
             {rows.length ? <Rows ctl={ctl} s={s} rows={rows} /> : <Empty tab={tab} query={s.query} isRoot={isRoot} team={team} />}
           </div>
         </>
@@ -237,6 +242,17 @@ function Header({ ctl, s, node, name, isRoot }: { ctl: Controller; s: State; nod
 }
 
 const Stat = ({ label, value }: { label: string; value: string }) => <div class="rg-stat"><span>{label}</span><b>{value}</b></div>;
+
+function SortSelect({ ctl, value }: { ctl: Controller; value: SortKey }) {
+  return (
+    <label class="rg-muted rg-sort">
+      Sort:{' '}
+      <select class="rg-y-scope" aria-label="Sort repositories" value={value} onChange={(e) => ctl.setSort((e.target as HTMLSelectElement).value as SortKey)}>
+        {SORT_KEYS.map((k) => <option value={k} selected={k === value}>{SORT_LABEL[k]}</option>)}
+      </select>
+    </label>
+  );
+}
 
 function Tab({ ctl, id, current, label, count }: { ctl: Controller; id: State['tab']; current: string; label: string; count?: number }) {
   return (

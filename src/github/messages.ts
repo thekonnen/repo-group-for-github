@@ -43,6 +43,8 @@ export type Request =
 export interface OrgPrefs {
   view: 'grouped' | 'list';
   expanded: string[];
+  /** Order of the "All repositories" tab. */
+  sort?: 'pushed' | 'name' | 'stars' | 'issues';
   /** Options > "Show grouped view by default". Used when the org has no saved view. Default true. */
   groupedByDefault?: boolean;
 }

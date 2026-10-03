@@ -112,6 +112,29 @@ export function searchRows(model: TreeModel, node: GroupNode, query: string): Ro
   });
 }
 
+export type SortKey = 'pushed' | 'name' | 'stars' | 'issues';
+export const SORT_KEYS: SortKey[] = ['pushed', 'name', 'stars', 'issues'];
+export const SORT_LABEL: Record<SortKey, string> = { pushed: 'Last pushed', name: 'Name', stars: 'Stars', issues: 'Open issues & PRs' };
+
+/** The orders GitHub's own list offers. Ties fall back to the newest push, then the name. */
+export function sortRepos(list: RepoInfo[], key: SortKey): RepoInfo[] {
+  const byName = (a: RepoInfo, b: RepoInfo) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+  const cmp: Record<SortKey, (a: RepoInfo, b: RepoInfo) => number> = {
+    pushed: (a, b) => byPush(a, b) || byName(a, b),
+    name: byName,
+    stars: (a, b) => (b.stars ?? 0) - (a.stars ?? 0) || byPush(a, b) || byName(a, b),
+    issues: (a, b) => (b.openIssuesAndPrs ?? 0) - (a.openIssuesAndPrs ?? 0) || byPush(a, b) || byName(a, b),
+  };
+  return list.slice().sort(cmp[key]);
+}
+
+/** "All repositories" tab: every repository of the group (subgroups included) as one flat list, like GitHub's own. */
+export function flatRows(node: GroupNode, sort: SortKey, query = ''): Row[] {
+  const q = query.trim().toLowerCase();
+  const repos = allRepos(node).filter((r) => !q || r.name.toLowerCase().includes(q) || (r.description ?? '').toLowerCase().includes(q));
+  return sortRepos(repos, sort).map((repo) => ({ kind: 'repo' as const, repo, depth: 0 }));
+}
+
 /** First-level groups start collapsed except the first one; all collapsed above 200 repos. */
 export function defaultExpanded(model: TreeModel): Set<string> {
   if (model.visible > 200 || !model.root.children.length) return new Set();

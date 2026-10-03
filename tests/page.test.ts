@@ -250,12 +250,12 @@ describe('grouped view on the page', () => {
   it('tabs: Ungrouped on the root, Match rules on a group', async () => {
     const { call } = fakeCall();
     const m = (await mountOrgRepos('thekonnen', { call }, document, 200))!;
-    await vi.waitFor(() => expect([...document.querySelectorAll('.rg-tab')].map((t) => t.textContent!.trim())).toEqual(['Groups and repositories', 'Ungrouped 1']));
+    await vi.waitFor(() => expect([...document.querySelectorAll('.rg-tab')].map((t) => t.textContent!.trim())).toEqual(['Groups and repositories', 'Ungrouped 1', 'All repositories 10']));
     (document.querySelectorAll('.rg-tab')[1] as HTMLElement).click();
     await vi.waitFor(() => expect(names()).toEqual(['keep_supabase_alive']));
     window.history.pushState(null, '', '/orgs/thekonnen/repositories#infra/dagu');
     window.dispatchEvent(new Event('hashchange'));
-    await vi.waitFor(() => expect([...document.querySelectorAll('.rg-tab')].map((t) => t.textContent!.trim())).toEqual(['Groups and repositories', 'Match rules 3']));
+    await vi.waitFor(() => expect([...document.querySelectorAll('.rg-tab')].map((t) => t.textContent!.trim())).toEqual(['Groups and repositories', 'Match rules 3', 'All repositories 3']));
     (document.querySelectorAll('.rg-tab')[1] as HTMLElement).click();
     await vi.waitFor(() => expect(document.querySelector('.rg-rules')!.textContent).toContain('dags-*'));
     expect([...document.querySelectorAll('.rg-rules .rg-chip')].map((c) => c.textContent)).toEqual(expect.arrayContaining(['dagu', 'dags-*', 'konnen-dagu']));
@@ -328,6 +328,74 @@ describe('grouped view on the page', () => {
     await vi.waitFor(() => expect(document.querySelector('.rg-status')!.textContent).toBe('Indexing 1,200 of about 3,400 repositories…'));
     release();
     await vi.waitFor(() => expect(document.querySelector('.rg-status')!.textContent).toMatch(/^Paused to respect GitHub’s rate limit — resumes at /));
+    m.dispose();
+  });
+});
+
+describe('"All repositories" tab', () => {
+  const tabLabel = () => [...document.querySelectorAll('.rg-tab')].map((t) => t.textContent!.trim());
+  const open = async (hash = '', call = fakeCall().call) => {
+    window.history.replaceState(null, '', '/orgs/thekonnen/repositories' + hash);
+    const m = (await mountOrgRepos('thekonnen', { call }, document, 200))!;
+    await vi.waitFor(() => expect(tabLabel().length).toBeGreaterThan(1));
+    return m;
+  };
+  const clickTab = async (label: RegExp) => {
+    (([...document.querySelectorAll('.rg-tab')] as HTMLElement[]).find((t) => label.test(t.textContent!)))!.click();
+  };
+
+  it('shows GitHub\'s flat list of every repository, newest push first, with no group rows', async () => {
+    const m = await open();
+    await clickTab(/All repositories/);
+    await vi.waitFor(() => expect(names()).toHaveLength(10));
+    expect(names()).toEqual(['konnen-litellm', 'litellm', 'konnen-authentik', 'konnen-checkmate', 'authentik', 'konnen-dagu', 'dagu', 'keep_supabase_alive', 'omniroute', 'dags-repo']);
+    expect(document.querySelector('.rg-row .rg-grp')).toBeNull();
+    expect(document.querySelector('.rg-box-head')!.textContent).toContain('10 repositories');
+    m.dispose();
+  });
+  it('on a group page it lists that group\'s repositories, subgroups included, flat', async () => {
+    const m = await open('#infra');
+    await clickTab(/All repositories/);
+    await vi.waitFor(() => expect(names().sort()).toEqual(['authentik', 'dags-repo', 'dagu', 'konnen-authentik', 'konnen-checkmate', 'konnen-dagu']));
+    m.dispose();
+  });
+  it('has a sort selector with GitHub\'s orders, applies it and remembers it', async () => {
+    const fc = fakeCall();
+    const m = await open('', fc.call);
+    await clickTab(/All repositories/);
+    await vi.waitFor(() => expect(document.querySelector('select[aria-label="Sort repositories"]')).toBeTruthy());
+    const sel = document.querySelector('select[aria-label="Sort repositories"]') as HTMLSelectElement;
+    expect([...sel.options].map((o) => o.textContent)).toEqual(['Last pushed', 'Name', 'Stars', 'Open issues & PRs']);
+    expect(sel.value).toBe('pushed');
+    sel.value = 'name';
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    await vi.waitFor(() => expect(names().slice(0, 3)).toEqual(['authentik', 'dags-repo', 'dagu']));
+    expect(fc.log.some((r) => r.type === 'prefs:set' && (r.prefs as any).sort === 'name')).toBe(true);
+    m.dispose();
+  });
+  it('restores the saved sort order', async () => {
+    const base = fakeCall();
+    const call: any = async (req: Request) => (req.type === 'prefs:get' ? { sort: 'name' } : base.call(req));
+    const m = await open('', call);
+    await clickTab(/All repositories/);
+    await vi.waitFor(() => expect(names().slice(0, 2)).toEqual(['authentik', 'dags-repo']));
+    expect((document.querySelector('select[aria-label="Sort repositories"]') as HTMLSelectElement).value).toBe('name');
+    m.dispose();
+  });
+  it('a search inside the tab stays flat (no group prefixes) and keeps the chosen order', async () => {
+    const m = await open();
+    await clickTab(/All repositories/);
+    await vi.waitFor(() => expect(document.getElementById('rg-search')).toBeTruthy());
+    const input = document.getElementById('rg-search') as HTMLInputElement;
+    input.value = 'authentik';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await vi.waitFor(() => expect(names()).toEqual(['konnen-authentik', 'konnen-checkmate', 'authentik'])); // no "infra / authentik /" prefix
+    m.dispose();
+  });
+  it('the other tabs keep the plain "Sort: Last pushed" text', async () => {
+    const m = await open();
+    await vi.waitFor(() => expect(document.querySelector('.rg-box-head')!.textContent).toContain('Sort: Last pushed'));
+    expect(document.querySelector('select[aria-label="Sort repositories"]')).toBeNull();
     m.dispose();
   });
 });

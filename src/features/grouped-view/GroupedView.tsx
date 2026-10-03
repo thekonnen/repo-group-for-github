@@ -295,7 +295,7 @@ function GroupRow({ ctl, row, fixed }: { ctl: Controller; row: Extract<Row, { ki
         <div class="rg-meta">
           <span><Icon name="repo" size={14} />{plural(n, 'repository', 'repositories')}</span>
           {sub > 0 && <span><Icon name="folder" size={14} />{plural(sub, 'subgroup', 'subgroups')}</span>}
-          <span>Updated {ago(node.latest)}</span>
+          <span>{node.latest ? `Updated ${ago(node.latest)}` : 'No pushes yet'}</span>
         </div>
       </div>
       <div class="rg-row-side"><span>Rules: {node.group.match.length ? node.group.match.join(', ') : '—'}</span></div>

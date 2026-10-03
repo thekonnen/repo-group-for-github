@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { applyEdit, commitMessage, finalName, slugName, validateDraft, type Edit } from '../src/core/edit';
-import { example } from './fixtures';
+import { example, load } from './fixtures';
 import { findGroup } from '../src/core/placement';
 
 describe('group names', () => {
@@ -69,5 +69,20 @@ describe('commit messages (§7)', () => {
     expect(commitMessage({ kind: 'edit', path: ['infra', 'dagu'], name: 'jobs', description: '', match: [] })).toBe('chore(repo-groups): rename group infra/dagu to infra/jobs');
     expect(commitMessage({ kind: 'new', parent: [], name: 'Data', description: '', match: [] })).toBe('chore(repo-groups): add group data');
     expect(commitMessage({ kind: 'new', parent: ['infra'], name: 'n8n', description: '', match: [] })).toBe('chore(repo-groups): add subgroup infra/n8n');
+  });
+});
+
+describe('splitRules', () => {
+  it('splits on commas, spaces, semicolons and newlines, trims and removes duplicates', async () => {
+    const { splitRules } = await import('../src/core/edit');
+    expect(splitRules('dag,dagu,dags')).toEqual(['dag', 'dagu', 'dags']);
+    expect(splitRules(' dag , dagu;dags\nlitellm  dag ')).toEqual(['dag', 'dagu', 'dags', 'litellm']);
+    expect(splitRules('dags-*')).toEqual(['dags-*']);
+    expect(splitRules(' , ;')).toEqual([]);
+  });
+  it('the YAML reader splits a rule written with commas, so an old broken rule starts working', async () => {
+    const { readConfig } = await import('../src/core/yaml-read');
+    const r = readConfig('groups:\n  - name: a\n    match: ["dag,dagu,dags"]\n', (t) => load(t));
+    expect(r.config!.groups[0].match).toEqual(['dag', 'dagu', 'dags']);
   });
 });

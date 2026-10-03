@@ -104,9 +104,26 @@ describe('title row outside the list column', () => {
     m.dispose();
   });
   it('does not hide the global header’s links or unrelated headings', () => {
-    load(headerOutside.replace('<header>', '<header><h2>All</h2><a href="/organizations/thekonnen/repositories/new">New repository</a>'));
+    load(headerOutside.replace('<header>', '<header><a href="/" aria-label="Homepage">logo</a><h2>All</h2><a href="/organizations/thekonnen/repositories/new">New repository</a>'));
     const m = locateOrgRepos(document)!;
     expect(m.extras.map((e) => e.id)).toEqual(['title-row']);
+  });
+});
+
+describe('title row rendered inside a <header> (real page)', () => {
+  const real = headerOutside
+    .replace('<header><a href="/thekonnen">thekonnen</a></header>', '<header><a href="/" aria-label="Homepage">logo</a><a href="/thekonnen">thekonnen</a></header>')
+    .replace('<div id="title-row">', '<header id="title-row" role="banner">')
+    .replace('New repository</a></div>\n      <div id="content"', 'New repository</a></header>\n      <div id="content"');
+  it('hides that title row but never the global header with the logo', async () => {
+    load(real);
+    const m = locateOrgRepos(document)!;
+    expect(m.extras.map((e) => e.id)).toEqual(['title-row']);
+    const { call } = fakeCall();
+    const mounted = (await mountOrgRepos('thekonnen', { call }, document, 200))!;
+    await vi.waitFor(() => expect(document.getElementById('title-row')!.classList.contains('rg-hidden')).toBe(true));
+    expect(document.querySelector('header a[aria-label="Homepage"]')!.closest('header')!.classList.contains('rg-hidden')).toBe(false);
+    mounted.dispose();
   });
 });
 

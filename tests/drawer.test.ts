@@ -170,6 +170,33 @@ describe('Edit group drawer (F5)', () => {
   });
 });
 
+describe('match rules input', () => {
+  it('one field, several rules: commas, spaces, semicolons and paste become separate chips', async () => {
+    await open('#infra/dagu');
+    await vi.waitFor(() => btn('Edit group'));
+    btn('Edit group').click();
+    await vi.waitFor(() => expect(drawer()).toBeTruthy());
+    const rule = $('#rg-f-rule') as HTMLInputElement;
+    type(rule, 'omni*, lite*;extra');
+    await vi.waitFor(() => expect($$('.rg-drawer .rg-chip').map((c) => c.textContent!.trim())).toEqual(['dagu', 'dags-*', 'konnen-dagu', 'omni*', 'lite*', 'extra']));
+    expect(rule.value).toBe('');
+  });
+  it('text still in the rule field is saved with the group', async () => {
+    const fc = await open('', { edit: okEdit(() => {}) });
+    await vi.waitFor(() => expect(btn('New group')).toBeTruthy());
+    btn('New group').click();
+    await vi.waitFor(() => expect(drawer()).toBeTruthy());
+    type($('#rg-f-name') as HTMLInputElement, 'jobs');
+    const rule = $('#rg-f-rule') as HTMLInputElement;
+    rule.value = 'dagu'; // typed but never confirmed with Enter or Add
+    rule.dispatchEvent(new Event('input', { bubbles: true }));
+    await vi.waitFor(() => expect(($('.rg-drawer-foot .rg-btn-primary') as HTMLButtonElement).disabled).toBe(false));
+    ($('.rg-drawer-foot .rg-btn-primary') as HTMLElement).click();
+    await vi.waitFor(() => expect(fc.log.some((r) => r.type === 'org:edit')).toBe(true));
+    expect((fc.log.find((r) => r.type === 'org:edit') as any).edit.match).toEqual(['dagu']);
+  });
+});
+
 describe('New group and subgroup (F6)', () => {
   it('root says New group; a group page says New subgroup', async () => {
     await open('');

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'preact/hooks';
-import { finalName, slugName, validateDraft, type Edit } from '../../core/edit';
+import { finalName, slugName, splitRules, validateDraft, type Edit } from '../../core/edit';
 import { matches } from '../../core/glob';
 import { byPush, nodeAt } from '../../core/tree';
 import { Drawer } from '../../ui/Drawer';
@@ -32,22 +32,24 @@ function Form({ ctl, mode, path }: { ctl: Controller; mode: 'edit' | 'new'; path
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState<{ message: string; needsRepo?: boolean } | null>(null);
 
+  // Text still sitting in the rule field when Save is pressed counts too.
+  const allRules = [...new Set([...rules, ...splitRules(ruleInput)])];
+
   const error = validateDraft(groups, { mode, path, name });
   const showError = error && (touched || !error.startsWith('Name is required'));
-  const dirty = mode === 'new' || !node || name !== node.group.name || description !== node.group.description || rules.join('\n') !== node.group.match.join('\n');
+  const dirty = mode === 'new' || !node || name !== node.group.name || description !== node.group.description || allRules.join('\n') !== node.group.match.join('\n');
 
-  /** Reads the field itself, not state: a fast Enter after typing or pasting must not lose text. */
-  const addRule = (v: string) => {
-    v = v.trim();
-    if (v && !rules.includes(v)) setRules([...rules, v]);
+  /** Reads the field itself, not state: a fast Enter after typing or pasting must not lose text. "a, b c" adds three rules. */
+  const addRules = (v: string) => {
+    const add = splitRules(v).filter((r) => !rules.includes(r));
+    if (add.length) setRules([...rules, ...add]);
     setRuleInput('');
   };
-
-  const hits = useMemo(() => s.repos.filter((r) => !r.archived && rules.length && matches(rules, r.name)).sort(byPush), [s.repos, rules]);
+  const hits = useMemo(() => s.repos.filter((r) => !r.archived && rules.length && matches(allRules, r.name)).sort(byPush), [s.repos, ruleInput, rules]);
   const here = mode === 'edit' ? path.join('/') : null;
 
   const edit: Edit =
-    mode === 'edit' ? { kind: 'edit', path, name, description, match: rules } : { kind: 'new', parent: path, name, description, match: rules };
+    mode === 'edit' ? { kind: 'edit', path, name, description, match: allRules } : { kind: 'new', parent: path, name, description, match: allRules };
 
   const submit = async (create = false) => {
     setTouched(true);
@@ -101,11 +103,15 @@ function Form({ ctl, mode, path }: { ctl: Controller; mode: 'edit' | 'new'; path
           </div>
           <div class="rg-add-rule">
             <input id="rg-f-rule" class="rg-input rg-mono" value={ruleInput} placeholder="dags-*  or  exact-name" autocomplete="off"
-              onInput={(e) => setRuleInput((e.target as HTMLInputElement).value)}
-              onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addRule((e.target as HTMLInputElement).value))} />
-            <button type="button" class="rg-btn" onClick={() => addRule(ruleInput)} disabled={!ruleInput.trim()}>Add</button>
+              onInput={(e) => {
+                const v = (e.target as HTMLInputElement).value;
+                if (/[\s,;]/.test(v) && splitRules(v).length) addRules(v); // a comma or space ends a rule, like a tag field
+                else setRuleInput(v);
+              }}
+              onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addRules((e.target as HTMLInputElement).value))} />
+            <button type="button" class="rg-btn" onClick={() => addRules(ruleInput)} disabled={!ruleInput.trim()}>Add</button>
           </div>
-          <span class="rg-hint">Use <code>*</code> as a wildcard. An exact name always wins; otherwise the deepest group wins.</span>
+          <span class="rg-hint">Separate several with commas. Use <code>*</code> as a wildcard. An exact name always wins; otherwise the deepest group wins.</span>
         </div>
 
         <div class="rg-field">

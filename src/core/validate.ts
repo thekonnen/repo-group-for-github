@@ -1,3 +1,4 @@
+import { splitRules } from './edit';
 import { PERMISSIONS } from './permissions';
 import type { Config, Group, TeamTag } from './types';
 
@@ -108,7 +109,7 @@ export function configFromObject(obj: unknown, opts: ValidateOptions = {}): Vali
         description: typeof raw.description === 'string' ? raw.description : '',
         logo: typeof raw.logo === 'string' && raw.logo.trim() ? raw.logo.trim() : null,
         teams,
-        match: (match as string[]).map((m) => m.trim()).filter(Boolean),
+        match: (match as string[]).flatMap(splitRules),
         groups,
       });
     });

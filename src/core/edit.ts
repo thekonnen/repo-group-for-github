@@ -6,6 +6,12 @@ export type Edit =
   | { kind: 'edit'; path: string[]; name: string; description: string; match: string[] }
   | { kind: 'new'; parent: string[]; name: string; description: string; match: string[] };
 
+/**
+ * "dag, dagu;dags" -> three rules. Repository names cannot contain commas or spaces, so splitting a rule on them
+ * can only fix input (typed, pasted, or written by hand into the YAML); it never changes a valid rule.
+ */
+export const splitRules = (input: string): string[] => [...new Set(input.split(/[\s,;]+/).map((r) => r.trim()).filter(Boolean))];
+
 /** Group names are slugs: lowercase, other characters become "-". Edge dashes are kept while typing. */
 export const slugName = (v: string): string => v.toLowerCase().replace(/[^a-z0-9._-]+/g, '-');
 export const finalName = (v: string): string => slugName(v.trim()).replace(/^-+|-+$/g, '');

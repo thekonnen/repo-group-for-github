@@ -149,15 +149,12 @@ describe('copy buttons and scope (F8/F14)', () => {
     expect(t).not.toContain(SCOPE_LINE); // scope is "all"
     await vi.waitFor(() => expect(btn(/^Copied$/)).toBeTruthy());
   });
-  it('Copy prompt for AI and Copy YML copy just those', async () => {
+  it('has only two copy buttons: prompt + YML, and YML alone', async () => {
     await open();
-    btn('Copy prompt for AI').click();
-    await vi.waitFor(() => expect(written).toHaveBeenCalledTimes(1));
-    expect(written.mock.calls[0][0]).toMatch(/^You are a software architect/);
-    expect(written.mock.calls[0][0]).not.toContain('Current file and repositories');
+    expect($$('[data-copy]').map((b) => b.textContent!.trim())).toEqual(['Copy prompt for AI + YML', 'Copy YML']);
     btn('Copy YML').click();
-    await vi.waitFor(() => expect(written).toHaveBeenCalledTimes(2));
-    expect(written.mock.calls[1][0]).toBe(area().value);
+    await vi.waitFor(() => expect(written).toHaveBeenCalledTimes(1));
+    expect(written.mock.calls[0][0]).toBe(area().value);
   });
   it('the scope select offers All, Ungrouped, and This group on a group page; it narrows the list and adds the scope line', async () => {
     await open({}, '#infra');
@@ -209,17 +206,23 @@ describe('conflicts, missing repo, entry points', () => {
     // and the next apply uses the fresh sha
     fc.call.mockImplementation(async (req: Request) => (req.type === 'org:apply-yaml' ? { status: 'ok', sha: 'sha-10', config: example(), warnings: [] } : null));
   });
-  it('when <org>/.github is missing, asks before creating it', async () => {
+  it('when <org>/.github is missing, one click creates it and commits', async () => {
     let n = 0;
     const fc = await open({ apply: () => (++n === 1 ? { status: 'needs-repo' } : { status: 'ok', sha: 's', config: example(), warnings: [] }) });
     type(answer());
     await vi.waitFor(() => expect(apply().disabled).toBe(false));
+    expect($('.rg-drawer-foot')!.textContent).toContain('created as private');
     apply().click();
-    await vi.waitFor(() => expect($('.rg-callout')!.textContent).toContain('does not exist yet'));
-    expect(fc.log.some((r) => r.type === 'org:create-dotgithub')).toBe(false);
-    btn(/Create thekonnen\/\.github and commit/).click();
     await vi.waitFor(() => expect($('.rg-drawer')).toBeNull());
+    expect($('.rg-callout')).toBeNull();
     expect(fc.log.map((r) => r.type).filter((t) => t === 'org:create-dotgithub' || t === 'org:apply-yaml')).toEqual(['org:apply-yaml', 'org:create-dotgithub', 'org:apply-yaml']);
+  });
+  it('gives up with a message if the repository is still missing after creating it', async () => {
+    await open({ apply: () => ({ status: 'needs-repo' }) });
+    type(answer());
+    await vi.waitFor(() => expect(apply().disabled).toBe(false));
+    apply().click();
+    await vi.waitFor(() => expect($('.rg-drawer p.rg-error')!.textContent).toContain('Could not create thekonnen/.github'));
   });
   it('shows the failure from the commit and stays open', async () => {
     await open({ apply: () => { throw new Error('You cannot write to thekonnen/.github.'); } });

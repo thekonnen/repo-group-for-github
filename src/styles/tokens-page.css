@@ -51,6 +51,7 @@
   --rg-syn-const: var(--color-prettylights-syntax-constant, #0550ae);
   --rg-syn-dash: var(--color-prettylights-syntax-keyword, #cf222e);
   --rg-syn-punc: var(--fgColor-muted, #59636e);
+  --rg-syn-sel: rgba(56, 139, 253, 0.45); /* text selection in the YAML editor (its text is transparent over the highlighted copy) */
 
   /* Crop overlay sits on top of a photo, so it is theme-independent on purpose. */
   --rg-crop-dim: rgba(1, 4, 9, 0.6);

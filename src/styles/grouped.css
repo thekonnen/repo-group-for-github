@@ -248,7 +248,7 @@
 .rg-root .rg-y-code textarea,.rg-root .rg-y-hl { position: absolute; inset: 0; margin: 0; border: 0; padding: 10px 12px; font-family: var(--rg-mono); font-size: 12.5px; line-height: 1.6; letter-spacing: 0; white-space: pre; tab-size: 2; overflow: auto; }
 .rg-root .rg-y-hl { pointer-events: none; color: var(--rg-fg); overflow: hidden; }
 .rg-root .rg-y-code textarea { outline: 0; resize: none; background: transparent; color: transparent; caret-color: var(--rg-fg); -webkit-text-fill-color: transparent; }
-.rg-root .rg-y-code textarea::selection { background: var(--rg-syn-sel); }
+.rg-root .rg-y-code textarea::selection { background: var(--rg-syn-sel, rgba(56, 139, 253, 0.45)); }
 .rg-root .rg-t-key { color: var(--rg-syn-key); }
 .rg-root .rg-t-str { color: var(--rg-syn-str); }
 .rg-root .rg-t-com { color: var(--rg-syn-com); font-style: italic; }

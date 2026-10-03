@@ -4,6 +4,9 @@ import type { ConfigResult, ErrorInfo, OrgPrefs, OrgSnapshot, Progress, Request,
 import { createClient, explainTokenRejection, GitHubError, type FetchLike } from './api';
 import { describeToken, loadAuth, pollDeviceFlow, publicAuth, saveAuth, signOut, startDeviceFlow } from './auth';
 import type { KV } from './kv';
+import { commitEditWithLogo } from './commit-logo';
+import { createLogoService, memoryLogoCache, type LogoCache, type Origins } from './logos';
+import { hasPng, pngOf } from '../core/edit';
 import { checkYaml, commitEdit, commitYaml, createDotGithub, EditError } from './commit';
 import { discardPending, filePending, setPending } from './new-repo';
 import { probeAccess, readOrgFile, type OrgFile } from './org-data';
@@ -15,6 +18,8 @@ export interface Deps {
   index: IndexStore;
   session?: KV; // storage.session, background only (pending new repository)
   clientId?: string;
+  logos?: LogoCache; // blob SHA -> data URL (IndexedDB in the browser)
+  origins?: Origins; // optional host permissions for logo links
 }
 
 export function toErrorInfo(e: unknown): ErrorInfo {
@@ -28,6 +33,7 @@ export function toErrorInfo(e: unknown): ErrorInfo {
 export function createHandler(deps: Deps) {
   const clientId = deps.clientId ?? GITHUB_CLIENT_ID;
   const client = createClient({ fetch: deps.fetch, getToken: async () => (await loadAuth(deps.kv))?.token ?? null });
+  const logos = createLogoService({ client, fetch: deps.fetch, cache: deps.logos ?? memoryLogoCache(), origins: deps.origins });
   const FLOW_KEY = 'rg:device-flow';
   // The popup closes as soon as the user opens github.com/login/device, so the pending code lives here
   // and the popup resumes polling with it when it is opened again.
@@ -99,8 +105,19 @@ export function createHandler(deps: Deps) {
         const r = readConfig(file.text, await loadYamlParser(), { org: req.org });
         return { exists: true, sha: file.sha, config: r.config, error: r.error, line: r.line, warnings: r.warnings } satisfies ConfigResult;
       }
-      case 'org:edit':
-        return commitEdit(client, deps.kv, req.org, req.edit);
+      case 'org:edit': {
+        if (!hasPng(req.edit)) return commitEdit(client, deps.kv, req.org, req.edit);
+        const r = await commitEditWithLogo(client, deps.kv, req.org, req.edit);
+        const png = pngOf(req.edit);
+        if (r.status === 'ok' && r.logoSha && png) {
+          await logos.prime(req.org, r.logoSha, `data:image/png;base64,${png}`).catch(() => {});
+        }
+        return r;
+      }
+      case 'logos:get':
+        return logos.load(req.org, req.srcs);
+      case 'logo:fetch-link':
+        return logos.fetchLink(req.url);
       case 'yaml:validate':
         return checkYaml(req.org, req.text);
       case 'org:apply-yaml':

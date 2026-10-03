@@ -4,7 +4,7 @@ import { displayName } from '../../core/edit';
 import { ago } from '../../core/time';
 import { allRepos, searchRows, treeRows, VIRTUALIZE_AFTER, windowRange, type GroupNode, type Row, type TreeModel } from '../../core/tree';
 import type { RepoInfo } from '../../core/types';
-import { Avatar } from '../../ui/Avatar';
+import { GroupAvatar } from '../logos/GroupAvatar';
 import { Icon } from '../../ui/Icon';
 import { useStore } from '../store';
 import type { Controller, State } from './controller';
@@ -170,15 +170,16 @@ function IndexStatus({ ctl, s, model }: { ctl: Controller; s: State; model: Tree
 
 function Crumbs({ ctl, s, model, node }: { ctl: Controller; s: State; model: TreeModel; node: GroupNode }) {
   const chain = [{ key: '', path: [] as string[], label: s.org, slug: s.org, root: true }, ...node.path.map((_, i) => { const k = node.path.slice(0, i + 1).join('/'); const g = model.byKey.get(k)?.group; return { key: k, path: node.path.slice(0, i + 1), label: g ? displayName(g) : node.path[i], slug: node.path[i], root: false }; })];
+  const logoOf = (key: string) => model.byKey.get(key)?.group.logo;
   return (
     <nav class="rg-crumbs" aria-label="Group path">
       {chain.map((c, i) => (
         <>
           {i > 0 && <span aria-hidden="true">/</span>}
           {i === chain.length - 1 ? (
-            <span class="rg-cur" style="display:inline-flex;gap:6px;align-items:center"><Avatar name={c.slug} label={c.label} cls="rg-mini-av" root={c.root} />{c.label}</span>
+            <span class="rg-cur" style="display:inline-flex;gap:6px;align-items:center"><GroupAvatar logos={ctl.logos} name={c.slug} label={c.label} logo={logoOf(c.key)} cls="rg-mini-av" root={c.root} />{c.label}</span>
           ) : (
-            <a href={`#${c.path.join('/')}`} onClick={(e) => (e.preventDefault(), ctl.go(c.path))}><Avatar name={c.slug} label={c.label} cls="rg-mini-av" root={c.root} />{c.label}</a>
+            <a href={`#${c.path.join('/')}`} onClick={(e) => (e.preventDefault(), ctl.go(c.path))}><GroupAvatar logos={ctl.logos} name={c.slug} label={c.label} logo={logoOf(c.key)} cls="rg-mini-av" root={c.root} />{c.label}</a>
           )}
         </>
       ))}
@@ -192,7 +193,14 @@ function Header({ ctl, s, node, name, isRoot }: { ctl: Controller; s: State; nod
   return (
     <div class="rg-g-head">
       <div class="rg-g-title">
-        <Avatar name={isRoot ? name : node.group.name} label={name} cls="rg-big-av" root={isRoot} />
+        {canEdit && !isRoot ? (
+          <button type="button" class="rg-big-av-btn" aria-label={`Edit logo of ${name}`} title="Edit logo" onClick={() => ctl.openDrawer('edit', node.path, 'logo')}>
+            <GroupAvatar logos={ctl.logos} name={node.group.name} label={name} logo={node.group.logo} cls="rg-big-av" />
+            <span class="rg-pen"><Icon name="pencil" size={12} /></span>
+          </button>
+        ) : (
+          <GroupAvatar logos={ctl.logos} name={isRoot ? name : node.group.name} label={name} logo={node.group.logo} cls="rg-big-av" root={isRoot} />
+        )}
         <div style="min-width:0"><h1>{name}</h1><p>{node.group.description}</p></div>
       </div>
       <div class="rg-g-actions">
@@ -294,7 +302,7 @@ function GroupRow({ ctl, row, fixed }: { ctl: Controller; row: Extract<Row, { ki
   return (
     <div class={`rg-row${fixed ? ' rg-fixed' : ''}`} style={{ '--rg-depth': depth } as any}>
       <button type="button" class="rg-chev" aria-expanded={open} aria-label={`${open ? 'Collapse' : 'Expand'} ${displayName(node.group)}`} onClick={() => ctl.toggleGroup(node.key)}><Icon name="chev" /></button>
-      <Avatar name={node.group.name} label={displayName(node.group)} cls="rg-av" />
+      <GroupAvatar logos={ctl.logos} name={node.group.name} label={displayName(node.group)} logo={node.group.logo} cls="rg-av" />
       <div class="rg-row-main">
         <div class="rg-row-title">
           <a href={`#${node.key}`} class="rg-grp" onClick={(e) => (e.preventDefault(), ctl.go(node.path))}>{displayName(node.group)}</a>

@@ -1,5 +1,6 @@
 import type { Access } from '../core/access';
 import type { IndexMeta } from '../core/index-sync';
+import type { Edit } from '../core/edit';
 import type { Config, RepoInfo } from '../core/types';
 
 /** Content script / popup / options -> background. The token never leaves the background. */
@@ -15,6 +16,8 @@ export type Request =
   | { type: 'org:access'; org: string }
   | { type: 'org:config'; org: string; cachedOnly?: boolean }
   | { type: 'org:progress'; org: string }
+  | { type: 'org:edit'; org: string; edit: Edit }
+  | { type: 'org:create-dotgithub'; org: string }
   | { type: 'prefs:get'; org: string }
   | { type: 'prefs:set'; org: string; prefs: Partial<OrgPrefs> };
 

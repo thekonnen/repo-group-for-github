@@ -7,6 +7,7 @@ import { waitFor } from '../github/navigation';
 import { createController, type Env } from './grouped-view/controller';
 import { GroupedView } from './grouped-view/GroupedView';
 import { SidebarTree } from './sidebar-tree/SidebarTree';
+import { Overlay } from './Overlay';
 
 export interface Mounted {
   key: string;
@@ -38,10 +39,14 @@ export async function mountOrgRepos(org: string, env?: Partial<Env>, doc: Docume
     return null;
   }
   ensureStyle(doc);
-  const { column, filterList } = found;
+  const { column, extras, filterList } = found;
+  const nativeParts = [column, ...extras];
 
   const root = doc.createElement('div');
-  root.className = 'rg-root';
+  // Take on the column's own classes and inline style so GitHub's margins, padding and max-width apply to our view too.
+  root.className = ['rg-root', ...Array.from(column.classList).filter((c) => c !== 'rg-hidden')].join(' ');
+  const inline = column.getAttribute('style');
+  if (inline) root.setAttribute('style', inline.replace(/display\s*:[^;]*;?/g, ''));
   root.dataset.rg = 'view';
   column.before(root);
 
@@ -53,6 +58,11 @@ export async function mountOrgRepos(org: string, env?: Partial<Env>, doc: Docume
     filterList.after(side);
   }
 
+  const overlay = doc.createElement('div');
+  overlay.className = 'rg-root';
+  overlay.dataset.rg = 'overlay';
+  doc.body.appendChild(overlay);
+
   const ctl = createController(org, {
     call,
     location: window.location,
@@ -62,9 +72,10 @@ export async function mountOrgRepos(org: string, env?: Partial<Env>, doc: Docume
   });
   render(<GroupedView ctl={ctl} />, root);
   if (side) render(<SidebarTree ctl={ctl} />, side);
+  render(<Overlay ctl={ctl} />, overlay);
 
   // GitHub's own list is hidden only while the grouped view (or its sign-in state) is showing.
-  const sync = () => column.classList.toggle('rg-hidden', ctl.store.get().view === 'grouped');
+  const sync = () => nativeParts.forEach((el) => el.classList.toggle('rg-hidden', ctl.store.get().view === 'grouped'));
   const unsubscribe = ctl.store.subscribe(sync);
   sync();
   const onHash = () => ctl.syncHash();
@@ -82,9 +93,11 @@ export async function mountOrgRepos(org: string, env?: Partial<Env>, doc: Docume
       ctl.dispose();
       render(null, root);
       if (side) render(null, side);
+      render(null, overlay);
+      overlay.remove();
       root.remove();
       side?.remove();
-      column.classList.remove('rg-hidden');
+      nativeParts.forEach((el) => el.classList.remove('rg-hidden'));
     },
   };
 }

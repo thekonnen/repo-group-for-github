@@ -4,6 +4,7 @@ import type { ConfigResult, ErrorInfo, OrgPrefs, OrgSnapshot, Progress, Request,
 import { createClient, explainTokenRejection, GitHubError, type FetchLike } from './api';
 import { describeToken, loadAuth, pollDeviceFlow, publicAuth, saveAuth, signOut, startDeviceFlow } from './auth';
 import type { KV } from './kv';
+import { commitEdit, createDotGithub, EditError } from './commit';
 import { probeAccess, readOrgFile, type OrgFile } from './org-data';
 import { refreshIndex, type IndexStore } from './repo-index';
 
@@ -18,7 +19,7 @@ export function toErrorInfo(e: unknown): ErrorInfo {
   if (e instanceof GitHubError) {
     return { kind: e.kind, message: e.message, hint: explainTokenRejection(e.message) ?? undefined, resetAt: e.detail?.resetAt };
   }
-  return { kind: 'other', message: e instanceof Error ? e.message : String(e) };
+  return { kind: e instanceof EditError ? 'edit' : 'other', message: e instanceof Error ? e.message : String(e) };
 }
 
 /** Pure request router so it can be tested with a fake fetch and in-memory storage. */
@@ -87,6 +88,11 @@ export function createHandler(deps: Deps) {
         const r = readConfig(file.text, await loadYamlParser(), { org: req.org });
         return { exists: true, sha: file.sha, config: r.config, error: r.error, line: r.line, warnings: r.warnings } satisfies ConfigResult;
       }
+      case 'org:edit':
+        return commitEdit(client, deps.kv, req.org, req.edit);
+      case 'org:create-dotgithub':
+        await createDotGithub(client, req.org);
+        return { created: true };
       case 'prefs:get':
         return (await deps.kv.get<Partial<OrgPrefs>>(`rg:prefs:${req.org}`)) ?? {};
       case 'prefs:set': {

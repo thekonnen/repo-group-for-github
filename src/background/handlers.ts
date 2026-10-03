@@ -4,9 +4,14 @@ import type { ConfigResult, ErrorInfo, OrgPrefs, OrgSnapshot, Progress, Request,
 import { createClient, explainTokenRejection, GitHubError, type FetchLike } from './api';
 import { describeToken, loadAuth, pollDeviceFlow, publicAuth, saveAuth, signOut, startDeviceFlow } from './auth';
 import type { KV } from './kv';
+import { commitEditWithLogo } from './commit-logo';
+import { createLogoService, memoryLogoCache, type LogoCache, type Origins } from './logos';
+import { hasPng, pngOf } from '../core/edit';
 import { checkYaml, commitEdit, commitYaml, createDotGithub, EditError } from './commit';
 import { discardPending, filePending, setPending } from './new-repo';
 import { probeAccess, readOrgFile, type OrgFile } from './org-data';
+import { clearCache, loadSettings, saveSettings, withinInterval } from './cache';
+import { listOrgs } from './orgs';
 import { refreshIndex, type IndexStore } from './repo-index';
 import { refreshActionIndex } from './action-index';
 import { loadDetails } from './details';
@@ -17,6 +22,9 @@ export interface Deps {
   index: IndexStore;
   session?: KV; // storage.session, background only (pending new repository)
   clientId?: string;
+  now?: () => number;
+  logos?: LogoCache; // blob SHA -> data URL (IndexedDB in the browser)
+  origins?: Origins; // optional host permissions for logo links
 }
 
 export function toErrorInfo(e: unknown): ErrorInfo {
@@ -30,6 +38,7 @@ export function toErrorInfo(e: unknown): ErrorInfo {
 export function createHandler(deps: Deps) {
   const clientId = deps.clientId ?? GITHUB_CLIENT_ID;
   const client = createClient({ fetch: deps.fetch, getToken: async () => (await loadAuth(deps.kv))?.token ?? null });
+  const logos = createLogoService({ client, fetch: deps.fetch, cache: deps.logos ?? memoryLogoCache(), origins: deps.origins });
   const FLOW_KEY = 'rg:device-flow';
   // The popup closes as soon as the user opens github.com/login/device, so the pending code lives here
   // and the popup resumes polling with it when it is opened again.
@@ -50,10 +59,13 @@ export function createHandler(deps: Deps) {
     : deps.kv;
   const progress = new Map<string, Progress>();
   /** `index: action` in repo-groups.yml (read from the ETag cache when there is one). */
+  const fileLoads = new Map<string, Promise<OrgFile>>();
   const wantsActionIndex = async (org: string): Promise<boolean> => {
     try {
-      const file = (await deps.kv.get<OrgFile>(`rg:file:${org}`)) ?? (await readOrgFile(client, deps.kv, org));
-      if (!file.exists) return false;
+      // Never costs a request of its own: it reuses the org:config read that the page starts right before refreshing,
+      // or the ETag cache.
+      const file = (await fileLoads.get(org)) ?? (await deps.kv.get<OrgFile>(`rg:file:${org}`));
+      if (!file || !file.exists) return false;
       return readConfig(file.text, await loadYamlParser(), { org }).config?.index === 'action';
     } catch {
       return false;
@@ -96,9 +108,17 @@ export function createHandler(deps: Deps) {
       }
       case 'org:refresh': {
         const publicOnly = !(await loadAuth(deps.kv));
+        if (!req.force) {
+          // Inside the refresh interval a visit costs no request: serve the cached snapshot.
+          const cached = await deps.index.load(req.org);
+          // An Action index still being confirmed is never served from here: the flow below resumes it.
+          const confirming = !!(await deps.index.loadUnconfirmed?.(req.org));
+          if (cached && !confirming && withinInterval(cached.meta, (await loadSettings(deps.kv)).refreshMinutes, (deps.now ?? Date.now)())) return { status: 'ok', mode: 'incremental', repos: cached.repos, meta: cached.meta };
+        }
         try {
           const opts = {
             force: req.force,
+            now: deps.now,
             concurrency: publicOnly ? 2 : 6,
             onProgress: (p: { loaded: number; estimatedTotal: number; phase?: 'action' }) => progress.set(req.org, { loaded: p.loaded, estimatedTotal: p.estimatedTotal, phase: p.phase }),
           };
@@ -113,14 +133,33 @@ export function createHandler(deps: Deps) {
       case 'org:progress':
         return progress.get(req.org) ?? null;
       case 'org:config': {
-        const file = req.cachedOnly ? await deps.kv.get<OrgFile>(`rg:file:${req.org}`) : await readOrgFile(client, deps.kv, req.org);
+        let load: Promise<OrgFile | undefined>;
+        if (req.cachedOnly) load = deps.kv.get<OrgFile>(`rg:file:${req.org}`);
+        else {
+          const p = readOrgFile(client, deps.kv, req.org);
+          fileLoads.set(req.org, p);
+          p.then(() => undefined, () => undefined).then(() => fileLoads.get(req.org) === p && fileLoads.delete(req.org));
+          load = p;
+        }
+        const file = await load;
         if (!file) return null; // nothing cached yet
         if (!file.exists) return { exists: false } satisfies ConfigResult;
         const r = readConfig(file.text, await loadYamlParser(), { org: req.org });
         return { exists: true, sha: file.sha, config: r.config, error: r.error, line: r.line, warnings: r.warnings } satisfies ConfigResult;
       }
-      case 'org:edit':
-        return commitEdit(client, deps.kv, req.org, req.edit);
+      case 'org:edit': {
+        if (!hasPng(req.edit)) return commitEdit(client, deps.kv, req.org, req.edit);
+        const r = await commitEditWithLogo(client, deps.kv, req.org, req.edit);
+        const png = pngOf(req.edit);
+        if (r.status === 'ok' && r.logoSha && png) {
+          await logos.prime(req.org, r.logoSha, `data:image/png;base64,${png}`).catch(() => {});
+        }
+        return r;
+      }
+      case 'logos:get':
+        return logos.load(req.org, req.srcs);
+      case 'logo:fetch-link':
+        return logos.fetchLink(req.url);
       case 'yaml:validate':
         return checkYaml(req.org, req.text);
       case 'org:apply-yaml':
@@ -143,6 +182,17 @@ export function createHandler(deps: Deps) {
         await deps.kv.set(`rg:prefs:${req.org}`, next);
         return next;
       }
+      case 'orgs:list': {
+        const auth = await loadAuth(deps.kv);
+        if (!auth) return { orgs: [], fetchedAt: 0 };
+        return listOrgs(client, deps.kv, { minutes: (await loadSettings(deps.kv)).refreshMinutes, now: (deps.now ?? Date.now)(), user: auth.login, force: req.force });
+      }
+      case 'cache:clear':
+        return clearCache(deps.kv, deps.index, deps.logos);
+      case 'settings:get':
+        return loadSettings(deps.kv);
+      case 'settings:set':
+        return saveSettings(deps.kv, req.settings);
       case 'org:file':
         return readOrgFile(client, deps.kv, req.org);
       case 'org:access':

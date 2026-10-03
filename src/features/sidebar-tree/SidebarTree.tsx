@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'preact/hooks';
 import { sideItems } from '../../core/tree';
 import { Icon } from '../../ui/Icon';
+import { useLogoSrc } from '../logos/logo-store';
 import type { Controller } from '../grouped-view/controller';
 import { useStore } from '../store';
 
@@ -26,7 +28,7 @@ export function SidebarTree({ ctl }: { ctl: Controller }) {
               aria-current={s.view === 'grouped' && cur === it.key ? 'true' : undefined}
               onClick={() => ctl.go(it.key ? it.key.split('/') : [])}
             >
-              <Icon name={it.key ? 'folder' : 'repo'} />
+              <SideIcon ctl={ctl} folder={!!it.key} logo={it.logo} />
               <span>{it.name}</span>
               <span class="rg-count">{it.total}</span>
             </button>
@@ -35,4 +37,13 @@ export function SidebarTree({ ctl }: { ctl: Controller }) {
       </ul>
     </div>
   );
+}
+
+/** Logo (16px) when the group has one that loads, otherwise GitHub's folder icon. */
+function SideIcon({ ctl, folder, logo }: { ctl: Controller; folder: boolean; logo: string | null }) {
+  const src = useLogoSrc(ctl.logos, logo);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [src]);
+  if (src && !failed) return <img class="rg-tree-logo" src={src} alt="" onError={() => setFailed(true)} />;
+  return <Icon name={folder ? 'folder' : 'repo'} />;
 }

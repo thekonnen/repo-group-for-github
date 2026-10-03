@@ -1,12 +1,17 @@
+import { logoPath } from './logo';
 import { findGroup } from './placement';
 import type { Group } from './types';
 
 /** The single change behind Edit group / New group. Re-applied to a fresh file when a commit conflicts (§7). */
 export type Edit =
-  | { kind: 'edit'; path: string[]; name: string; title?: string; description: string; match: string[] }
-  | { kind: 'new'; parent: string[]; name: string; title?: string; description: string; match: string[] }
+  | { kind: 'edit'; path: string[]; name: string; title?: string; description: string; match: string[]; logo?: LogoChange }
+  | { kind: 'new'; parent: string[]; name: string; title?: string; description: string; match: string[]; logo?: LogoChange }
   /** F9: adds the exact repo name to the match list of an existing group. */
   | { kind: 'file'; path: string[]; repo: string };
+
+/** A logo change (F7): a new 192x192 PNG (base64, committed with the YAML in one commit) or "use the letter". */
+export type LogoChange = { png: string } | { remove: true };
+export const hasPng = (e: Edit): boolean => e.kind !== 'file' && !!e.logo && 'png' in e.logo;
 
 /** Letters that do not decompose into base + accent. */
 const FOLD: Record<string, string> = { ß: 'ss', æ: 'ae', œ: 'oe', ø: 'o', đ: 'd', ð: 'd', ł: 'l', þ: 'th', ı: 'i' };
@@ -75,7 +80,8 @@ export function applyEdit(groups: Group[], edit: Edit): { groups: Group[] } | { 
     if (!list) return { error: `The group "${edit.parent.join('/')}" no longer exists. Reload the page and try again.` };
     if (!name) return { error: 'Name is required.' };
     if (list.some((g) => g.name === name)) return { error: `A group named "${name}" already exists here.` };
-    list.push({ name, ...(cleanTitle(edit.title, name) ? { title: cleanTitle(edit.title, name) } : {}), description: edit.description.trim(), logo: null, teams: [], match, groups: [] });
+    const logo = edit.logo && 'png' in edit.logo ? logoPath([...edit.parent, name]) : null;
+    list.push({ name, ...(cleanTitle(edit.title, name) ? { title: cleanTitle(edit.title, name) } : {}), description: edit.description.trim(), logo, teams: [], match, groups: [] });
     return { groups: next };
   }
   const g = findGroup(next, edit.path);
@@ -92,6 +98,7 @@ export function applyEdit(groups: Group[], edit: Edit): { groups: Group[] } | { 
   }
   g.description = edit.description.trim();
   g.match = match;
+  if (edit.logo) g.logo = 'png' in edit.logo ? logoPath([...parent, name]) : null;
   return { groups: next };
 }
 
@@ -101,8 +108,15 @@ export const editPath = (e: Edit): string =>
 /** `chore(repo-groups): edit group infra/dagu` (§7). */
 export function commitMessage(e: Edit): string {
   if (e.kind === 'file') return `chore(repo-groups): file ${e.repo} in ${e.path.join('/')}`;
-  if (e.kind === 'new') return `chore(repo-groups): add ${e.parent.length ? 'subgroup' : 'group'} ${editPath(e)}`;
+  if (e.kind === 'new') return `chore(repo-groups): add ${e.parent.length ? 'subgroup' : 'group'} ${editPath(e)}${hasPng(e) ? ' with logo' : ''}`;
   const from = e.path.join('/');
   const to = editPath(e);
+  if (from === to && hasPng(e)) return `chore(repo-groups): add logo for ${to}`;
   return from === to ? `chore(repo-groups): edit group ${from}` : `chore(repo-groups): rename group ${from} to ${to}`;
 }
+
+/** Where the PNG of an edit is stored, or null when the edit has no new logo. */
+export const editLogoPath = (e: Edit): string | null => (hasPng(e) ? logoPath(editPath(e).split('/')) : null);
+
+/** The new logo PNG (base64) of an edit, if it carries one. */
+export const pngOf = (e: Edit): string | null => (e.kind !== 'file' && e.logo && 'png' in e.logo ? e.logo.png : null);

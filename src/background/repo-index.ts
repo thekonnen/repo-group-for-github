@@ -11,6 +11,8 @@ export interface IndexStore {
    */
   loadUnconfirmed?(org: string): Promise<Unconfirmed | null>;
   saveUnconfirmed?(org: string, entry: Unconfirmed | null): Promise<void>;
+  /** Removes every stored index, including the unconfirmed lists (Options > Clear cache). */
+  clear(): Promise<void>;
 }
 
 export interface Unconfirmed {
@@ -36,6 +38,10 @@ export function memoryIndexStore(): IndexStore {
     },
     async save(org, repos, meta) {
       m.set(org, { repos: structuredClone(repos), meta: { ...meta } });
+    },
+    async clear() {
+      m.clear();
+      pending.clear();
     },
   };
 }

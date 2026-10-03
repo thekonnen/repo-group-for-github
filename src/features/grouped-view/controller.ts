@@ -2,7 +2,8 @@ import { ago } from '../../core/time';
 import { buildHash, parseHash } from '../../core/layers';
 import type { IndexMeta } from '../../core/index-sync';
 import type { Access } from '../../core/access';
-import { finalName, type Edit } from '../../core/edit';
+import { editLogoPath, finalName, pngOf, type Edit } from '../../core/edit';
+import type { Group } from '../../core/types';
 import { writeConfig } from '../../core/yaml-write';
 import type { RepoInfo } from '../../core/types';
 import { defaultExpanded, memoTree, type TreeModel } from '../../core/tree';
@@ -10,6 +11,7 @@ import { hasGithubFilter } from '../../github/route';
 import { CallError, type Call } from '../../github/client';
 import type { ConfigResult, ErrorInfo, OrgPrefs, OrgSnapshot, Progress } from '../../github/messages';
 import { DETAILS_MAX_REPOS, type DetailsMap } from '../../core/details';
+import { createLogoStore } from '../logos/logo-store';
 import { createStore, type Store } from '../store';
 
 export interface SignIn {
@@ -39,7 +41,7 @@ export interface State {
   access: Access | null;
   /** Separate open issue / PR counts (F14), loaded lazily for small groups. */
   details: DetailsMap;
-  drawer: { mode: 'edit' | 'new'; path: string[] } | null;
+  drawer: { mode: 'edit' | 'new'; path: string[]; focus?: 'logo' } | null;
   yaml: { text: string } | null;
   toast: { text: string; kind: 'ok' | 'error' } | null;
 }
@@ -95,6 +97,18 @@ export function createController(org: string, env: Env) {
     drawer: null,
     yaml: null,
     toast: null,
+  });
+  // Logos load through the background; every config change asks for the references it has not seen yet (F7).
+  const logos = createLogoStore(env.call, org);
+  let logoCfg: unknown;
+  store.subscribe(() => {
+    const cfg = store.get().config;
+    if (cfg === logoCfg) return;
+    logoCfg = cfg;
+    const refs: string[] = [];
+    const walk = (gs: Group[]) => gs.forEach((g) => (g.logo && refs.push(g.logo), walk(g.groups)));
+    if (cfg && cfg.exists && cfg.config) walk(cfg.config.groups);
+    logos.want(refs);
   });
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
@@ -160,7 +174,11 @@ export function createController(org: string, env: Env) {
   async function init() {
     const prefs = await env.call<Partial<OrgPrefs>>({ type: 'prefs:get', org }).catch(() => ({}) as Partial<OrgPrefs>);
     if (prefs.expanded) store.set({ expanded: new Set(prefs.expanded), expandedTouched: true });
-    if (!hasGithubFilter(env.location.search) && prefs.view) store.set({ view: prefs.view });
+    if (!hasGithubFilter(env.location.search)) {
+      // A saved view wins; otherwise Options > "Show grouped view by default" (default on) decides.
+      const view = prefs.view ?? (prefs.groupedByDefault === false ? 'list' : undefined);
+      if (view) store.set({ view });
+    }
     const auth = await env.call<{ signedIn: boolean }>({ type: 'auth:status' }).catch(() => ({ signedIn: false }));
     if (disposed) return;
     if (!auth.signedIn) return void store.set({ phase: 'signed-out' });
@@ -191,6 +209,9 @@ export function createController(org: string, env: Env) {
       const r = await env.call<any>({ type: 'org:edit', org, edit });
       if (r.status === 'needs-repo') return { ok: false, message: '', needsRepo: true };
       const before = store.get();
+      const logoFile = editLogoPath(edit);
+      const png = pngOf(edit);
+      if (logoFile && png) logos.put(logoFile, `data:image/png;base64,${png}`);
       const next: Partial<State> = { config: { exists: true, sha: r.sha, config: r.config, warnings: r.warnings }, indexVersion: before.indexVersion + 1, drawer: null };
       const expanded = new Set(before.expanded);
       if (edit.kind === 'new' && edit.parent.length) expanded.add(edit.parent.join('/')); // creating a group expands its parent
@@ -275,6 +296,9 @@ export function createController(org: string, env: Env) {
 
   return {
     store,
+    logos,
+    /** Loads an image from a link in the background (CORS-free, asks for the site's permission). Resolves to a data URL. */
+    fetchLogoLink: async (url: string) => (await env.call<{ dataUrl: string }>({ type: 'logo:fetch-link', url })).dataUrl,
     model,
     init,
     refresh,
@@ -332,7 +356,7 @@ export function createController(org: string, env: Env) {
       }
       return save(edit);
     },
-    openDrawer: (mode: 'edit' | 'new', path: string[]) => store.set({ drawer: { mode, path } }),
+    openDrawer: (mode: 'edit' | 'new', path: string[], focus?: 'logo') => store.set({ drawer: { mode, path, ...(focus ? { focus } : {}) } }),
     closeDrawer: () => store.set({ drawer: null }),
     dismissToast: () => (clearTimeout(toastTimer), store.set({ toast: null })),
     /** Hash changes (also back/forward): #infra/dagu. */

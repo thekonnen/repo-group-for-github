@@ -194,6 +194,25 @@ describe('Action index (index: action)', () => {
   });
 });
 
+describe('cache:clear and the Action index', () => {
+  it('empties the unconfirmed list and the detail-count cache but keeps the token and prefs', async () => {
+    const kv = memoryKV();
+    kv.data.set('rg:auth', { token: 'tok', kind: 'oauth', login: 'ana', avatarUrl: '' });
+    const index = memoryIndexStore();
+    const f = fakeFetch(graphqlRoute(() => true));
+    const h = createHandler({ fetch: f.fetch, kv, index });
+    await h({ type: 'prefs:set', org, prefs: { view: 'list' } });
+    await h({ type: 'org:details', org, repos: ['a'] });
+    await index.saveUnconfirmed!(org, { repos: [{ name: 'secret-repo' }], generatedAt: GENERATED });
+    expect(kv.data.has(`rg:details:${org}`)).toBe(true);
+    expect(await h({ type: 'cache:clear' })).toMatchObject({ ok: true });
+    expect(await index.loadUnconfirmed!(org)).toBeNull();
+    expect(kv.data.has(`rg:details:${org}`)).toBe(false);
+    expect(kv.data.get('rg:auth')).toMatchObject({ token: 'tok' });
+    expect(kv.data.get(`rg:prefs:${org}`)).toMatchObject({ view: 'list' });
+  });
+});
+
 describe('detail counts (org:details)', () => {
   const names = (n: number) => makeRepos(n).map((r) => r.name);
   it('loads split counts in batches of 50, never per repository, and caches them for the refresh interval', async () => {

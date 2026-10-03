@@ -20,18 +20,26 @@ export type Request =
   | { type: 'org:details'; org: string; repos: string[] }
   | { type: 'org:edit'; org: string; edit: Edit }
   | { type: 'org:create-dotgithub'; org: string }
+  | { type: 'logos:get'; org: string; srcs: string[] } // F7: logo references of the org file -> data URLs
+  | { type: 'logo:fetch-link'; url: string } // F7: an image from a link, for the cropper
   | { type: 'newrepo:pending'; entry: Omit<PendingRepo, 'createdAt'> }
   | { type: 'newrepo:discard' }
   | { type: 'newrepo:landed'; org: string; repo: string }
   | { type: 'yaml:validate'; org: string; text: string }
   | { type: 'org:apply-yaml'; org: string; text: string; baseSha: string | null; changes: number }
   | { type: 'prefs:get'; org: string }
-  | { type: 'prefs:set'; org: string; prefs: Partial<OrgPrefs> };
+  | { type: 'prefs:set'; org: string; prefs: Partial<OrgPrefs> }
+  | { type: 'orgs:list'; force?: boolean }
+  | { type: 'cache:clear' }
+  | { type: 'settings:get' }
+  | { type: 'settings:set'; settings: Partial<{ refreshMinutes: number }> };
 
 /** Per-org view preferences. The content script never touches storage; it asks the background. */
 export interface OrgPrefs {
   view: 'grouped' | 'list';
   expanded: string[];
+  /** Options > "Show grouped view by default". Used when the org has no saved view. Default true. */
+  groupedByDefault?: boolean;
 }
 
 /** The org's repo-groups.yml, parsed in the background so the page script stays small. */

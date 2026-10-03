@@ -1,8 +1,10 @@
 import type { Access } from '../core/access';
 import type { IndexMeta } from '../core/index-sync';
 import type { Edit } from '../core/edit';
+import type { GrantResult } from '../core/grant';
 import type { PendingRepo } from '../core/newrepo';
-import type { Config, RepoInfo } from '../core/types';
+import type { TeamAccess } from '../core/teams';
+import type { Config, Permission, RepoInfo } from '../core/types';
 
 /** Content script / popup / options -> background. The token never leaves the background. */
 export type Request =
@@ -27,6 +29,9 @@ export type Request =
   | { type: 'newrepo:landed'; org: string; repo: string }
   | { type: 'yaml:validate'; org: string; text: string }
   | { type: 'org:apply-yaml'; org: string; text: string; baseSha: string | null; changes: number }
+  | { type: 'org:teams'; org: string; force?: boolean }
+  | { type: 'team:access'; org: string; slugs: string[]; force?: boolean }
+  | { type: 'team:grant'; org: string; team: string; repo: string; permission: Permission }
   | { type: 'prefs:get'; org: string }
   | { type: 'prefs:set'; org: string; prefs: Partial<OrgPrefs> }
   | { type: 'orgs:list'; force?: boolean }
@@ -64,3 +69,20 @@ export interface OrgSnapshot {
 }
 
 export type { Access };
+
+/** F12: an organization team, from GraphQL. */
+export interface OrgTeam {
+  slug: string;
+  name: string;
+  privacy?: string;
+  parent?: string | null;
+  members?: number;
+}
+
+export interface TeamsResult {
+  teams: OrgTeam[];
+  /** Custom repository role -> base role; null when the user cannot read them (not an org owner). */
+  customRoles: Record<string, string> | null;
+}
+
+export type { GrantResult, TeamAccess };

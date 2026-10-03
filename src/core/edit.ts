@@ -1,17 +1,28 @@
 import { logoPath } from './logo';
 import { findGroup } from './placement';
-import type { Group } from './types';
+import type { Group, TeamTag } from './types';
 
 /** The single change behind Edit group / New group. Re-applied to a fresh file when a commit conflicts (§7). */
 export type Edit =
-  | { kind: 'edit'; path: string[]; name: string; title?: string; description: string; match: string[]; logo?: LogoChange }
-  | { kind: 'new'; parent: string[]; name: string; title?: string; description: string; match: string[]; logo?: LogoChange }
+  /** `teams` (F12): when given it replaces the group's own team tags; when absent they are kept. */
+  | { kind: 'edit'; path: string[]; name: string; title?: string; description: string; match: string[]; logo?: LogoChange; teams?: TeamTag[] }
+  | { kind: 'new'; parent: string[]; name: string; title?: string; description: string; match: string[]; logo?: LogoChange; teams?: TeamTag[] }
   /** F9: adds the exact repo name to the match list of an existing group. */
   | { kind: 'file'; path: string[]; repo: string };
 
 /** A logo change (F7): a new 192x192 PNG (base64, committed with the YAML in one commit) or "use the letter". */
 export type LogoChange = { png: string } | { remove: true };
 export const hasPng = (e: Edit): boolean => e.kind !== 'file' && !!e.logo && 'png' in e.logo;
+
+/** Trimmed tags, empty slugs dropped, one tag per slug (the last one wins). */
+export function cleanTeams(teams: TeamTag[]): TeamTag[] {
+  const map = new Map<string, TeamTag>();
+  for (const t of teams) {
+    const slug = t.slug.trim();
+    if (slug) map.set(slug, { slug, permission: t.permission.trim() || 'push' });
+  }
+  return [...map.values()];
+}
 
 /** Letters that do not decompose into base + accent. */
 const FOLD: Record<string, string> = { ß: 'ss', æ: 'ae', œ: 'oe', ø: 'o', đ: 'd', ð: 'd', ł: 'l', þ: 'th', ı: 'i' };
@@ -81,7 +92,7 @@ export function applyEdit(groups: Group[], edit: Edit): { groups: Group[] } | { 
     if (!name) return { error: 'Name is required.' };
     if (list.some((g) => g.name === name)) return { error: `A group named "${name}" already exists here.` };
     const logo = edit.logo && 'png' in edit.logo ? logoPath([...edit.parent, name]) : null;
-    list.push({ name, ...(cleanTitle(edit.title, name) ? { title: cleanTitle(edit.title, name) } : {}), description: edit.description.trim(), logo, teams: [], match, groups: [] });
+    list.push({ name, ...(cleanTitle(edit.title, name) ? { title: cleanTitle(edit.title, name) } : {}), description: edit.description.trim(), logo, teams: edit.teams ? cleanTeams(edit.teams) : [], match, groups: [] });
     return { groups: next };
   }
   const g = findGroup(next, edit.path);
@@ -99,6 +110,7 @@ export function applyEdit(groups: Group[], edit: Edit): { groups: Group[] } | { 
   g.description = edit.description.trim();
   g.match = match;
   if (edit.logo) g.logo = 'png' in edit.logo ? logoPath([...parent, name]) : null;
+  if (edit.teams) g.teams = cleanTeams(edit.teams);
   return { groups: next };
 }
 

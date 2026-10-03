@@ -2,10 +2,12 @@ import type { Access } from '../../core/access';
 import { findGroup } from '../../core/placement';
 import { describeDestination, pickerOptions, type Destination } from '../../core/newrepo';
 import { normName } from '../../core/glob';
+import { cleanTeams } from '../../core/edit';
+import { effectiveTeams } from '../../core/teams';
 import { buildTree } from '../../core/tree';
-import type { Group, RepoInfo } from '../../core/types';
+import type { Group, RepoInfo, TeamTag } from '../../core/types';
 import type { Call } from '../../github/client';
-import type { ConfigResult, OrgSnapshot } from '../../github/messages';
+import type { ConfigResult, OrgSnapshot, OrgTeam, TeamsResult } from '../../github/messages';
 import { createStore, type Store } from '../store';
 
 export interface NrState {
@@ -19,6 +21,14 @@ export interface NrState {
   rawName: string;
   /** Explicit pick ('' = Automatic). */
   pickedKey: string;
+  /** Teams that get access right after creation (F12). Pre-filled from the destination group until edited by hand. */
+  teams: TeamTag[];
+  teamsTouched: boolean;
+  /** Org owners can always give teams access; others need admin on the new repo (they usually have it as its creator). */
+  isOwner: boolean;
+  /** The org's teams for the picker; null when they could not be read (then a slug can be typed). */
+  teamList: OrgTeam[] | null;
+  customRoles: string[];
 }
 
 export interface NrEnv {
@@ -31,15 +41,15 @@ export type NrController = ReturnType<typeof createNewRepoController>;
 
 /** State of the Group field on "Create a new repository" (F9). The page glue feeds it the name and the owner. */
 export function createNewRepoController(env: NrEnv) {
-  const store: Store<NrState> = createStore<NrState>({ org: null, phase: 'loading', groups: [], repos: [], canWrite: true, rawName: '', pickedKey: '' });
+  const store: Store<NrState> = createStore<NrState>({ org: null, phase: 'loading', groups: [], repos: [], canWrite: true, rawName: '', pickedKey: '', teams: [], teamsTouched: false, isOwner: false, teamList: null, customRoles: [] });
   let seq = 0;
 
   /** (Re)loads the org's file, index cache and access. An org without a repo-groups.yml hides the field. */
   async function setOrg(org: string | null) {
     if (org && store.get().org === org) return; // already loaded or loading
     const mine = ++seq;
-    if (!org) return store.set({ org, phase: 'hidden', groups: [], pickedKey: '' });
-    store.set({ org, phase: 'loading' });
+    if (!org) return store.set({ org, phase: 'hidden', groups: [], pickedKey: '', teams: [], teamsTouched: false });
+    store.set({ org, phase: 'loading', teams: [], teamsTouched: false, teamList: null });
     try {
       const [cfg, snap, acc] = await Promise.all([
         env.call<ConfigResult | null>({ type: 'org:config', org }),
@@ -51,7 +61,9 @@ export function createNewRepoController(env: NrEnv) {
       if (!groups) return store.set({ phase: 'hidden', groups: [], pickedKey: '' });
       const canWrite = acc ? acc.access.canWriteOrg : true;
       const preset = env.presetGroup && findGroup(groups, env.presetGroup.split('/')) ? env.presetGroup : '';
-      store.set({ phase: 'ready', groups, repos: snap?.repos ?? [], canWrite, pickedKey: canWrite ? preset : '' });
+      store.set({ phase: 'ready', groups, repos: snap?.repos ?? [], canWrite, isOwner: acc?.access.level === 'owner', pickedKey: canWrite ? preset : '' });
+      syncTeams();
+      void loadTeamList(org, mine);
     } catch (e) {
       if (mine === seq) {
         console.debug('[RG] could not load the groups for the new repository field', e);
@@ -60,8 +72,36 @@ export function createNewRepoController(env: NrEnv) {
     }
   }
 
-  const setName = (rawName: string) => store.get().rawName !== rawName && store.set({ rawName });
-  const pick = (pickedKey: string) => store.set({ pickedKey: store.get().canWrite ? pickedKey : '' });
+  /** The org's teams, for the picker. Failing to read them only means a slug has to be typed. */
+  async function loadTeamList(org: string, mine: number) {
+    try {
+      const r = await env.call<TeamsResult>({ type: 'org:teams', org });
+      if (mine === seq) store.set({ teamList: r.teams, customRoles: r.customRoles ? Object.keys(r.customRoles) : [] });
+    } catch (e) {
+      console.debug('[RG] could not list the teams of the org', e);
+    }
+  }
+
+  /** Until the person edits the teams, they follow the destination: its effective teams (own + inherited). */
+  function syncTeams() {
+    const s = store.get();
+    if (s.teamsTouched || s.phase !== 'ready') return;
+    const key = destination().destKey;
+    const teams = Object.entries(effectiveTeams(s.groups, key ? key.split('/') : [])).map(([slug, t]) => ({ slug, permission: t.permission }));
+    if (JSON.stringify(teams) !== JSON.stringify(s.teams)) store.set({ teams });
+  }
+
+  const setName = (rawName: string) => {
+    if (store.get().rawName === rawName) return;
+    store.set({ rawName });
+    syncTeams();
+  };
+  const pick = (pickedKey: string) => {
+    store.set({ pickedKey: store.get().canWrite ? pickedKey : '' });
+    syncTeams();
+  };
+  /** A manual edit: from now on the teams stay as the person set them. */
+  const setTeams = (teams: TeamTag[]) => store.set({ teams, teamsTouched: true });
 
   const finalName = (): string => normName(store.get().rawName);
 
@@ -80,8 +120,8 @@ export function createNewRepoController(env: NrEnv) {
     const s = store.get();
     const name = finalName();
     if (!s.org || s.phase !== 'ready' || !name) return null;
-    return { org: s.org, repo: name, groupPath: s.canWrite ? s.pickedKey : '', explicit: s.canWrite && !!s.pickedKey, teams: [] as { slug: string; permission: string }[] };
+    return { org: s.org, repo: name, groupPath: s.canWrite ? s.pickedKey : '', explicit: s.canWrite && !!s.pickedKey, teams: cleanTeams(s.teams).map((t) => ({ slug: t.slug, permission: t.permission })) };
   }
 
-  return { store, setOrg, setName, pick, destination, options, pendingEntry, finalName };
+  return { store, setOrg, setName, pick, setTeams, destination, options, pendingEntry, finalName };
 }

@@ -13,6 +13,7 @@ import type { ConfigResult, ErrorInfo, OrgPrefs, OrgSnapshot, Progress } from '.
 import { DETAILS_MAX_REPOS, type DetailsMap } from '../../core/details';
 import { createLogoStore } from '../logos/logo-store';
 import { createStore, type Store } from '../store';
+import { createTeamsController } from '../teams/teams-controller';
 
 export interface SignIn {
   deviceCode: string;
@@ -68,6 +69,10 @@ export interface Env {
   history: Pick<History, 'pushState'>;
   open: (url: string) => void;
   sleep?: (ms: number) => Promise<void>;
+  /** Team repositories page (F12): the slug of the team whose page is open. */
+  team?: string;
+  /** Display name of that team ("Konnen_Team"), when the page shows it. */
+  teamName?: string;
 }
 
 export type Controller = ReturnType<typeof createController>;
@@ -75,6 +80,8 @@ export type Controller = ReturnType<typeof createController>;
 const infoOf = (e: unknown): ErrorInfo => (e instanceof CallError ? e.info : { kind: 'other', message: e instanceof Error ? e.message : String(e) });
 
 export function createController(org: string, env: Env) {
+  // The team page keeps its own view preferences, apart from the org page.
+  const prefsOrg = env.team ? `${org}/teams/${env.team}` : org;
   const sleep = env.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const store: Store<State> = createStore<State>({
     org,
@@ -98,6 +105,7 @@ export function createController(org: string, env: Env) {
     yaml: null,
     toast: null,
   });
+  const teams = createTeamsController({ org, team: env.team, teamName: env.teamName, call: env.call, store, afterAccess: () => applyDefaults() });
   // Logos load through the background; every config change asks for the references it has not seen yet (F7).
   const logos = createLogoStore(env.call, org);
   let logoCfg: unknown;
@@ -115,7 +123,7 @@ export function createController(org: string, env: Env) {
   let prefsTimer: ReturnType<typeof setTimeout> | undefined;
 
   const savePrefs = (prefs: Partial<OrgPrefs>) => {
-    env.call({ type: 'prefs:set', org, prefs }).catch(() => {});
+    env.call({ type: 'prefs:set', org: prefsOrg, prefs }).catch(() => {});
   };
 
   /** Tree for the current data; placement is memoized per (config sha, index version). */
@@ -123,7 +131,10 @@ export function createController(org: string, env: Env) {
     const s = store.get();
     if (!s.config) return null;
     const groups = s.config.exists && s.config.config ? s.config.config.groups : [];
-    return memoTree(s.config.exists ? s.config.sha : null, `${s.org}:${s.indexVersion}`, groups, s.repos);
+    const sha = s.config.exists ? s.config.sha : null;
+    const team = teams.teamModel(sha, `${s.org}:${s.indexVersion}`, groups, s.repos);
+    if (team !== undefined) return team;
+    return memoTree(sha, `${s.org}:${s.indexVersion}`, groups, s.repos);
   }
 
   function applyDefaults() {
@@ -172,7 +183,7 @@ export function createController(org: string, env: Env) {
   }
 
   async function init() {
-    const prefs = await env.call<Partial<OrgPrefs>>({ type: 'prefs:get', org }).catch(() => ({}) as Partial<OrgPrefs>);
+    const prefs = await env.call<Partial<OrgPrefs>>({ type: 'prefs:get', org: prefsOrg }).catch(() => ({}) as Partial<OrgPrefs>);
     if (prefs.expanded) store.set({ expanded: new Set(prefs.expanded), expandedTouched: true });
     if (!hasGithubFilter(env.location.search)) {
       // A saved view wins; otherwise Options > "Show grouped view by default" (default on) decides.
@@ -296,6 +307,7 @@ export function createController(org: string, env: Env) {
 
   return {
     store,
+    teams,
     logos,
     /** Loads an image from a link in the background (CORS-free, asks for the site's permission). Resolves to a data URL. */
     fetchLogoLink: async (url: string) => (await env.call<{ dataUrl: string }>({ type: 'logo:fetch-link', url })).dataUrl,
@@ -307,6 +319,7 @@ export function createController(org: string, env: Env) {
     openVerification: (s: SignIn) => env.open(`${s.verificationUri}?user_code=${encodeURIComponent(s.userCode)}`),
     dispose() {
       disposed = true;
+      teams.dispose();
       clearTimeout(prefsTimer);
       clearTimeout(toastTimer);
     },

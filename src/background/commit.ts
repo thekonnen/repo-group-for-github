@@ -105,8 +105,8 @@ export interface YamlCheck {
 }
 
 /** Validates editor text (fences stripped, `repositories:` and unknown keys ignored). The page diffs the returned tree. */
-export async function checkYaml(org: string, text: string): Promise<YamlCheck> {
-  const r = readConfig(text, await loadYamlParser(), { org });
+export async function checkYaml(org: string, text: string, knownTeams?: string[]): Promise<YamlCheck> {
+  const r = readConfig(text, await loadYamlParser(), { org, knownTeams });
   return { config: r.config, error: r.error, line: r.line, warnings: r.warnings, stripped: !!r.stripped };
 }
 

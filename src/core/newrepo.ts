@@ -89,9 +89,24 @@ export interface PendingRepo {
 
 export const PENDING_TTL_MS = 10 * 60 * 1000;
 
-/** Text of the toast shown on the repo page after filing. */
-export function filedMessage(p: { groupKey: string; committed: boolean; groupLabel?: string }): string {
-  // SEAM (F12): the Teams agent appends " · <team> can write" parts here.
-  const where = p.groupKey ? `Filed in ${p.groupLabel ?? pathLabel(p.groupKey)}` : 'Created, not in any group yet';
-  return where + (p.committed ? ' · repo-groups.yml updated' : '');
+/** What happened to one selected team after the repo was created (F12). */
+export type GrantOutcome = { team: string; permission: string; ok: true } | { team: string; permission: string; ok: false; message: string };
+
+/** "konnen_team can write": the sentence part for a team that now has access. */
+export function teamPhrase(team: string, permission: string): string {
+  const what: Record<string, string> = { pull: 'can read', triage: 'can triage', push: 'can write', maintain: 'can maintain', admin: 'has admin access' };
+  return `${team} ${what[permission] ?? `has the ${permission} role`}`;
 }
+
+/** Text of the toast shown on the repo page after filing, e.g. "Filed in infra / dagu · konnen_team can write · repo-groups.yml updated". */
+export function filedMessage(p: { groupKey: string; committed: boolean; groupLabel?: string; granted?: { team: string; permission: string }[] }): string {
+  const where = p.groupKey ? `Filed in ${p.groupLabel ?? pathLabel(p.groupKey)}` : 'Created, not in any group yet';
+  const teams = (p.granted ?? []).map((t) => ` · ${teamPhrase(t.team, t.permission)}`).join('');
+  return where + teams + (p.committed ? ' · repo-groups.yml updated' : '');
+}
+
+/** The part of the toast for teams that could not be added: which team and why. */
+export const failedTeamsText = (failed: { team: string; message: string }[]): string => failed.map((f) => `${f.team} was not added: ${f.message}.`).join(' ');
+
+/** Where to fix team access by hand. */
+export const collaboratorsUrl = (org: string, repo: string): string => `https://github.com/${org}/${repo}/settings/access`;

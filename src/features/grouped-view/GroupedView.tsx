@@ -357,7 +357,7 @@ function GroupRow({ ctl, row, fixed }: { ctl: Controller; row: Extract<Row, { ki
           <span>{node.latest ? `Updated ${ago(node.latest)}` : 'No pushes yet'}</span>
         </div>
       </div>
-      <div class="rg-row-side"><span>Rules: {node.group.match.length ? node.group.match.join(', ') : '—'}</span></div>
+      <div class="rg-row-side"><span class="rg-rules-line" title={node.group.match.join(', ')}>Rules: {node.group.match.length ? node.group.match.join(', ') : '—'}</span></div>
     </div>
   );
 }

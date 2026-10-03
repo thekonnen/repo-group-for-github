@@ -110,8 +110,12 @@ function Picker({ ctl, open, setOpen, active, setActive, keys, btn, list }: Pick
   const opts = ctl.options();
   const optId = (k: string) => `rg-opt-${k === AUTO ? 'auto' : k.replace(/[^\w-]/g, '_')}`;
 
+  // Automatic with a rule hit: that group is where the repo lands, so it is the one marked (and focused) when the list opens.
+  const autoPick = s.pickedKey === AUTO && d.kind === 'auto-hit' ? d.autoKey : '';
+  const opened = useRef(false);
   const show = () => {
-    setActive(Math.max(0, keys.indexOf(s.pickedKey)));
+    setActive(Math.max(0, keys.indexOf(autoPick || s.pickedKey)));
+    opened.current = true;
     setOpen(true);
   };
   const close = (refocus: boolean) => {
@@ -134,7 +138,10 @@ function Picker({ ctl, open, setOpen, active, setActive, keys, btn, list }: Pick
     return () => document.removeEventListener('mousedown', away, true);
   }, [open]);
   useEffect(() => {
-    if (open) list.current?.querySelector('.rg-active')?.scrollIntoView?.({ block: 'nearest' });
+    if (!open) return;
+    // Right after opening, bring the current group to the middle of the list; while moving with the arrows, just keep it visible.
+    list.current?.querySelector('.rg-active')?.scrollIntoView?.({ block: opened.current ? 'center' : 'nearest' });
+    opened.current = false;
   }, [open, active]);
 
   const onButtonKey = (e: KeyboardEvent) => {
@@ -217,15 +224,17 @@ function Picker({ ctl, open, setOpen, active, setActive, keys, btn, list }: Pick
             role="option"
             key={o.key}
             id={optId(o.key)}
-            class={active === i + 1 ? 'rg-active' : ''}
+            class={[active === i + 1 ? 'rg-active' : '', o.key === autoPick ? 'rg-auto-pick' : ''].filter(Boolean).join(' ')}
             aria-selected={s.pickedKey === o.key}
+            aria-current={o.key === autoPick ? 'true' : undefined}
             style={{ paddingLeft: `${8 + o.depth * 18}px` }}
             onMouseMove={() => setActive(i + 1)}
             onClick={() => choose(o.key)}
           >
-            <span class="rg-tick">{s.pickedKey === o.key && <Icon name="check" />}</span>
+            <span class="rg-tick">{(s.pickedKey === o.key || o.key === autoPick) && <Icon name="check" />}</span>
             <Avatar name={o.name} label={o.label} cls="rg-mini-av" />
             <span>{o.label}</span>
+            {o.key === autoPick && d.rule && <span class="rg-auto-rule">matched by <code>{d.rule}</code></span>}
             <span class="rg-count">{o.count}</span>
           </li>
         ))}

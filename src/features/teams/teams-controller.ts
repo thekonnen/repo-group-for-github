@@ -50,6 +50,8 @@ export interface TeamsHost {
   team?: string;
   call: Call;
   store: Store<State>;
+  /** Called after a team's access is in: the page can now build its tree (default expanded groups). */
+  afterAccess?: () => void;
 }
 
 export type TeamsController = ReturnType<typeof createTeamsController>;
@@ -97,6 +99,7 @@ export function createTeamsController(host: TeamsHost) {
       if (disposed) return false;
       store.set({ access: { ...store.get().access, ...loaded }, accessError: null });
       bump();
+      host.afterAccess?.();
       return true;
     } catch (e) {
       if (!disposed) {
@@ -105,6 +108,7 @@ export function createTeamsController(host: TeamsHost) {
         for (const s of slugs) if (!(s in access)) access[s] = {};
         store.set({ access, accessError: message(e) });
         bump();
+        host.afterAccess?.();
       }
       return false;
     }

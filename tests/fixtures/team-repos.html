@@ -1,0 +1,27 @@
+<!-- Hand-written from the F12 spec text. NOT captured from live GitHub (there is no screenshot of this page):
+     re-check locateTeamRepos in src/github/selectors.ts against the real
+     https://github.com/orgs/<org>/teams/<slug>/repositories page. -->
+<body>
+  <style>body{margin:0;font-family:system-ui} main{padding:24px 32px} .tabs a{margin-right:12px}</style>
+  <header><a href="/" aria-label="Homepage">logo</a><a href="/thekonnen">thekonnen</a></header>
+  <main>
+    <div id="team-header">
+      <h1>konnen_team</h1>
+      <nav class="tabs" aria-label="Team">
+        <a href="/orgs/thekonnen/teams/konnen_team/discussions">Discussions</a>
+        <a href="/orgs/thekonnen/teams/konnen_team/members">Members</a>
+        <a href="/orgs/thekonnen/teams/konnen_team/teams">Teams</a>
+        <a href="/orgs/thekonnen/teams/konnen_team/repositories" aria-current="page">Repositories</a>
+        <a href="/orgs/thekonnen/teams/konnen_team/projects">Projects</a>
+      </nav>
+    </div>
+    <div id="team-content">
+      <div class="toolbar"><input placeholder="Search repositories" /><button type="button">Add repository</button></div>
+      <ul id="native-list">
+        <li><a href="/thekonnen/dagu">dagu</a> <span>Write</span></li>
+        <li><a href="/thekonnen/konnen-dagu">konnen-dagu</a> <span>Write</span></li>
+        <li><a href="/thekonnen/authentik">authentik</a> <span>Read</span></li>
+      </ul>
+    </div>
+  </main>
+</body>

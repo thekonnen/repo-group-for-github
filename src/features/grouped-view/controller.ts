@@ -80,7 +80,7 @@ export function createController(org: string, env: Env) {
     drawer: null,
     toast: null,
   });
-  const teams = createTeamsController({ org, team: env.team, call: env.call, store });
+  const teams = createTeamsController({ org, team: env.team, call: env.call, store, afterAccess: () => applyDefaults() });
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
   let prefsTimer: ReturnType<typeof setTimeout> | undefined;

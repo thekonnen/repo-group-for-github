@@ -1,4 +1,5 @@
 import { useState } from 'preact/hooks';
+import { displayName } from '../../core/edit';
 import { installationsUrl } from '../../core/grant';
 import { labelOf } from '../../core/permissions';
 import { Drawer } from '../../ui/Drawer';
@@ -24,6 +25,8 @@ export function SyncDrawer({ ctl }: { ctl: Controller }) {
   const done = rows.filter((r) => r.result?.state === 'ok').length;
   const failed = rows.filter((r) => r.result?.state === 'error').length;
   const readOnly = sync.phase === 'review' && !applicable.length;
+  const m = ctl.model();
+  const groupTitle = (sync.groupKey ?? '').split('/').map((_, i, parts) => { const g = m?.byKey.get(parts.slice(0, i + 1).join('/'))?.group; return g ? displayName(g) : parts[i]; }).join(' / ');
   const who = sync.headline.teams.length === 1 ? sync.headline.teams[0] : plural(sync.headline.teams.length, 'team', 'teams');
 
   const doCopy = async () => {
@@ -62,7 +65,7 @@ export function SyncDrawer({ ctl }: { ctl: Controller }) {
       ) : (
         <>
           <h3 class="rg-sync-head">{rows.length || done || failed ? `Give ${who} access to ${plural(sync.headline.repos, 'repository', 'repositories')}` : `${who} already has the access set in repo-groups.yml`}</h3>
-          {!rows.length && <p class="rg-muted">Nothing to sync{sync.groupKey ? ` in ${sync.groupKey}` : ''}.</p>}
+          {!rows.length && <p class="rg-muted">Nothing to sync{sync.groupKey ? ` in ${groupTitle}` : ''}.</p>}
           {!!rows.length && !owner && (
             <p class="rg-hint" role="note">
               You can update the {plural(new Set(applicable.map((r) => r.row.repo)).size, 'repository', 'repositories')} you administer. Org owners can update all of them.

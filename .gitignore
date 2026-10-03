@@ -6,3 +6,8 @@ dist/
 *.zip
 .env
 .env.*
+
+# Local agent worktrees
+.claude/worktrees/
+
+node_modules

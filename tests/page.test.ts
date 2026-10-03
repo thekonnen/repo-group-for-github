@@ -30,7 +30,12 @@ describe('routing and selectors', () => {
   it('only takes over /orgs/<org>/repositories', () => {
     expect(routeOf({ pathname: '/orgs/thekonnen/repositories' })).toEqual({ kind: 'org-repos', org: 'thekonnen' });
     expect(routeOf({ pathname: '/orgs/thekonnen/repositories/' })).toEqual({ kind: 'org-repos', org: 'thekonnen' });
-    for (const p of ['/orgs/thekonnen/people', '/thekonnen/repo', '/orgs/thekonnen/teams/x/members', '/orgs/thekonnen/teams/x/repositories/y', '/organizations/o/repositories/new', '/']) expect(routeOf({ pathname: p })).toBeNull();
+    for (const p of ['/orgs/thekonnen/people', '/orgs/thekonnen/teams/x/members', '/orgs/thekonnen/teams/x/repositories/y', '/organizations/o/repositories', '/thekonnen/repo/issues', '/orgs/x', '/settings/profile', '/']) expect(routeOf({ pathname: p })).toBeNull();
+    // F9: the new repository page and the repo home page (where the pending entry is filed)
+    expect(routeOf({ pathname: '/organizations/o/repositories/new' })).toEqual({ kind: 'new-repo', org: 'o' });
+    expect(routeOf({ pathname: '/new' })).toEqual({ kind: 'new-repo', org: null });
+    expect(routeOf({ pathname: '/thekonnen/repo' })).toEqual({ kind: 'repo', org: 'thekonnen', repo: 'repo' });
+    expect(routeOf({ pathname: '/thekonnen/my.repo-1/' })).toEqual({ kind: 'repo', org: 'thekonnen', repo: 'my.repo-1' });
     expect(routeOf({ pathname: '/orgs/thekonnen/teams/konnen_team/repositories' })).toEqual({ kind: 'team-repos', org: 'thekonnen', team: 'konnen_team' });
   });
   it('detects GitHub filter params', () => {

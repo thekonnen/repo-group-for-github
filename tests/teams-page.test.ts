@@ -65,7 +65,7 @@ function harness(be: ReturnType<typeof backend>, opts: Parameters<typeof fakeCal
   const log: Request[] = [];
   const call = async (req: Request) => {
     log.push(req);
-    if (req.type === 'org:teams' || req.type === 'team:access' || req.type === 'team:grant') {
+    if (req.type === 'org:teams' || req.type === 'team:access' || req.type === 'team:grant' || req.type === 'yaml:validate') {
       const r = await be.handle(req);
       if (!r.ok) throw new CallError(r.error);
       return r.data;
@@ -448,5 +448,26 @@ describe('Teams field in Edit group', () => {
     input.dispatchEvent(new Event('input', { bubbles: true }));
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
     await vi.waitFor(() => expect(fieldTeams().some((t) => t.startsWith('new-team'))).toBe(true));
+  });
+});
+
+describe('unknown team slug in the YAML editor', () => {
+  it('shows a yellow warning line and the file still applies', async () => {
+    document.documentElement.innerHTML = orgHtml;
+    window.history.replaceState(null, '', '/orgs/thekonnen/repositories');
+    const be = backend({ konnen_team: KT });
+    await be.handle({ type: 'org:teams', org: 'thekonnen' }); // the background has the org's team list cached
+    const h = harness(be, { config: infraOnly() });
+    mounted = (await mountOrgRepos('thekonnen', { call: h.call }, document, 200))!;
+    await vi.waitFor(() => expect(btn('Edit YAML')).toBeTruthy());
+    btn('Edit YAML').click();
+    await vi.waitFor(() => expect($('#rg-y-text')).toBeTruthy());
+    const area = $('#rg-y-text') as HTMLTextAreaElement;
+    area.value = 'groups:\n  - name: infra\n    teams: ["konnen_team", "other-org-team"]\n    match: ["dagu"]\n';
+    area.dispatchEvent(new Event('input', { bubbles: true }));
+    await vi.waitFor(() => expect($('.rg-y-status.rg-warn')).toBeTruthy());
+    expect($('.rg-y-status.rg-warn')!.textContent).toContain('"infra": team "other-org-team" was not found in thekonnen.');
+    expect($('.rg-y-status.rg-err')).toBeNull();
+    expect(($('#rg-y-apply') as HTMLButtonElement).disabled).toBe(false);
   });
 });

@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
-import { cleanTeams, displayName, finalName, slugify, slugName, splitRules, validateDraft, type Edit } from '../../core/edit';
+import { applyEdit, cleanTeams, displayName, finalName, slugify, slugName, splitRules, validateDraft, type Edit } from '../../core/edit';
 import { matches } from '../../core/glob';
 import { effectiveTeams } from '../../core/teams';
 import { byPush, nodeAt, type TreeModel } from '../../core/tree';
 import type { TeamTag } from '../../core/types';
+import { writeConfig } from '../../core/yaml-write';
 import { Drawer } from '../../ui/Drawer';
 import { Icon } from '../../ui/Icon';
+import { LogoField, type LogoDraft } from '../logo-cropper/LogoField';
+import { useLogoSrc } from '../logos/logo-store';
 import type { Controller, SaveResult } from '../grouped-view/controller';
 import { useStore } from '../store';
 import { TeamsField } from '../teams/TeamsField';
@@ -27,10 +30,10 @@ export function GroupDrawer({ ctl }: { ctl: Controller }) {
   const s = useStore(ctl.store);
   const d = s.drawer;
   if (!d) return null;
-  return <Form key={`${d.mode}:${d.path.join('/')}`} ctl={ctl} mode={d.mode} path={d.path} />;
+  return <Form key={`${d.mode}:${d.path.join('/')}`} ctl={ctl} mode={d.mode} path={d.path} focusLogo={d.focus === 'logo'} />;
 }
 
-function Form({ ctl, mode, path }: { ctl: Controller; mode: 'edit' | 'new'; path: string[] }) {
+function Form({ ctl, mode, path, focusLogo }: { ctl: Controller; mode: 'edit' | 'new'; path: string[]; focusLogo: boolean }) {
   const s = ctl.store.get();
   const model = ctl.model()!;
   const groups = s.config && s.config.exists && s.config.config ? s.config.config.groups : [];
@@ -52,9 +55,11 @@ function Form({ ctl, mode, path }: { ctl: Controller; mode: 'edit' | 'new'; path
   const parentPath = mode === 'edit' ? path.slice(0, -1) : path;
   const inherited = Object.entries(effectiveTeams(groups, parentPath))
     .filter(([slug]) => !teams.some((t) => t.slug === slug))
-    .map(([slug, t]) => ({ slug, permission: t.permission, from: t.from }));
+    .map(([slug, t]) => ({ slug, permission: t.permission, from: titled(model, t.from) }));
   const savedSlugs = node ? Object.keys(effectiveTeams(groups, path)) : [];
   const [ruleInput, setRuleInput] = useState('');
+  const [logo, setLogo] = useState<LogoDraft>({ kind: 'keep' });
+  const currentLogo = useLogoSrc(ctl.logos, node?.group.logo);
   const [touched, setTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState<{ message: string; needsRepo?: boolean } | null>(null);
@@ -72,7 +77,8 @@ function Form({ ctl, mode, path }: { ctl: Controller; mode: 'edit' | 'new'; path
     finalName(slug) !== node.group.name ||
     description !== node.group.description ||
     allRules.join('\n') !== node.group.match.join('\n') ||
-    teamsDirty;
+    teamsDirty ||
+    logo.kind !== 'keep';
 
   const onTitle = (v: string) => {
     setTitle(v);
@@ -90,10 +96,11 @@ function Form({ ctl, mode, path }: { ctl: Controller; mode: 'edit' | 'new'; path
   const hits = useMemo(() => s.repos.filter((r) => !r.archived && allRules.length && matches(allRules, r.name)).sort(byPush), [s.repos, ruleInput, rules]);
   const here = mode === 'edit' ? path.join('/') : null;
 
+  const logoChange = logo.kind === 'png' ? { png: logo.png } : logo.kind === 'remove' ? { remove: true as const } : undefined;
   const edit: Edit =
     mode === 'edit'
-      ? { kind: 'edit', path, name: slug, title, description, match: allRules, ...(teamsDirty ? { teams } : {}) }
-      : { kind: 'new', parent: path, name: slug, title, description, match: allRules, ...(teams.length ? { teams } : {}) };
+      ? { kind: 'edit', path, name: slug, title, description, match: allRules, ...(logoChange && { logo: logoChange }), ...(teamsDirty ? { teams } : {}) }
+      : { kind: 'new', parent: path, name: slug, title, description, match: allRules, ...(logoChange && { logo: logoChange }), ...(teams.length ? { teams } : {}) };
 
   const submit = async (create = false) => {
     setTouched(true);
@@ -105,6 +112,19 @@ function Form({ ctl, mode, path }: { ctl: Controller; mode: 'edit' | 'new'; path
     setSaving(false); // on success the controller closed the drawer
   };
 
+  /** Opens the YAML editor with this draft already applied to the file. */
+  const openInYaml = () => {
+    const cfg = s.config && s.config.exists && s.config.config ? s.config.config : { version: 1, index: 'api' as const, groups: [] };
+    let yaml = ctl.savedText();
+    if (!error) {
+      // A cropped PNG is committed together with this form's Save, not by the YAML editor: leave it out of the preview.
+      const forYaml: Edit = logoChange && 'png' in logoChange ? { ...edit, logo: undefined } : edit;
+      const r = applyEdit(cfg.groups, forYaml);
+      if ('groups' in r) yaml = writeConfig({ ...cfg, groups: r.groups }, `${s.org}/.github/repo-groups.yml`);
+    }
+    ctl.openYaml(yaml);
+  };
+
   const fullPath = [s.org, ...(parentKey ? titled(model, parentKey).split(' / ') : []), finalName(slug) || '…'].join(' / ');
   const heading = mode === 'edit' ? `Edit group ${titled(model, path.join('/'))}` : path.length ? 'New subgroup' : 'New group';
 
@@ -113,6 +133,7 @@ function Form({ ctl, mode, path }: { ctl: Controller; mode: 'edit' | 'new'; path
       title={heading}
       titleId="rg-drawer-title"
       onClose={() => ctl.closeDrawer()}
+      focus={focusLogo ? '#rg-logo-upload' : '#rg-f-name'}
       footer={
         <>
           <span class="rg-grow">Saved as a commit to <code>{s.org}/.github</code>. Everyone in the organization sees the change.</span>
@@ -124,6 +145,8 @@ function Form({ ctl, mode, path }: { ctl: Controller; mode: 'edit' | 'new'; path
       }
     >
       <form class="rg-form" onSubmit={(e) => (e.preventDefault(), submit())}>
+        <LogoField name={finalName(slug) || '?'} label={title.trim() || slug} current={currentLogo} hasLogo={!!node?.group.logo} draft={logo} onChange={setLogo} fetchLink={ctl.fetchLogoLink} />
+
         <div class="rg-field">
           <label for="rg-f-name">Name</label>
           <input id="rg-f-name" class="rg-input" value={title} autocomplete="off" aria-invalid={nameError && touched ? 'true' : undefined} aria-describedby="rg-f-name-hint"
@@ -198,6 +221,8 @@ function Form({ ctl, mode, path }: { ctl: Controller; mode: 'edit' | 'new'; path
             <span class="rg-hint">{allRules.length ? 'No repository matches these rules yet.' : 'Add a rule to see which repositories it catches.'}</span>
           )}
         </div>
+
+        <div><button type="button" class="rg-linkish" onClick={openInYaml}><Icon name="code" size={14} />Edit .github/repo-groups.yml</button></div>
 
         {problem?.needsRepo ? (
           <div class="rg-callout" role="alert">

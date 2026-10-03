@@ -34,7 +34,7 @@ async function fetchFresh(client: Client, org: string): Promise<Fresh | 'no-repo
 
 const decodeUtf8 = (b64: string) => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\s/g, '')), (c) => c.charCodeAt(0)));
 
-function friendly(e: unknown, org: string): never {
+export function friendly(e: unknown, org: string): never {
   if (e instanceof GitHubError) {
     if (/protected branch|branch protection|required status|review is required|changes must be made through a pull request/i.test(e.message))
       throw new EditError(`The default branch of ${org}/.github is protected, so the extension cannot commit to it. Ask an owner to allow it, or edit the file on GitHub.`);

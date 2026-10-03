@@ -103,7 +103,7 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
         <div class="rg-banner rg-banner-warn" role="alert"><span class="rg-grow"><b>repo-groups.yml has a problem:</b> {cfg.error}. Showing every repository as ungrouped.</span></div>
       )}
       <Crumbs ctl={ctl} s={s} model={model} node={node} />
-      <Header s={s} node={node} name={name} isRoot={isRoot} />
+      <Header ctl={ctl} s={s} node={node} name={name} isRoot={isRoot} />
       <div class="rg-stats">
         <Stat label="Repositories" value={node.total.toLocaleString()} />
         <Stat label={isRoot ? 'Groups' : 'Subgroups'} value={node.subgroups.toLocaleString()} />
@@ -178,7 +178,8 @@ function Crumbs({ ctl, s, model, node }: { ctl: Controller; s: State; model: Tre
   );
 }
 
-function Header({ s, node, name, isRoot }: { s: State; node: GroupNode; name: string; isRoot: boolean }) {
+function Header({ ctl, s, node, name, isRoot }: { ctl: Controller; s: State; node: GroupNode; name: string; isRoot: boolean }) {
+  const canEdit = !!s.access?.canWriteOrg; // members without write access get suggest mode later (F15)
   const q = node.path.length ? `?rg_group=${encodeURIComponent(node.key)}` : '';
   return (
     <div class="rg-g-head">
@@ -187,6 +188,8 @@ function Header({ s, node, name, isRoot }: { s: State; node: GroupNode; name: st
         <div style="min-width:0"><h1>{name}</h1><p>{node.group.description}</p></div>
       </div>
       <div class="rg-g-actions">
+        {canEdit && !isRoot && <button type="button" class="rg-btn" onClick={() => ctl.openDrawer('edit', node.path)}><Icon name="pencil" />Edit group</button>}
+        {canEdit && <button type="button" class="rg-btn" onClick={() => ctl.openDrawer('new', node.path)}><Icon name="folder" />{isRoot ? 'New group' : 'New subgroup'}</button>}
         <a class="rg-btn rg-btn-primary" href={`https://github.com/organizations/${s.org}/repositories/new${q}`}>New repository</a>
       </div>
     </div>

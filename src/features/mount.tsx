@@ -7,6 +7,7 @@ import { waitFor } from '../github/navigation';
 import { createController, type Env } from './grouped-view/controller';
 import { GroupedView } from './grouped-view/GroupedView';
 import { SidebarTree } from './sidebar-tree/SidebarTree';
+import { Overlay } from './Overlay';
 
 export interface Mounted {
   key: string;
@@ -57,6 +58,11 @@ export async function mountOrgRepos(org: string, env?: Partial<Env>, doc: Docume
     filterList.after(side);
   }
 
+  const overlay = doc.createElement('div');
+  overlay.className = 'rg-root';
+  overlay.dataset.rg = 'overlay';
+  doc.body.appendChild(overlay);
+
   const ctl = createController(org, {
     call,
     location: window.location,
@@ -66,6 +72,7 @@ export async function mountOrgRepos(org: string, env?: Partial<Env>, doc: Docume
   });
   render(<GroupedView ctl={ctl} />, root);
   if (side) render(<SidebarTree ctl={ctl} />, side);
+  render(<Overlay ctl={ctl} />, overlay);
 
   // GitHub's own list is hidden only while the grouped view (or its sign-in state) is showing.
   const sync = () => nativeParts.forEach((el) => el.classList.toggle('rg-hidden', ctl.store.get().view === 'grouped'));
@@ -86,6 +93,8 @@ export async function mountOrgRepos(org: string, env?: Partial<Env>, doc: Docume
       ctl.dispose();
       render(null, root);
       if (side) render(null, side);
+      render(null, overlay);
+      overlay.remove();
       root.remove();
       side?.remove();
       nativeParts.forEach((el) => el.classList.remove('rg-hidden'));

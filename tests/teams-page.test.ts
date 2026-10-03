@@ -78,20 +78,20 @@ function harness(be: ReturnType<typeof backend>, opts: Parameters<typeof fakeCal
   return { call: call as any, log };
 }
 
-/** Only infra is tagged konnen_team (Write): the F12 done-when setup. */
+/** Only infra is tagged core_team (Write): the F12 done-when setup. */
 const infraOnly = () => {
   const cfg = example();
   cfg.groups[1].teams = [];
   cfg.groups[1].groups[0].teams = [];
   return { exists: true, sha: 'sha1', config: cfg, warnings: [] };
 };
-const KT = { dagu: 'push', 'konnen-dagu': 'push', authentik: 'pull', keep_supabase_alive: 'push' };
+const KT = { dagsrv: 'push', 'kite-dagsrv': 'push', authn: 'pull', keep_alive_job: 'push' };
 
 async function openTeam(be: ReturnType<typeof backend>, opts: Parameters<typeof fakeCall>[0] = {}) {
   document.documentElement.innerHTML = teamHtml;
-  window.history.replaceState(null, '', '/orgs/thekonnen/teams/konnen_team/repositories');
+  window.history.replaceState(null, '', '/orgs/thekonnen/teams/core_team/repositories');
   const h = harness(be, { config: infraOnly(), ...opts });
-  mounted = (await mountTeamRepos('thekonnen', 'konnen_team', { call: h.call }, document, 200))!;
+  mounted = (await mountTeamRepos('thekonnen', 'core_team', { call: h.call }, document, 200))!;
   await vi.waitFor(() => expect($('.rg-g-head')).toBeTruthy());
   return h;
 }
@@ -112,9 +112,9 @@ describe('team page selectors (real saved page, sanitized)', () => {
     for (const keep of ['main h3', 'summary.btn-primary', 'nav[aria-label="Local"]', '.subnav']) for (const p of parts()) expect(p.contains($(keep))).toBe(false);
   });
   it('reads the display name from the Add repository dialog; the slug is the fallback', () => {
-    expect(findTeamName(document, 'thekonnen', 'konnen_team')).toBe('Konnen_Team');
+    expect(findTeamName(document, 'thekonnen', 'core_team')).toBe('Core_Team');
     $('details-dialog')!.remove();
-    expect(findTeamName(document, 'thekonnen', 'konnen_team')).toBeNull();
+    expect(findTeamName(document, 'thekonnen', 'core_team')).toBeNull();
   });
   it('does not need any rows (an empty team)', () => {
     document.querySelectorAll('li.table-list-item').forEach((l) => l.remove());
@@ -135,75 +135,75 @@ describe('team page selectors (real saved page, sanitized)', () => {
 
 describe('team repositories page (F12)', () => {
   it('shows only what the team can access, in the org’s groups, with its permission on each row', async () => {
-    await openTeam(backend({ konnen_team: KT }));
+    await openTeam(backend({ core_team: KT }));
     await vi.waitFor(() => expect(names()).toContain('infra'));
     // GitHub's search field and list box are replaced; the heading, "Add repository", the header and the tabs stay
     for (const hidden of ['#org-team-repositories', 'form.subnav-search', '.table-list-header']) expect($(hidden)!.classList.contains('rg-hidden')).toBe(true);
     for (const keep of ['main h3', 'summary.btn-primary', '.subnav', 'nav[aria-label="Local"]']) expect($(keep)!.classList.contains('rg-hidden')).toBe(false);
     expect($('.table-list-header')!.previousElementSibling).toBe($('.rg-root[data-rg="view"]')); // our view goes right after the toolbar
     expect($('.rg-root[data-rg="view"]')!.className).toBe('rg-root'); // the box's own classes are not copied
-    expect($('.rg-view h1')!.textContent).toBe('Konnen_Team'); // the display name, not the org
-    expect(names()).toEqual(['infra', 'dagu', 'authentik', 'keep_supabase_alive']); // ai and checkmate hold nothing the team reaches
+    expect($('.rg-view h1')!.textContent).toBe('Core_Team'); // the display name, not the org
+    expect(names()).toEqual(['infra', 'dagsrv', 'authn', 'keep_alive_job']); // ai and cmonitor hold nothing the team reaches
     expect($$('.rg-root[data-rg="view"] .rg-repo-label, .rg-root[data-rg="view"] .rg-row .rg-label').map((l) => l.textContent)).toContain('Write');
     expect($('[data-rg="side"]')).toBeNull();
-    // open the dagu subgroup: its repos carry the team's permission instead of Public/Private
-    (document.querySelector('.rg-chev[aria-label="Expand dagu"]') as HTMLElement).click();
-    await vi.waitFor(() => expect(names()).toContain('konnen-dagu'));
+    // open the dagsrv subgroup: its repos carry the team's permission instead of Public/Private
+    (document.querySelector('.rg-chev[aria-label="Expand dagsrv"]') as HTMLElement).click();
+    await vi.waitFor(() => expect(names()).toContain('kite-dagsrv'));
     const row = (name: string) => $$('.rg-row').find((r) => r.querySelector('.rg-row-title a')?.textContent === name)!;
-    expect(row('konnen-dagu').querySelector('.rg-label')!.textContent).toBe('Write');
-    (document.querySelector('.rg-chev[aria-label="Expand authentik"]') as HTMLElement).click();
-    await vi.waitFor(() => expect(names()).toContain('authentik')); // group row and repo row share the name
-    expect($$('.rg-row').filter((r) => r.querySelector('.rg-row-title a')?.textContent === 'authentik').map((r) => r.querySelector('.rg-label')!.textContent)).toEqual(['Group', 'Read']);
-    expect($$('.rg-row').find((r) => r.querySelector('.rg-row-title a')?.textContent === 'keep_supabase_alive')!.querySelector('.rg-label')!.textContent).toBe('Write');
+    expect(row('kite-dagsrv').querySelector('.rg-label')!.textContent).toBe('Write');
+    (document.querySelector('.rg-chev[aria-label="Expand authn"]') as HTMLElement).click();
+    await vi.waitFor(() => expect(names()).toContain('authn')); // group row and repo row share the name
+    expect($$('.rg-row').filter((r) => r.querySelector('.rg-row-title a')?.textContent === 'authn').map((r) => r.querySelector('.rg-label')!.textContent)).toEqual(['Group', 'Read']);
+    expect($$('.rg-row').find((r) => r.querySelector('.rg-row-title a')?.textContent === 'keep_alive_job')!.querySelector('.rg-label')!.textContent).toBe('Write');
   });
 
   it('groups tagged with the team get a highlighted chip; chips open the team page', async () => {
-    await openTeam(backend({ konnen_team: KT }));
+    await openTeam(backend({ core_team: KT }));
     await vi.waitFor(() => expect(names()).toContain('infra'));
     const chip = $('.rg-row .rg-tchip')!;
-    expect(chip.textContent).toBe('konnen_team');
+    expect(chip.textContent).toBe('core_team');
     expect(chip.classList.contains('rg-on')).toBe(true);
-    expect(chip.getAttribute('href')).toBe('https://github.com/orgs/thekonnen/teams/konnen_team/repositories');
+    expect(chip.getAttribute('href')).toBe('https://github.com/orgs/thekonnen/teams/core_team/repositories');
   });
 
-  it('F12 done-when: banner "4 repositories", Sync access lists exactly those four rows, granting leaves keep_supabase_alive alone, PUT only', async () => {
-    const be = backend({ konnen_team: KT });
+  it('F12 done-when: banner "4 repositories", Sync access lists exactly those four rows, granting leaves keep_alive_job alone, PUT only', async () => {
+    const be = backend({ core_team: KT });
     const h = await openTeam(be);
     await vi.waitFor(() => expect($('[data-rg="sync-banner"]')).toBeTruthy());
     const banner = $('[data-rg="sync-banner"]')!;
     expect(banner.textContent).toContain('4 repositories');
-    expect(banner.textContent).toContain('in groups tagged konnen_team don’t give it the access set in repo-groups.yml.');
+    expect(banner.textContent).toContain('in groups tagged core_team don’t give it the access set in repo-groups.yml.');
     expect(banner.classList.contains('rg-banner-warn')).toBe(false); // the accent banner
-    // the neutral one: keep_supabase_alive is reachable but in no tagged group
+    // the neutral one: keep_alive_job is reachable but in no tagged group
     const info = $('[data-rg="untagged-banner"]')!;
     expect(info.textContent).toContain('1 repository this team can access is in groups not tagged for it');
     expect(info.textContent).toContain('never removes');
     expect(info.querySelector('li')).toBeNull();
     btn('Show list', info).click();
-    await vi.waitFor(() => expect([...info.querySelectorAll('li a')].map((a) => a.textContent)).toEqual(['keep_supabase_alive']));
+    await vi.waitFor(() => expect([...info.querySelectorAll('li a')].map((a) => a.textContent)).toEqual(['keep_alive_job']));
 
     btn('Review & sync', banner).click();
     await vi.waitFor(() => expect($$('.rg-sync-row[data-repo]')).toHaveLength(4));
     expect($('#rg-sync-title')!.textContent).toBe('Sync access');
-    expect($('.rg-sync-head')!.textContent).toBe('Give konnen_team access to 4 repositories');
+    expect($('.rg-sync-head')!.textContent).toBe('Give core_team access to 4 repositories');
     const rows = $$('.rg-sync-row[data-repo]').map((r) => [r.dataset.repo, r.dataset.team, ...[...r.querySelectorAll('[role="cell"]')].slice(3).map((c) => c.textContent)]);
     expect(rows).toEqual([
-      ['authentik', 'konnen_team', 'Read', 'Write'],
-      ['dags-repo', 'konnen_team', 'none', 'Write'],
-      ['konnen-authentik', 'konnen_team', 'none', 'Write'],
-      ['konnen-checkmate', 'konnen_team', 'none', 'Write'],
+      ['authn', 'core_team', 'Read', 'Write'],
+      ['dags-repo', 'core_team', 'none', 'Write'],
+      ['kite-authn', 'core_team', 'none', 'Write'],
+      ['kite-cmonitor', 'core_team', 'none', 'Write'],
     ]);
     expect($$('.rg-sync-row[data-repo] input').every((i) => (i as HTMLInputElement).checked)).toBe(true);
 
     btn(/^Grant access/).click();
     await vi.waitFor(() => expect($$('.rg-sync-note.rg-ok').map((n) => n.textContent)).toEqual(['Granted', 'Granted', 'Granted', 'Granted']));
-    // requests: only PUT, one per row, never keep_supabase_alive, never DELETE
+    // requests: only PUT, one per row, never keep_alive_job, never DELETE
     const writes = be.writes();
     expect(writes.map((w) => w.method)).toEqual(['PUT', 'PUT', 'PUT', 'PUT']);
-    expect(writes.map((w) => w.url.split('/repos/thekonnen/')[1]).sort()).toEqual(['authentik', 'dags-repo', 'konnen-authentik', 'konnen-checkmate']);
+    expect(writes.map((w) => w.url.split('/repos/thekonnen/')[1]).sort()).toEqual(['authn', 'dags-repo', 'kite-authn', 'kite-cmonitor']);
     expect(writes.every((w) => JSON.parse(w.body!).permission === 'push')).toBe(true);
     expect(be.f.calls.some((c) => c.method === 'DELETE')).toBe(false);
-    expect(be.access.konnen_team.keep_supabase_alive).toBe('push');
+    expect(be.access.core_team.keep_alive_job).toBe('push');
     expect(be.f.stats.maxInflight).toBeLessThanOrEqual(3);
     expect(be.f.stats.maxInflight).toBeGreaterThanOrEqual(2);
     expect(h.log.filter((r) => r.type === 'team:grant')).toHaveLength(4);
@@ -214,12 +214,12 @@ describe('team repositories page (F12)', () => {
 
   it('shows a result per row: admin error, GitHub’s 422 message, and the permissions-update message with its link; other rows continue', async () => {
     const be = backend(
-      { konnen_team: KT },
+      { core_team: KT },
       {
         deny: {
           'dags-repo': { status: 404, message: 'Not Found' },
-          'konnen-authentik': { status: 422, message: 'Validation Failed: not owned by the organization' },
-          'konnen-checkmate': { status: 403, message: 'Resource not accessible by integration' },
+          'kite-authn': { status: 422, message: 'Validation Failed: not owned by the organization' },
+          'kite-cmonitor': { status: 403, message: 'Resource not accessible by integration' },
         },
       },
     );
@@ -230,21 +230,21 @@ describe('team repositories page (F12)', () => {
     btn(/^Grant access/).click();
     await vi.waitFor(() => expect($$('.rg-sync-note').filter((n) => n.textContent).length).toBe(4));
     const note = (repo: string) => $(`.rg-sync-row[data-repo="${repo}"] .rg-sync-note`)!;
-    expect(note('authentik').textContent).toBe('Granted');
+    expect(note('authn').textContent).toBe('Granted');
     expect(note('dags-repo').textContent).toContain('You need admin access to this repository — ask an org owner');
     expect(note('dags-repo').textContent).toContain('administration=write'); // X-Accepted-GitHub-Permissions in the detail
-    expect(note('konnen-authentik').textContent).toContain('Validation Failed: not owned by the organization');
-    expect(note('konnen-checkmate').textContent).toContain('needs new permissions in thekonnen');
-    expect(note('konnen-checkmate').querySelector('a')!.getAttribute('href')).toBe('https://github.com/organizations/thekonnen/settings/installations');
-    expect(note('konnen-checkmate').querySelector('a')!.textContent).toBe('Settings → GitHub Apps');
-    expect(be.access.konnen_team.authentik).toBe('push'); // the row that worked was applied
+    expect(note('kite-authn').textContent).toContain('Validation Failed: not owned by the organization');
+    expect(note('kite-cmonitor').textContent).toContain('needs new permissions in thekonnen');
+    expect(note('kite-cmonitor').querySelector('a')!.getAttribute('href')).toBe('https://github.com/organizations/thekonnen/settings/installations');
+    expect(note('kite-cmonitor').querySelector('a')!.textContent).toBe('Settings → GitHub Apps');
+    expect(be.access.core_team.authn).toBe('push'); // the row that worked was applied
     // the banner now counts the three that are still missing
     await vi.waitFor(() => expect($('[data-rg="sync-banner"]')!.textContent).toContain('3 repositories'));
   });
 
   it('a member sees the plan, with rows they cannot apply unchecked; only repos they administer can be granted', async () => {
-    const be = backend({ konnen_team: KT });
-    const cached = (await import('./page-helpers')).repos.map((r) => ({ ...r, viewerIsAdmin: r.name === 'authentik' || r.name === 'dags-repo' }));
+    const be = backend({ core_team: KT });
+    const cached = (await import('./page-helpers')).repos.map((r) => ({ ...r, viewerIsAdmin: r.name === 'authn' || r.name === 'dags-repo' }));
     const h = harness(be, { config: infraOnly(), access: memberAccess });
     const base = h.call;
     const call: any = async (req: Request) => {
@@ -253,22 +253,22 @@ describe('team repositories page (F12)', () => {
       return base(req);
     };
     document.documentElement.innerHTML = teamHtml;
-    window.history.replaceState(null, '', '/orgs/thekonnen/teams/konnen_team/repositories');
-    mounted = (await mountTeamRepos('thekonnen', 'konnen_team', { call }, document, 200))!;
+    window.history.replaceState(null, '', '/orgs/thekonnen/teams/core_team/repositories');
+    mounted = (await mountTeamRepos('thekonnen', 'core_team', { call }, document, 200))!;
     await vi.waitFor(() => expect($('[data-rg="sync-banner"]')).toBeTruthy());
     btn('Review & sync').click();
     await vi.waitFor(() => expect($$('.rg-sync-row[data-repo]')).toHaveLength(4));
     expect($('.rg-hint[role="note"]')!.textContent).toContain('You can update the 2 repositories you administer. Org owners can update all of them.');
     const checked = (repo: string) => ($(`.rg-sync-row[data-repo="${repo}"] input`) as HTMLInputElement).checked;
-    expect(['authentik', 'dags-repo', 'konnen-authentik', 'konnen-checkmate'].map(checked)).toEqual([true, true, false, false]);
-    expect($('.rg-sync-row[data-repo="konnen-authentik"]')!.textContent).toContain('Needs an org owner or a repo admin');
+    expect(['authn', 'dags-repo', 'kite-authn', 'kite-cmonitor'].map(checked)).toEqual([true, true, false, false]);
+    expect($('.rg-sync-row[data-repo="kite-authn"]')!.textContent).toContain('Needs an org owner or a repo admin');
     btn(/^Grant access \(2\)/).click();
     await vi.waitFor(() => expect($$('.rg-sync-note.rg-ok')).toHaveLength(2));
-    expect(be.writes().map((w) => w.url.split('/repos/thekonnen/')[1]).sort()).toEqual(['authentik', 'dags-repo']);
+    expect(be.writes().map((w) => w.url.split('/repos/thekonnen/')[1]).sort()).toEqual(['authn', 'dags-repo']);
   });
 
   it('when nobody can apply a row the plan is read-only, with Copy list', async () => {
-    const be = backend({ konnen_team: KT });
+    const be = backend({ core_team: KT });
     await openTeam(be, { access: memberAccess });
     await vi.waitFor(() => expect($('[data-rg="sync-banner"]')).toBeTruthy());
     btn('Review & sync').click();
@@ -280,13 +280,13 @@ describe('team repositories page (F12)', () => {
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     btn('Copy list').click();
     await vi.waitFor(() => expect(writeText).toHaveBeenCalled());
-    expect(writeText.mock.calls[0][0]).toBe(['thekonnen/authentik\tkonnen_team\tWrite', 'thekonnen/dags-repo\tkonnen_team\tWrite', 'thekonnen/konnen-authentik\tkonnen_team\tWrite', 'thekonnen/konnen-checkmate\tkonnen_team\tWrite'].join('\n'));
+    expect(writeText.mock.calls[0][0]).toBe(['thekonnen/authn\tcore_team\tWrite', 'thekonnen/dags-repo\tcore_team\tWrite', 'thekonnen/kite-authn\tcore_team\tWrite', 'thekonnen/kite-cmonitor\tcore_team\tWrite'].join('\n'));
     expect(be.writes()).toEqual([]);
   });
 
   it('shows no banner when the team already has the access; list/grouped toggle works like F4', async () => {
-    const full = { dagu: 'push', 'konnen-dagu': 'push', authentik: 'push', 'dags-repo': 'push', 'konnen-authentik': 'push', 'konnen-checkmate': 'push' };
-    await openTeam(backend({ konnen_team: full }));
+    const full = { dagsrv: 'push', 'kite-dagsrv': 'push', authn: 'push', 'dags-repo': 'push', 'kite-authn': 'push', 'kite-cmonitor': 'push' };
+    await openTeam(backend({ core_team: full }));
     await vi.waitFor(() => expect(names()).toContain('infra'));
     expect($('[data-rg="sync-banner"]')).toBeNull();
     expect($('[data-rg="untagged-banner"]')).toBeNull();
@@ -300,16 +300,16 @@ describe('team repositories page (F12)', () => {
   });
 
   it('says so when the team’s access cannot be read, instead of loading forever', async () => {
-    const be = backend({ konnen_team: KT });
+    const be = backend({ core_team: KT });
     const h = harness(be);
     const call: any = async (req: Request) => {
       if (req.type === 'team:access') throw new CallError({ kind: 'forbidden', message: 'Resource not accessible by integration' });
       return h.call(req);
     };
     document.documentElement.innerHTML = teamHtml;
-    window.history.replaceState(null, '', '/orgs/thekonnen/teams/konnen_team/repositories');
-    mounted = (await mountTeamRepos('thekonnen', 'konnen_team', { call }, document, 200))!;
-    await vi.waitFor(() => expect($('.rg-banner[role="alert"]')!.textContent).toContain('Could not read what konnen_team can access.'));
+    window.history.replaceState(null, '', '/orgs/thekonnen/teams/core_team/repositories');
+    mounted = (await mountTeamRepos('thekonnen', 'core_team', { call }, document, 200))!;
+    await vi.waitFor(() => expect($('.rg-banner[role="alert"]')!.textContent).toContain('Could not read what core_team can access.'));
   });
 });
 
@@ -318,7 +318,7 @@ describe('teams on the org page', () => {
     document.documentElement.innerHTML = orgHtml;
     window.history.replaceState(null, '', '/orgs/thekonnen/repositories');
   });
-  const open = async (be = backend({ konnen_team: KT, 'ai-squad': {} }), opts: Parameters<typeof fakeCall>[0] = {}) => {
+  const open = async (be = backend({ core_team: KT, 'ai-squad': {} }), opts: Parameters<typeof fakeCall>[0] = {}) => {
     const h = harness(be, opts);
     mounted = (await mountOrgRepos('thekonnen', { call: h.call }, document, 200))!;
     await vi.waitFor(() => expect($('.rg-g-head')).toBeTruthy());
@@ -328,13 +328,13 @@ describe('teams on the org page', () => {
   it('group rows show team chips (inherited ones muted, at most 2 then +n); the sidebar lists the teams from the file', async () => {
     window.history.replaceState(null, '', '/orgs/thekonnen/repositories#ai');
     await open();
-    await vi.waitFor(() => expect(names()).toContain('litellm'));
-    const row = $$('.rg-row').find((r) => r.querySelector('.rg-row-title a')?.textContent === 'litellm')!;
-    expect([...row.querySelectorAll('.rg-tchip')].map((c) => [c.textContent, c.classList.contains('rg-inh')])).toEqual([['konnen_team', false], ['ai-squad', true]]);
+    await vi.waitFor(() => expect(names()).toContain('llm-proxy'));
+    const row = $$('.rg-row').find((r) => r.querySelector('.rg-row-title a')?.textContent === 'llm-proxy')!;
+    expect([...row.querySelectorAll('.rg-tchip')].map((c) => [c.textContent, c.classList.contains('rg-inh')])).toEqual([['core_team', false], ['ai-squad', true]]);
     // the sidebar Teams section
     const links = $$('[data-rg="side"] .rg-nav-link');
-    expect(links.map((a) => a.textContent)).toEqual(['ai-squad', 'konnen_team']);
-    expect(links[1].getAttribute('href')).toBe('https://github.com/orgs/thekonnen/teams/konnen_team/repositories');
+    expect(links.map((a) => a.textContent)).toEqual(['ai-squad', 'core_team']);
+    expect(links[1].getAttribute('href')).toBe('https://github.com/orgs/thekonnen/teams/core_team/repositories');
     expect($('[data-rg="side"]')!.textContent).toContain('Teams');
   });
 
@@ -351,11 +351,11 @@ describe('teams on the org page', () => {
 
   it('the group header chip opens a menu with Sync access for the teams of that group', async () => {
     window.history.replaceState(null, '', '/orgs/thekonnen/repositories#infra');
-    const { be } = await open(backend({ konnen_team: KT }), { config: infraOnly() });
+    const { be } = await open(backend({ core_team: KT }), { config: infraOnly() });
     await vi.waitFor(() => expect($('.rg-g-title .rg-tchip')).toBeTruthy());
     $('.rg-g-title .rg-tchip')!.click();
     await vi.waitFor(() => expect($('.rg-menu[role="menu"]')).toBeTruthy());
-    expect($('.rg-menu a')!.getAttribute('href')).toBe('https://github.com/orgs/thekonnen/teams/konnen_team/repositories');
+    expect($('.rg-menu a')!.getAttribute('href')).toBe('https://github.com/orgs/thekonnen/teams/core_team/repositories');
     btn('Sync access…').click();
     await vi.waitFor(() => expect($$('.rg-sync-row[data-repo]')).toHaveLength(4));
     expect(be.writes()).toEqual([]); // opening the drawer never writes
@@ -366,7 +366,7 @@ describe('Teams field in Edit group', () => {
   beforeEach(() => {
     document.documentElement.innerHTML = orgHtml;
   });
-  async function openEdit(hash: string, edit?: (req: any) => any, be = backend({ konnen_team: KT, 'ai-squad': {}, extra: {} }, { teams: ['ai-squad', 'extra', 'konnen_team'] })) {
+  async function openEdit(hash: string, edit?: (req: any) => any, be = backend({ core_team: KT, 'ai-squad': {}, extra: {} }, { teams: ['ai-squad', 'extra', 'core_team'] })) {
     window.history.replaceState(null, '', '/orgs/thekonnen/repositories' + hash);
     const h = harness(be, { edit, config: infraOnly() });
     mounted = (await mountOrgRepos('thekonnen', { call: h.call }, document, 200))!;
@@ -378,9 +378,9 @@ describe('Teams field in Edit group', () => {
   const fieldTeams = () => $$('.rg-tlist .rg-trow').map((r) => r.textContent!.replace(/\s+/g, ' ').trim());
 
   it('shows own teams with a permission select, and inherited ones read-only and muted', async () => {
-    await openEdit('#infra/dagu');
+    await openEdit('#infra/dagsrv');
     await vi.waitFor(() => expect($('.rg-tlist')).toBeTruthy());
-    expect(fieldTeams()).toEqual(['konnen_teamWrite · from infra']);
+    expect(fieldTeams()).toEqual(['core_teamWrite · from infra']);
     expect($('.rg-trow.rg-inh select')).toBeNull();
     expect($('#rg-f-teams-l')!.textContent).toBe('Teams');
   });
@@ -398,7 +398,7 @@ describe('Teams field in Edit group', () => {
 
     btn('Add team').click();
     await vi.waitFor(() => expect($('[role="listbox"]')).toBeTruthy());
-    await vi.waitFor(() => expect($$('[role="option"]').map((o) => o.textContent!.trim())).toEqual(['ai-squad', 'extra'])); // konnen_team is already on the group
+    await vi.waitFor(() => expect($$('[role="option"]').map((o) => o.textContent!.trim())).toEqual(['ai-squad', 'extra'])); // core_team is already on the group
     const input = $('[role="combobox"]') as HTMLInputElement;
     expect(document.activeElement).toBe(input);
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
@@ -413,7 +413,7 @@ describe('Teams field in Edit group', () => {
     sel.dispatchEvent(new Event('change', { bubbles: true }));
     await vi.waitFor(() => expect(($$('.rg-tlist .rg-trow select')[1] as HTMLSelectElement).value).toBe('maintain'));
 
-    ($('[aria-label="Remove team konnen_team"]') as HTMLElement).click();
+    ($('[aria-label="Remove team core_team"]') as HTMLElement).click();
     await vi.waitFor(() => expect($$('.rg-tlist .rg-trow select')).toHaveLength(1));
     btn('Save changes').click();
     await vi.waitFor(() => expect(saved).toHaveLength(1));
@@ -425,15 +425,15 @@ describe('Teams field in Edit group', () => {
     const cfg = infraOnly();
     cfg.config.groups[0].teams.push({ slug: 'ghost', permission: 'pull' });
     window.history.replaceState(null, '', '/orgs/thekonnen/repositories#infra');
-    const h = harness(backend({ konnen_team: KT }), { config: cfg });
+    const h = harness(backend({ core_team: KT }), { config: cfg });
     mounted = (await mountOrgRepos('thekonnen', { call: h.call }, document, 200))!;
     await vi.waitFor(() => expect(btn('Edit group')).toBeTruthy());
     btn('Edit group').click();
     await vi.waitFor(() => expect($('.rg-drawer')).toBeTruthy());
     expect((btn('Save changes') as HTMLButtonElement).disabled).toBe(true);
     await vi.waitFor(() => expect($('.rg-hint.rg-warn')!.textContent).toBe('Team “ghost” was not found in thekonnen.'));
-    ($('[aria-label="Permission for konnen_team"]') as HTMLSelectElement).value = 'admin';
-    $('[aria-label="Permission for konnen_team"]')!.dispatchEvent(new Event('change', { bubbles: true }));
+    ($('[aria-label="Permission for core_team"]') as HTMLSelectElement).value = 'admin';
+    $('[aria-label="Permission for core_team"]')!.dispatchEvent(new Event('change', { bubbles: true }));
     await vi.waitFor(() => expect((btn('Save changes') as HTMLButtonElement).disabled).toBe(false));
   });
 
@@ -442,7 +442,7 @@ describe('Teams field in Edit group', () => {
     const sync = () => btn('Sync access') as HTMLButtonElement;
     await vi.waitFor(() => expect(sync()).toBeTruthy());
     expect(sync().disabled).toBe(false);
-    ($('[aria-label="Remove team konnen_team"]') as HTMLElement).click();
+    ($('[aria-label="Remove team core_team"]') as HTMLElement).click();
     await vi.waitFor(() => expect($('.rg-trow-actions')!.textContent).toContain('Add team'));
     expect((btn('Sync access') as HTMLButtonElement).disabled).toBe(true);
     expect($('[aria-labelledby="rg-f-teams-l"]')!.textContent).toContain('Save your team changes first. Sync access uses the saved file.');
@@ -450,7 +450,7 @@ describe('Teams field in Edit group', () => {
   });
 
   it('typing a slug works when the org’s teams cannot be listed', async () => {
-    const be = backend({ konnen_team: KT });
+    const be = backend({ core_team: KT });
     const h = harness(be, { config: infraOnly() });
     const call: any = async (req: Request) => {
       if (req.type === 'org:teams') throw new CallError({ kind: 'forbidden', message: 'Resource not accessible by integration' });
@@ -476,7 +476,7 @@ describe('unknown team slug in the YAML editor', () => {
   it('shows a yellow warning line and the file still applies', async () => {
     document.documentElement.innerHTML = orgHtml;
     window.history.replaceState(null, '', '/orgs/thekonnen/repositories');
-    const be = backend({ konnen_team: KT });
+    const be = backend({ core_team: KT });
     await be.handle({ type: 'org:teams', org: 'thekonnen' }); // the background has the org's team list cached
     const h = harness(be, { config: infraOnly() });
     mounted = (await mountOrgRepos('thekonnen', { call: h.call }, document, 200))!;
@@ -484,7 +484,7 @@ describe('unknown team slug in the YAML editor', () => {
     btn('Edit YAML').click();
     await vi.waitFor(() => expect($('#rg-y-text')).toBeTruthy());
     const area = $('#rg-y-text') as HTMLTextAreaElement;
-    area.value = 'groups:\n  - name: infra\n    teams: ["konnen_team", "other-org-team"]\n    match: ["dagu"]\n';
+    area.value = 'groups:\n  - name: infra\n    teams: ["core_team", "other-org-team"]\n    match: ["dagsrv"]\n';
     area.dispatchEvent(new Event('input', { bubbles: true }));
     await vi.waitFor(() => expect($('.rg-y-status.rg-warn')).toBeTruthy());
     expect($('.rg-y-status.rg-warn')!.textContent).toContain('"infra": team "other-org-team" was not found in thekonnen.');

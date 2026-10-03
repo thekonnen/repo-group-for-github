@@ -93,6 +93,13 @@ export function configFromObject(obj: unknown, opts: ValidateOptions = {}): Vali
         err = `"${name}": match must be a list of names or patterns.`;
         return;
       }
+      let keywords: unknown = raw.keywords == null ? [] : raw.keywords;
+      if (typeof keywords === 'string') keywords = [keywords];
+      if (!Array.isArray(keywords) || keywords.some((k) => typeof k !== 'string')) {
+        err = `"${name}": keywords must be a list of words.`;
+        return;
+      }
+      const words = (keywords as string[]).map((k) => k.trim()).filter(Boolean);
       const teams = parseTeams(name, raw.teams);
       if (!teams) return;
       let groups: Group[] = [];
@@ -108,6 +115,7 @@ export function configFromObject(obj: unknown, opts: ValidateOptions = {}): Vali
         name,
         ...(typeof raw.title === 'string' && raw.title.trim() ? { title: raw.title.trim() } : {}),
         description: typeof raw.description === 'string' ? raw.description : '',
+        ...(words.length ? { keywords: words } : {}),
         logo: typeof raw.logo === 'string' && raw.logo.trim() ? raw.logo.trim() : null,
         teams,
         match: (match as string[]).flatMap(splitRules),

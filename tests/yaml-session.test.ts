@@ -3,7 +3,7 @@ import { buildTree, nodeAt } from '../src/core/tree';
 import { scopeOptions, scopeWarning, statusSummary, yamlCommitMessage, changesText } from '../src/core/yaml-session';
 import { example } from './fixtures';
 
-const names = ['konnen-litellm', 'litellm', 'konnen-authentik', 'authentik', 'dagu', 'dags-repo', 'keep_supabase_alive', 'omniroute'];
+const names = ['kite-llm-proxy', 'llm-proxy', 'kite-authn', 'authn', 'dagsrv', 'dags-repo', 'keep_alive_job', 'oroute'];
 const model = buildTree(example().groups, names.map((name) => ({ name })).concat([{ name: 'old', archived: true } as any]));
 
 describe('scope options (F8/F14)', () => {
@@ -12,7 +12,7 @@ describe('scope options (F8/F14)', () => {
     expect(root.map((o) => o.label)).toEqual(['All repositories (8)', 'Ungrouped only (1)']);
     const g = scopeOptions(model, nodeAt(model, ['infra'])!);
     expect(g.map((o) => o.label)).toEqual(['All repositories (8)', 'Ungrouped only (1)', 'This group (4)']);
-    expect(g[2].repos.map((r) => r.name).sort()).toEqual(['authentik', 'dags-repo', 'dagu', 'konnen-authentik']);
+    expect(g[2].repos.map((r) => r.name).sort()).toEqual(['authn', 'dags-repo', 'dagsrv', 'kite-authn']);
     expect(scopeOptions(model, null)).toHaveLength(2);
   });
   it('warns above 500 repositories and suggests a smaller scope', () => {

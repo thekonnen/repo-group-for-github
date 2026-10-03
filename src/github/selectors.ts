@@ -104,9 +104,9 @@ export function locateOrgRepos(doc: Document): OrgReposMount | null {
 const TEAM_SEARCH = 'input[placeholder*="Find a repository" i], input[aria-label*="Find a repository" i], input[placeholder*="repositor" i], input[aria-label*="repositor" i]';
 const ADD_REPO = /^Add repositor(y|ies)$/i;
 
-/** Display name of the team ("Konnen_Team") from the breadcrumb or header; the slug always comes from the URL. */
+/** Display name of the team ("Core_Team") from the breadcrumb or header; the slug always comes from the URL. */
 export function findTeamName(doc: Document, org: string, slug: string): string | null {
-  // The real page names the team in its "Add repository to Konnen_Team" dialog.
+  // The real page names the team in its "Add repository to Core_Team" dialog.
   const dialog = doc.querySelector('details-dialog[aria-label^="Add repository to "]')?.getAttribute('aria-label');
   const fromDialog = norm(dialog?.replace(/^Add repository to /i, ''));
   if (fromDialog) return fromDialog;

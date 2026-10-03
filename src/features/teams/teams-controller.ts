@@ -25,7 +25,7 @@ export interface SyncState {
   teams: string[];
   groupKey: string | null;
   phase: 'loading' | 'review' | 'running';
-  /** Row and repository counts when the drawer opened ("Give konnen_team access to 5 repositories"). */
+  /** Row and repository counts when the drawer opened ("Give core_team access to 5 repositories"). */
   headline: { repos: number; teams: string[] };
   rows: SyncRowState[];
   error: string | null;

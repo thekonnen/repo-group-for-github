@@ -5,8 +5,8 @@ import type { Request } from '../src/github/messages';
 
 export const at = (min: number) => new Date(Date.parse('2026-01-10T12:00:00Z') - min * 60000).toISOString();
 export const repos = [
-  ['konnen-litellm', 31, 'AI Gateway for TheKonnen'], ['litellm', 46], ['konnen-authentik', 120], ['konnen-checkmate', 180, 'Deploy checkmate using authentik as sso login'],
-  ['authentik', 300], ['konnen-dagu', 302], ['dagu', 360], ['keep_supabase_alive', 780], ['omniroute', 900], ['dags-repo', 2900],
+  ['kite-llm-proxy', 31, 'AI Gateway for Acme'], ['llm-proxy', 46], ['kite-authn', 120], ['kite-cmonitor', 180, 'Deploy the uptime monitor using authn as login'],
+  ['authn', 300], ['kite-dagsrv', 302], ['dagsrv', 360], ['keep_alive_job', 780], ['oroute', 900], ['dags-repo', 2900],
 ].map(([name, min, description]: any) => ({ name, description: description ?? '', pushedAt: at(min), private: true, language: 'Shell', stars: 0, forks: 0, openIssuesAndPrs: 0 }));
 
 export const ownerAccess = { access: { level: 'owner', canWriteOrg: true, hasOrgFile: true, suggestMode: false, canForkSuggest: true, syncNeedsRepoAdmin: false, publicOnly: false } };

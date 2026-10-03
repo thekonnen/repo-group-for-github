@@ -53,7 +53,7 @@ export const cleanTitle = (title: string | undefined, slug: string): string | un
 };
 
 /**
- * "dag, dagu;dags" -> three rules. Repository names cannot contain commas or spaces, so splitting a rule on them
+ * "dag, dagsrv;dags" -> three rules. Repository names cannot contain commas or spaces, so splitting a rule on them
  * can only fix input (typed, pasted, or written by hand into the YAML); it never changes a valid rule.
  */
 export const splitRules = (input: string): string[] => [...new Set(input.split(/[\s,;]+/).map((r) => r.trim()).filter(Boolean))];
@@ -117,7 +117,7 @@ export function applyEdit(groups: Group[], edit: Edit): { groups: Group[] } | { 
 export const editPath = (e: Edit): string =>
   e.kind === 'file' ? e.path.join('/') : (e.kind === 'new' ? [...e.parent, finalName(e.name)] : [...e.path.slice(0, -1), finalName(e.name)]).join('/');
 
-/** `chore(repo-groups): edit group infra/dagu` (§7). */
+/** `chore(repo-groups): edit group infra/dagsrv` (§7). */
 export function commitMessage(e: Edit): string {
   if (e.kind === 'file') return `chore(repo-groups): file ${e.repo} in ${e.path.join('/')}`;
   if (e.kind === 'new') return `chore(repo-groups): add ${e.parent.length ? 'subgroup' : 'group'} ${editPath(e)}${hasPng(e) ? ' with logo' : ''}`;

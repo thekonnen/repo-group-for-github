@@ -84,6 +84,13 @@ export async function mountNewRepo(urlOrg: string | null, env?: Partial<NewRepoE
     const entry = ctl.pendingEntry();
     if (entry) void e.call({ type: 'newrepo:pending', entry }).catch(() => undefined); // fire and forget, GitHub's form goes on
   };
+  // The name is final when the person leaves its field or presses Enter in it: that is when AI by default asks.
+  const nameDone = (ev: Event) => {
+    if (found.nameInput && ev.target === found.nameInput) setTimeout(() => ctl.nameCommitted(), 0);
+  };
+  const nameEnter = (ev: Event) => {
+    if ((ev as KeyboardEvent).key === 'Enter') nameDone(ev);
+  };
   const create = findCreateButton(doc);
   const bound: [EventTarget, string, EventListener, boolean?][] = [
     [scope, 'click', later],
@@ -91,6 +98,8 @@ export async function mountNewRepo(urlOrg: string | null, env?: Partial<NewRepoE
     [scope, 'change', later],
     [scope, 'input', later],
     [scope, 'focusout', later],
+    [scope, 'focusout', nameDone],
+    [scope, 'keydown', nameEnter],
     [scope, 'submit', submit, true],
   ];
   if (create) bound.push([create, 'click', submit, true]);

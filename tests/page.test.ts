@@ -36,7 +36,7 @@ describe('routing and selectors', () => {
     expect(routeOf({ pathname: '/new' })).toEqual({ kind: 'new-repo', org: null });
     expect(routeOf({ pathname: '/thekonnen/repo' })).toEqual({ kind: 'repo', org: 'thekonnen', repo: 'repo' });
     expect(routeOf({ pathname: '/thekonnen/my.repo-1/' })).toEqual({ kind: 'repo', org: 'thekonnen', repo: 'my.repo-1' });
-    expect(routeOf({ pathname: '/orgs/thekonnen/teams/konnen_team/repositories' })).toEqual({ kind: 'team-repos', org: 'thekonnen', team: 'konnen_team' });
+    expect(routeOf({ pathname: '/orgs/thekonnen/teams/core_team/repositories' })).toEqual({ kind: 'team-repos', org: 'thekonnen', team: 'core_team' });
   });
   it('detects GitHub filter params', () => {
     expect(hasGithubFilter('?type=public')).toBe(true);
@@ -158,12 +158,12 @@ describe('navigation helpers', () => {
 });
 
 describe('grouped view on the page', () => {
-  it('renders from the index: infra and ai on the root, keep_supabase_alive ungrouped; hides GitHub’s list', async () => {
+  it('renders from the index: infra and ai on the root, keep_alive_job ungrouped; hides GitHub’s list', async () => {
     const { call } = fakeCall();
     const m = await mountOrgRepos('thekonnen', { call }, document, 200);
     expect(m).toBeTruthy();
     await settle();
-    await vi.waitFor(() => expect(names()).toEqual(['infra', 'dagu', 'authentik', 'checkmate', 'ai', 'keep_supabase_alive'])); // infra starts expanded
+    await vi.waitFor(() => expect(names()).toEqual(['infra', 'dagsrv', 'authn', 'cmonitor', 'ai', 'keep_alive_job'])); // infra starts expanded
     expect(document.getElementById('content')!.classList.contains('rg-hidden')).toBe(true);
     expect(document.querySelector('.rg-view h1')!.textContent).toBe('thekonnen');
     expect(document.querySelector('.rg-crumbs')!.textContent).toContain('thekonnen');
@@ -184,26 +184,26 @@ describe('grouped view on the page', () => {
     expect(side.querySelector('[aria-current="true"]')!.textContent).toContain('All groups');
     m.dispose();
   });
-  it('#infra/dagu opens the dagu page with its three repos; the sidebar follows', async () => {
-    window.history.replaceState(null, '', '/orgs/thekonnen/repositories#infra/dagu');
+  it('#infra/dagsrv opens the dagsrv page with its three repos; the sidebar follows', async () => {
+    window.history.replaceState(null, '', '/orgs/thekonnen/repositories#infra/dagsrv');
     const { call } = fakeCall();
     const m = (await mountOrgRepos('thekonnen', { call }, document, 200))!;
-    await vi.waitFor(() => expect(names().sort()).toEqual(['dags-repo', 'dagu', 'konnen-dagu']));
-    expect(document.querySelector('.rg-view h1')!.textContent).toBe('dagu');
-    expect([...document.querySelectorAll('.rg-crumbs a, .rg-crumbs .rg-cur')].map((c) => c.textContent!.slice(1))).toEqual(['thekonnen', 'infra', 'dagu']);
-    expect(document.querySelector('[data-rg="side"] [aria-current="true"]')!.textContent).toContain('dagu');
+    await vi.waitFor(() => expect(names().sort()).toEqual(['dags-repo', 'dagsrv', 'kite-dagsrv']));
+    expect(document.querySelector('.rg-view h1')!.textContent).toBe('dagsrv');
+    expect([...document.querySelectorAll('.rg-crumbs a, .rg-crumbs .rg-cur')].map((c) => c.textContent!.slice(1))).toEqual(['thekonnen', 'infra', 'dagsrv']);
+    expect(document.querySelector('[data-rg="side"] [aria-current="true"]')!.textContent).toContain('dagsrv');
     m.dispose();
   });
   it('hash navigation moves between groups and back to the root', async () => {
     const { call } = fakeCall();
     const m = (await mountOrgRepos('thekonnen', { call }, document, 200))!;
     await vi.waitFor(() => expect(names()).toContain('infra'));
-    window.history.pushState(null, '', '/orgs/thekonnen/repositories#ai/litellm');
+    window.history.pushState(null, '', '/orgs/thekonnen/repositories#ai/llm-proxy');
     window.dispatchEvent(new Event('hashchange'));
-    await vi.waitFor(() => expect(names().sort()).toEqual(['konnen-litellm', 'litellm']));
+    await vi.waitFor(() => expect(names().sort()).toEqual(['kite-llm-proxy', 'llm-proxy']));
     window.history.pushState(null, '', '/orgs/thekonnen/repositories');
     window.dispatchEvent(new Event('popstate'));
-    await vi.waitFor(() => expect(names()).toEqual(['infra', 'dagu', 'authentik', 'checkmate', 'ai', 'keep_supabase_alive']));
+    await vi.waitFor(() => expect(names()).toEqual(['infra', 'dagsrv', 'authn', 'cmonitor', 'ai', 'keep_alive_job']));
     window.history.pushState(null, '', '/orgs/thekonnen/repositories#nope/x');
     window.dispatchEvent(new Event('hashchange'));
     await vi.waitFor(() => expect(document.querySelector('.rg-view h1')!.textContent).toBe('thekonnen'));
@@ -214,11 +214,11 @@ describe('grouped view on the page', () => {
     const m = (await mountOrgRepos('thekonnen', { call }, document, 200))!;
     await vi.waitFor(() => expect(names()).toContain('infra'));
     // infra starts expanded (first group): its subgroups are listed indented
-    await vi.waitFor(() => expect(names()).toEqual(['infra', 'dagu', 'authentik', 'checkmate', 'ai', 'keep_supabase_alive']));
+    await vi.waitFor(() => expect(names()).toEqual(['infra', 'dagsrv', 'authn', 'cmonitor', 'ai', 'keep_alive_job']));
     (document.querySelector('.rg-chev[aria-label="Collapse infra"]') as HTMLElement).click();
-    await vi.waitFor(() => expect(names()).toEqual(['infra', 'ai', 'keep_supabase_alive']));
+    await vi.waitFor(() => expect(names()).toEqual(['infra', 'ai', 'keep_alive_job']));
     (document.querySelector('.rg-chev[aria-label="Expand ai"]') as HTMLElement).click();
-    await vi.waitFor(() => expect(names()).toEqual(['infra', 'ai', 'litellm', 'omniroute', 'keep_supabase_alive']));
+    await vi.waitFor(() => expect(names()).toEqual(['infra', 'ai', 'llm-proxy', 'oroute', 'keep_alive_job']));
     expect(document.querySelector('.rg-chev[aria-label="Collapse ai"]')).toBeTruthy();
     (document.querySelectorAll('.rg-row-title a.rg-grp')[1] as HTMLElement).click();
     await vi.waitFor(() => expect(window.location.hash).toBe('#ai'));
@@ -230,10 +230,10 @@ describe('grouped view on the page', () => {
     const m = (await mountOrgRepos('thekonnen', { call }, document, 200))!;
     await vi.waitFor(() => expect(document.getElementById('rg-search')).toBeTruthy());
     const input = document.getElementById('rg-search') as HTMLInputElement;
-    input.value = 'authentik';
+    input.value = 'authn';
     input.dispatchEvent(new Event('input', { bubbles: true }));
-    await vi.waitFor(() => expect(names()).toEqual(['infra / authentik / konnen-authentik', 'infra / checkmate / konnen-checkmate', 'infra / authentik / authentik']));
-    expect(document.querySelector('.rg-box-head')!.textContent).toContain('3 results for “authentik”');
+    await vi.waitFor(() => expect(names()).toEqual(['infra / authn / kite-authn', 'infra / cmonitor / kite-cmonitor', 'infra / authn / authn']));
+    expect(document.querySelector('.rg-box-head')!.textContent).toContain('3 results for “authn”');
     input.value = 'zzz';
     input.dispatchEvent(new Event('input', { bubbles: true }));
     await vi.waitFor(() => expect(document.querySelector('.rg-empty')!.textContent).toContain('No repositories match'));
@@ -252,13 +252,13 @@ describe('grouped view on the page', () => {
     const m = (await mountOrgRepos('thekonnen', { call }, document, 200))!;
     await vi.waitFor(() => expect([...document.querySelectorAll('.rg-tab')].map((t) => t.textContent!.trim())).toEqual(['Groups and repositories', 'Ungrouped 1', 'All repositories 10']));
     (document.querySelectorAll('.rg-tab')[1] as HTMLElement).click();
-    await vi.waitFor(() => expect(names()).toEqual(['keep_supabase_alive']));
-    window.history.pushState(null, '', '/orgs/thekonnen/repositories#infra/dagu');
+    await vi.waitFor(() => expect(names()).toEqual(['keep_alive_job']));
+    window.history.pushState(null, '', '/orgs/thekonnen/repositories#infra/dagsrv');
     window.dispatchEvent(new Event('hashchange'));
     await vi.waitFor(() => expect([...document.querySelectorAll('.rg-tab')].map((t) => t.textContent!.trim())).toEqual(['Groups and repositories', 'Match rules 3', 'All repositories 3']));
     (document.querySelectorAll('.rg-tab')[1] as HTMLElement).click();
     await vi.waitFor(() => expect(document.querySelector('.rg-rules')!.textContent).toContain('dags-*'));
-    expect([...document.querySelectorAll('.rg-rules .rg-chip')].map((c) => c.textContent)).toEqual(expect.arrayContaining(['dagu', 'dags-*', 'konnen-dagu']));
+    expect([...document.querySelectorAll('.rg-rules .rg-chip')].map((c) => c.textContent)).toEqual(expect.arrayContaining(['dagsrv', 'dags-*', 'kite-dagsrv']));
     m.dispose();
   });
   it('toggles to GitHub’s list with a banner, remembers the choice, and back', async () => {
@@ -307,11 +307,11 @@ describe('grouped view on the page', () => {
     expect(await mountWith({ groupedByDefault: true, view: 'grouped' }, '?type=public')).toBe(true);
   });
   it('a New repository button links to the native page, with the group preselected on group pages', async () => {
-    window.history.replaceState(null, '', '/orgs/thekonnen/repositories#infra/dagu');
+    window.history.replaceState(null, '', '/orgs/thekonnen/repositories#infra/dagsrv');
     const { call } = fakeCall();
     const m = (await mountOrgRepos('thekonnen', { call }, document, 200))!;
     await vi.waitFor(() => expect(document.querySelector('.rg-g-actions a')).toBeTruthy());
-    expect((document.querySelector('.rg-g-actions a') as HTMLAnchorElement).getAttribute('href')).toBe('https://github.com/organizations/thekonnen/repositories/new?rg_group=infra%2Fdagu');
+    expect((document.querySelector('.rg-g-actions a') as HTMLAnchorElement).getAttribute('href')).toBe('https://github.com/organizations/thekonnen/repositories/new?rg_group=infra%2Fdagsrv');
     m.dispose();
   });
   it('shows the index status progress, and the rate-limit pause message', async () => {
@@ -348,7 +348,7 @@ describe('"All repositories" tab', () => {
     const m = await open();
     await clickTab(/All repositories/);
     await vi.waitFor(() => expect(names()).toHaveLength(10));
-    expect(names()).toEqual(['konnen-litellm', 'litellm', 'konnen-authentik', 'konnen-checkmate', 'authentik', 'konnen-dagu', 'dagu', 'keep_supabase_alive', 'omniroute', 'dags-repo']);
+    expect(names()).toEqual(['kite-llm-proxy', 'llm-proxy', 'kite-authn', 'kite-cmonitor', 'authn', 'kite-dagsrv', 'dagsrv', 'keep_alive_job', 'oroute', 'dags-repo']);
     expect(document.querySelector('.rg-row .rg-grp')).toBeNull();
     expect(document.querySelector('.rg-box-head')!.textContent).toContain('10 repositories');
     m.dispose();
@@ -356,7 +356,7 @@ describe('"All repositories" tab', () => {
   it('on a group page it lists that group\'s repositories, subgroups included, flat', async () => {
     const m = await open('#infra');
     await clickTab(/All repositories/);
-    await vi.waitFor(() => expect(names().sort()).toEqual(['authentik', 'dags-repo', 'dagu', 'konnen-authentik', 'konnen-checkmate', 'konnen-dagu']));
+    await vi.waitFor(() => expect(names().sort()).toEqual(['authn', 'dags-repo', 'dagsrv', 'kite-authn', 'kite-cmonitor', 'kite-dagsrv']));
     m.dispose();
   });
   it('has a sort selector with GitHub\'s orders, applies it and remembers it', async () => {
@@ -369,7 +369,7 @@ describe('"All repositories" tab', () => {
     expect(sel.value).toBe('pushed');
     sel.value = 'name';
     sel.dispatchEvent(new Event('change', { bubbles: true }));
-    await vi.waitFor(() => expect(names().slice(0, 3)).toEqual(['authentik', 'dags-repo', 'dagu']));
+    await vi.waitFor(() => expect(names().slice(0, 3)).toEqual(['authn', 'dags-repo', 'dagsrv']));
     expect(fc.log.some((r) => r.type === 'prefs:set' && (r.prefs as any).sort === 'name')).toBe(true);
     m.dispose();
   });
@@ -378,7 +378,7 @@ describe('"All repositories" tab', () => {
     const call: any = async (req: Request) => (req.type === 'prefs:get' ? { sort: 'name' } : base.call(req));
     const m = await open('', call);
     await clickTab(/All repositories/);
-    await vi.waitFor(() => expect(names().slice(0, 2)).toEqual(['authentik', 'dags-repo']));
+    await vi.waitFor(() => expect(names().slice(0, 2)).toEqual(['authn', 'dags-repo']));
     expect((document.querySelector('select[aria-label="Sort repositories"]') as HTMLSelectElement).value).toBe('name');
     m.dispose();
   });
@@ -387,9 +387,9 @@ describe('"All repositories" tab', () => {
     await clickTab(/All repositories/);
     await vi.waitFor(() => expect(document.getElementById('rg-search')).toBeTruthy());
     const input = document.getElementById('rg-search') as HTMLInputElement;
-    input.value = 'authentik';
+    input.value = 'authn';
     input.dispatchEvent(new Event('input', { bubbles: true }));
-    await vi.waitFor(() => expect(names()).toEqual(['konnen-authentik', 'konnen-checkmate', 'authentik'])); // no "infra / authentik /" prefix
+    await vi.waitFor(() => expect(names()).toEqual(['kite-authn', 'kite-cmonitor', 'authn'])); // no "infra / authn /" prefix
     m.dispose();
   });
   it('the other tabs keep the plain "Sort: Last pushed" text', async () => {
@@ -408,22 +408,22 @@ describe('display names (titles) with slugs underneath', () => {
     return { exists: true, sha: 's', config: cfg, warnings: [] };
   };
   it('shows titles in the list, header, breadcrumb, sidebar and search; URLs keep the slug', async () => {
-    window.history.replaceState(null, '', '/orgs/thekonnen/repositories#infra/dagu');
+    window.history.replaceState(null, '', '/orgs/thekonnen/repositories#infra/dagsrv');
     const { call } = fakeCall({ config: titled() });
     const m = (await mountOrgRepos('thekonnen', { call }, document, 200))!;
     await vi.waitFor(() => expect(document.querySelector('.rg-view h1')!.textContent).toBe('Jobs: Crons e Ações'));
     expect([...document.querySelectorAll('.rg-crumbs a, .rg-crumbs .rg-cur')].map((c) => c.textContent!.slice(1))).toEqual(['thekonnen', 'Infraestrutura', 'Jobs: Crons e Ações']);
     expect(document.querySelector('.rg-big-av')!.textContent).toBe('J'); // letter from the display name
     expect([...document.querySelectorAll('[data-rg="side"] .rg-nav-item span:nth-child(2)')].map((e) => e.textContent)).toContain('Jobs: Crons e Ações');
-    expect(window.location.hash).toBe('#infra/dagu'); // the slug, never the title
+    expect(window.location.hash).toBe('#infra/dagsrv'); // the slug, never the title
     // searching from the root prefixes results with display names, not slugs
     window.history.pushState(null, '', '/orgs/thekonnen/repositories');
     window.dispatchEvent(new Event('popstate'));
     await vi.waitFor(() => expect(document.querySelector('.rg-view h1')!.textContent).toBe('thekonnen'));
     const input = document.getElementById('rg-search') as HTMLInputElement;
-    input.value = 'dagu';
+    input.value = 'dagsrv';
     input.dispatchEvent(new Event('input', { bubbles: true }));
-    await vi.waitFor(() => expect(names()[0]).toBe('Infraestrutura / Jobs: Crons e Ações / konnen-dagu'));
+    await vi.waitFor(() => expect(names()[0]).toBe('Infraestrutura / Jobs: Crons e Ações / kite-dagsrv'));
     m.dispose();
   });
   it('group rows show the title and link to the slug path', async () => {
@@ -431,7 +431,7 @@ describe('display names (titles) with slugs underneath', () => {
     const m = (await mountOrgRepos('thekonnen', { call }, document, 200))!;
     await vi.waitFor(() => expect(names()).toContain('Infraestrutura'));
     const link = [...document.querySelectorAll('.rg-row-title a.rg-grp')].find((a) => a.textContent === 'Jobs: Crons e Ações') as HTMLAnchorElement;
-    expect(link.getAttribute('href')).toBe('#infra/dagu');
+    expect(link.getAttribute('href')).toBe('#infra/dagsrv');
     expect(document.querySelector('.rg-chev[aria-label="Collapse Infraestrutura"]')).toBeTruthy();
     m.dispose();
   });

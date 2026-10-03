@@ -81,31 +81,31 @@ const withLogo = (path: string[], logo: string | null) => (req: any) => {
 
 describe('logo display (F7)', () => {
   it('shows the logo in the header, breadcrumb, group rows and the sidebar tree, loaded through the background', async () => {
-    const { log } = await open('#infra', { logos: { 'logos/infra-dagu.png': DATA } });
+    const { log } = await open('#infra', { logos: { 'logos/infra-dagsrv.png': DATA } });
     await vi.waitFor(() => expect(log.some((r) => r.type === 'logos:get')).toBe(true));
-    expect((log.find((r) => r.type === 'logos:get') as any).srcs).toEqual(['logos/infra-dagu.png']);
-    // sidebar tree (16px) for infra/dagu
+    expect((log.find((r) => r.type === 'logos:get') as any).srcs).toEqual(['logos/infra-dagsrv.png']);
+    // sidebar tree (16px) for infra/dagsrv
     await vi.waitFor(() => expect($('.rg-tree-logo')).toBeTruthy());
     expect(($('.rg-tree-logo') as HTMLImageElement).src).toBe(DATA);
-    // dagu is a subgroup of infra: its row has the logo, infra's own avatar is a letter
+    // dagsrv is a subgroup of infra: its row has the logo, infra's own avatar is a letter
     await vi.waitFor(() => expect($$('.rg-root[data-rg="view"] .rg-row img.rg-av').length).toBe(1));
     expect($$('.rg-root[data-rg="view"] .rg-row .rg-av').filter((e) => e.tagName === 'SPAN').length).toBeGreaterThan(0);
-    // open dagu: header (big) and breadcrumb (mini)
-    ($$('.rg-root[data-rg="view"] .rg-grp').find((a) => a.textContent === 'dagu')!).click();
+    // open dagsrv: header (big) and breadcrumb (mini)
+    ($$('.rg-root[data-rg="view"] .rg-grp').find((a) => a.textContent === 'dagsrv')!).click();
     await vi.waitFor(() => expect($('img.rg-big-av')).toBeTruthy());
     expect(($('img.rg-big-av') as HTMLImageElement).src).toBe(DATA);
     expect($('.rg-crumbs img.rg-mini-av')).toBeTruthy();
   });
 
   it('falls back to the letter when the logo cannot be loaded, or the image fails', async () => {
-    await open('#infra/dagu', { logos: { 'logos/infra-dagu.png': null } });
+    await open('#infra/dagsrv', { logos: { 'logos/infra-dagsrv.png': null } });
     await vi.waitFor(() => expect($('.rg-g-title .rg-big-av')).toBeTruthy());
     expect($('.rg-g-title .rg-big-av')!.tagName).toBe('SPAN');
     expect($('.rg-g-title .rg-big-av')!.textContent).toBe('D');
     expect($('.rg-tree-logo')).toBeNull();
     mounted!.dispose();
 
-    await open('#infra/dagu', { logos: { 'logos/infra-dagu.png': 'data:image/png;base64,broken' } });
+    await open('#infra/dagsrv', { logos: { 'logos/infra-dagsrv.png': 'data:image/png;base64,broken' } });
     await vi.waitFor(() => expect($('img.rg-big-av')).toBeTruthy());
     $('img.rg-big-av')!.dispatchEvent(new Event('error'));
     await vi.waitFor(() => expect($('.rg-g-title .rg-big-av')!.tagName).toBe('SPAN'));
@@ -116,12 +116,12 @@ describe('logo display (F7)', () => {
 
 describe('big avatar button (F3)', () => {
   it('is a button with a pencil on non-root groups; it opens Edit group focused on the logo', async () => {
-    await open('#infra/dagu');
+    await open('#infra/dagsrv');
     await vi.waitFor(() => expect($('.rg-big-av-btn')).toBeTruthy());
     expect($('.rg-big-av-btn .rg-pen')).toBeTruthy();
     $('.rg-big-av-btn')!.click();
     await vi.waitFor(() => expect(drawer()).toBeTruthy());
-    expect($('#rg-drawer-title')!.textContent).toBe('Edit group infra / dagu');
+    expect($('#rg-drawer-title')!.textContent).toBe('Edit group infra / dagsrv');
     expect(document.activeElement).toBe($('#rg-logo-upload'));
   });
   it('is not a button on the org root', async () => {
@@ -130,7 +130,7 @@ describe('big avatar button (F3)', () => {
     expect($('.rg-big-av-btn')).toBeNull();
   });
   it('Edit group still focuses the name field', async () => {
-    await open('#infra/dagu');
+    await open('#infra/dagsrv');
     await vi.waitFor(() => btn('Edit group'));
     btn('Edit group').click();
     await vi.waitFor(() => expect(drawer()).toBeTruthy());
@@ -140,7 +140,7 @@ describe('big avatar button (F3)', () => {
 
 describe('logo field and cropper (F7)', () => {
   async function openDrawer(o: Opts = {}) {
-    const ctx = await open('#ai/litellm', o);
+    const ctx = await open('#ai/llm-proxy', o);
     await vi.waitFor(() => btn('Edit group'));
     btn('Edit group').click();
     await vi.waitFor(() => expect(drawer()).toBeTruthy());
@@ -158,7 +158,7 @@ describe('logo field and cropper (F7)', () => {
   });
 
   it('upload -> crop -> Use this crop -> Save sends the PNG with the edit', async () => {
-    const { log } = await openDrawer({ edit: withLogo(['ai', 'litellm'], 'logos/ai-litellm.png') });
+    const { log } = await openDrawer({ edit: withLogo(['ai', 'llm-proxy'], 'logos/ai-llm-proxy.png') });
     expect(saveBtn().disabled).toBe(true);
     choose(file('image/png'));
     await vi.waitFor(() => expect($('.rg-cropper canvas')).toBeTruthy());
@@ -173,7 +173,7 @@ describe('logo field and cropper (F7)', () => {
     await vi.waitFor(() => expect(drawer()).toBeNull());
     const sent = log.find((r) => r.type === 'org:edit') as any;
     expect(sent.edit.logo).toEqual({ png: PNG });
-    expect(sent.edit).toMatchObject({ kind: 'edit', path: ['ai', 'litellm'], name: 'litellm' });
+    expect(sent.edit).toMatchObject({ kind: 'edit', path: ['ai', 'llm-proxy'], name: 'llm-proxy' });
     // the new logo shows right away, without waiting for the file
     await vi.waitFor(() => expect($('img.rg-big-av')).toBeTruthy());
     expect(($('img.rg-big-av') as HTMLImageElement).src).toBe(`data:image/png;base64,${PNG}`);
@@ -278,7 +278,7 @@ describe('logo field and cropper (F7)', () => {
   });
 
   it('Use the letter instead removes the logo of a group that has one', async () => {
-    const { log } = await open('#infra/dagu', { logos: { 'logos/infra-dagu.png': DATA }, edit: withLogo(['infra', 'dagu'], null) });
+    const { log } = await open('#infra/dagsrv', { logos: { 'logos/infra-dagsrv.png': DATA }, edit: withLogo(['infra', 'dagsrv'], null) });
     await vi.waitFor(() => btn('Edit group'));
     btn('Edit group').click();
     await vi.waitFor(() => expect(drawer()).toBeTruthy());
@@ -313,15 +313,15 @@ describe('logo field and cropper (F7)', () => {
 describe('with titles and slugs (merged with the Name + Slug drawer)', () => {
   const titledConfig = () => {
     const cfg = example();
-    const dagu = cfg.groups[0].groups.find((g) => g.name === 'dagu')!;
-    dagu.title = 'Visão Geral';
+    const dagsrv = cfg.groups[0].groups.find((g) => g.name === 'dagsrv')!;
+    dagsrv.title = 'Visão Geral';
     return { exists: true, sha: 'sha1', config: cfg, warnings: [] };
   };
   const type = (el: HTMLInputElement, v: string) => ((el.value = v), el.dispatchEvent(new Event('input', { bubbles: true })));
   const saveBtn = () => $('.rg-drawer-foot .rg-btn-primary') as HTMLButtonElement;
 
   it('the header avatar shows the title\'s letter, with the tone of the slug, when the logo cannot load; and the logo when it can', async () => {
-    await open('#infra/dagu', { config: titledConfig(), logos: { 'logos/infra-dagu.png': null } });
+    await open('#infra/dagsrv', { config: titledConfig(), logos: { 'logos/infra-dagsrv.png': null } });
     await vi.waitFor(() => expect($('.rg-g-title .rg-big-av')).toBeTruthy());
     expect($('.rg-g-title h1')!.textContent).toBe('Visão Geral');
     const av = $('.rg-g-title .rg-big-av')!;
@@ -330,7 +330,7 @@ describe('with titles and slugs (merged with the Name + Slug drawer)', () => {
     expect(av.className).toMatch(/rg-av[1-5]/);
     expect($('.rg-big-av-btn')!.getAttribute('aria-label')).toBe('Edit logo of Visão Geral');
     mounted!.dispose();
-    await open('#infra/dagu', { config: titledConfig(), logos: { 'logos/infra-dagu.png': DATA } });
+    await open('#infra/dagsrv', { config: titledConfig(), logos: { 'logos/infra-dagsrv.png': DATA } });
     await vi.waitFor(() => expect($('img.rg-big-av')).toBeTruthy());
   });
 
@@ -357,16 +357,16 @@ describe('with titles and slugs (merged with the Name + Slug drawer)', () => {
 
   it('renaming the slug of a group that has a logo keeps the existing path; a new PNG uses the new slug path', () => {
     const groups = example().groups;
-    const rename = { kind: 'edit' as const, path: ['infra', 'dagu'], name: 'jobs', title: 'Jobs', description: '', match: [] };
+    const rename = { kind: 'edit' as const, path: ['infra', 'dagsrv'], name: 'jobs', title: 'Jobs', description: '', match: [] };
     const kept = (applyEdit(groups, rename) as any).groups;
-    expect(findGroup(kept, ['infra', 'jobs'])!.logo).toBe('logos/infra-dagu.png'); // the file still exists there
+    expect(findGroup(kept, ['infra', 'jobs'])!.logo).toBe('logos/infra-dagsrv.png'); // the file still exists there
     const fresh = (applyEdit(groups, { ...rename, logo: { png: 'AA' } }) as any).groups;
     expect(findGroup(fresh, ['infra', 'jobs'])!.logo).toBe('logos/infra-jobs.png');
     expect(editLogoPath({ ...rename, logo: { png: 'AA' } })).toBe('logos/infra-jobs.png');
   });
 
   it('Edit .github/repo-groups.yml keeps the logo of the group, leaves an uncommitted crop out, and the diff shows a removed logo', async () => {
-    await open('#infra/dagu', { config: titledConfig() });
+    await open('#infra/dagsrv', { config: titledConfig() });
     await vi.waitFor(() => btn('Edit group'));
     btn('Edit group').click();
     await vi.waitFor(() => expect(drawer()).toBeTruthy());
@@ -377,17 +377,17 @@ describe('with titles and slugs (merged with the Name + Slug drawer)', () => {
     btn('Edit .github/repo-groups.yml').click();
     await vi.waitFor(() => expect($('#rg-y-text')).toBeTruthy());
     const text = ($('#rg-y-text') as HTMLTextAreaElement).value;
-    expect(text).toContain('logo: "logos/infra-dagu.png"');
+    expect(text).toContain('logo: "logos/infra-dagsrv.png"');
     await vi.waitFor(() => expect($('.rg-y-status:not(.rg-warn)')!.textContent).toMatch(/^Valid\. No changes yet/));
     // dropping the logo line in the YAML shows up in the diff
     const area = $('#rg-y-text') as HTMLTextAreaElement;
-    area.value = text.replace(/ *logo: "logos\/infra-dagu.png"\n/, '');
+    area.value = text.replace(/ *logo: "logos\/infra-dagsrv.png"\n/, '');
     area.dispatchEvent(new Event('input', { bubbles: true }));
-    await vi.waitFor(() => expect($$('.rg-y-diff li').map((l) => l.textContent!).join('|')).toContain('Logo of infra/dagu'));
+    await vi.waitFor(() => expect($$('.rg-y-diff li').map((l) => l.textContent!).join('|')).toContain('Logo of infra/dagsrv'));
   });
 
   it('Use the letter instead, in the drawer, then Edit YAML shows the logo line removed', async () => {
-    await open('#infra/dagu', { config: titledConfig(), logos: { 'logos/infra-dagu.png': DATA } });
+    await open('#infra/dagsrv', { config: titledConfig(), logos: { 'logos/infra-dagsrv.png': DATA } });
     await vi.waitFor(() => btn('Edit group'));
     btn('Edit group').click();
     await vi.waitFor(() => expect(drawer()).toBeTruthy());
@@ -396,7 +396,7 @@ describe('with titles and slugs (merged with the Name + Slug drawer)', () => {
     await vi.waitFor(() => expect(saveBtn().disabled).toBe(false));
     btn('Edit .github/repo-groups.yml').click();
     await vi.waitFor(() => expect($('#rg-y-text')).toBeTruthy());
-    expect(($('#rg-y-text') as HTMLTextAreaElement).value).not.toContain('logos/infra-dagu.png');
-    await vi.waitFor(() => expect($$('.rg-y-diff li').map((l) => l.textContent!).join('|')).toContain('Logo of infra/dagu'));
+    expect(($('#rg-y-text') as HTMLTextAreaElement).value).not.toContain('logos/infra-dagsrv.png');
+    await vi.waitFor(() => expect($$('.rg-y-diff li').map((l) => l.textContent!).join('|')).toContain('Logo of infra/dagsrv'));
   });
 });

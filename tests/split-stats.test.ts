@@ -11,7 +11,7 @@ const stats = () => [...document.querySelectorAll('.rg-root[data-rg="view"] .rg-
 
 beforeEach(() => {
   document.documentElement.innerHTML = html;
-  window.history.replaceState(null, '', '/orgs/thekonnen/repositories#infra/dagu');
+  window.history.replaceState(null, '', '/orgs/thekonnen/repositories#infra/dagsrv');
 });
 afterEach(() => {
   document.documentElement.innerHTML = '';
@@ -32,10 +32,10 @@ describe('split issue and PR stats', () => {
     await vi.waitFor(() => expect(stats().some((s) => s!.startsWith('Open issues') && !s!.includes('&'))).toBe(true));
     const s = stats();
     expect(s.some((t) => t!.startsWith('Open pull requests'))).toBe(true);
-    expect(s.find((t) => t!.startsWith('Open issues'))).toBe('Open issues6'); // dagu, dags-repo, konnen-dagu x 2
+    expect(s.find((t) => t!.startsWith('Open issues'))).toBe('Open issues6'); // dagsrv, dags-repo, kite-dagsrv x 2
     expect(s.find((t) => t!.startsWith('Open pull requests'))).toBe('Open pull requests9');
     expect(asked).toHaveLength(1); // one request for the whole group
-    expect(asked[0].repos.slice().sort()).toEqual(['dags-repo', 'dagu', 'konnen-dagu']);
+    expect(asked[0].repos.slice().sort()).toEqual(['dags-repo', 'dagsrv', 'kite-dagsrv']);
     m.dispose();
   });
 

@@ -1,0 +1,63 @@
+# thekonnen/.github/repo-groups.yml
+version: 1
+groups:
+  - name: products
+    title: "Produtos"
+    description: "Software da Acme e seu código compartilhado."
+    match: ["AcmeApp", "repo-group-for-github"]
+    groups:
+      - name: design-plugins
+        title: "Plugins de design"
+        description: "Plugins de design, clientes e serviços na nuvem."
+        match: ["kite-design-*", "AcmeAutomation", "kite-design-mcp"]
+      - name: core-platform
+        title: "Core e Admin"
+        description: "Pagamentos, licenças, painel admin e kit de API."
+        match: ["kite-core-api", "kite-admin", "api-fastify-kit"]
+      - name: ai-tools
+        title: "Ferramentas de IA"
+        description: "Extensões com IA, servidores MCP e serviços de imagem."
+        match: ["kite-ai-extension", "kite-mcp", "kite-images"]
+  - name: platform-services
+    title: "Serviços de plataforma"
+    description: "Serviços compartilhados que sustentam os produtos."
+    groups:
+      - name: authn
+        title: "SSO"
+        description: "Identidade, SSO e login."
+        match: ["authn", "*_authn", "authn_*", "*-authn", "authn-*", "authn.acme.example", "admin-authn.acme.example"]
+      - name: llm-gateway
+        title: "LLM gateways"
+        description: "Gateways de LLM."
+        logo: "logos/llm-gateway.png"
+        match: ["*-llm-proxy", "llm-proxy", "oroute"]
+      - name: dagsrv-e-dags
+        title: "Jobs e DAGs"
+        description: "Agendador de jobs, seus DAGs e testes."
+        logo: "logos/dagsrv-e-dags.png"
+        match: ["dag", "*-dagsrv", "dagsrv", "dags-repo", "test"]
+  - name: infra
+    title: "Infraestrutura"
+    description: "Hospedagem, monitoramento, armazenamento e repositórios da org."
+    match: ["keep_alive_job", ".github"]
+    groups:
+      - name: monitoring
+        title: "Monitoramento"
+        description: "Logs, métricas e checagem de disponibilidade."
+        match: ["kite-dashboards", "kite-logs-monitoring", "kite-cmonitor", "*-monitoring"]
+      - name: cloud
+        title: "Cloud e storage"
+        description: "Setup de cloud, VMs, armazenamento e sincronização."
+        match: ["kite_cloud_setup", "kite-cloud-core", "create_cloud_vm", "kite-storage", "kite-sync", "img-tmp"]
+  - name: kite-websites-landpages
+    title: "Sites e landing pages"
+    description: "Sites da empresa, landing pages, assets e plugins WordPress."
+    match: ["thekonnen.com", "products.acme.example", "docs.acme.example", "kite_assets", "kite-simple-redirect", "lp-*", "lp_*", "*-landpages"]
+  - name: experiments
+    title: "Experimentos e dados"
+    description: "Notebooks, playgrounds e pequenos utilitários de dados."
+    match: ["anonymize_text", "playground_*", "sm_download_content", "test_"]
+  - name: kite-legacy
+    title: "Acme-Legacy"
+    description: "Projetos deprecados e legados."
+    match: ["kite-nflow-docker", "*_Legacy_*", "legacy_*", "legacy-*", "*-legacy", "*_legacy", "*-deprecated"]

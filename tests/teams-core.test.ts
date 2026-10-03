@@ -12,8 +12,8 @@ import { example, load, REPOS } from './fixtures';
 describe('chips and access helpers', () => {
   const g = example().groups;
   it('chipTeams lists own teams first, then inherited ones', () => {
-    expect(chipTeams(g, ['ai', 'litellm']).map((t) => [t.slug, t.inherited])).toEqual([['konnen_team', false], ['ai-squad', true]]);
-    expect(chipTeams(g, ['infra', 'dagu']).map((t) => [t.slug, t.inherited, t.from])).toEqual([['konnen_team', true, 'infra']]);
+    expect(chipTeams(g, ['ai', 'llm-proxy']).map((t) => [t.slug, t.inherited])).toEqual([['core_team', false], ['ai-squad', true]]);
+    expect(chipTeams(g, ['infra', 'dagsrv']).map((t) => [t.slug, t.inherited, t.from])).toEqual([['core_team', true, 'infra']]);
     expect(chipTeams(g, [])).toEqual([]);
   });
   it('edgesToAccess maps GraphQL permissions and skips nodes without a name', () => {
@@ -26,7 +26,7 @@ describe('chips and access helpers', () => {
     expect(withGranted(a, 't', 's', 'pull').t).toEqual({ r: 'push', s: 'pull' });
   });
   it('inGroup is recursive but not by name prefix', () => {
-    expect(inGroup('infra/dagu', 'infra')).toBe(true);
+    expect(inGroup('infra/dagsrv', 'infra')).toBe(true);
     expect(inGroup('infra', 'infra')).toBe(true);
     expect(inGroup('infrastructure', 'infra')).toBe(false);
     expect(inGroup('', 'infra')).toBe(false);
@@ -35,13 +35,13 @@ describe('chips and access helpers', () => {
 
 describe('team repositories view', () => {
   const g = example().groups;
-  const access: TeamAccess = { konnen_team: { dagu: 'push', 'konnen-dagu': 'push', authentik: 'pull', keep_supabase_alive: 'push' } };
+  const access: TeamAccess = { core_team: { dagsrv: 'push', 'kite-dagsrv': 'push', authn: 'pull', keep_alive_job: 'push' } };
   it('keeps only the repos the team can access and hides groups without any', () => {
-    expect(teamRepos(REPOS, access, 'konnen_team').map((r) => r.name).sort()).toEqual(['authentik', 'dagu', 'keep_supabase_alive', 'konnen-dagu']);
-    const m = buildTeamTree(g, REPOS, access, 'konnen_team');
-    expect([...m.byKey.keys()].sort()).toEqual(['', 'infra', 'infra/authentik', 'infra/dagu']);
+    expect(teamRepos(REPOS, access, 'core_team').map((r) => r.name).sort()).toEqual(['authn', 'dagsrv', 'keep_alive_job', 'kite-dagsrv']);
+    const m = buildTeamTree(g, REPOS, access, 'core_team');
+    expect([...m.byKey.keys()].sort()).toEqual(['', 'infra', 'infra/authn', 'infra/dagsrv']);
     expect(m.root.children.map((c) => c.key)).toEqual(['infra']);
-    expect(m.root.repos.map((r) => r.name)).toEqual(['keep_supabase_alive']); // reachable, but outside every group
+    expect(m.root.repos.map((r) => r.name)).toEqual(['keep_alive_job']); // reachable, but outside every group
     expect(m.root.subgroups).toBe(3);
     expect(m.root.total).toBe(4);
   });
@@ -56,7 +56,7 @@ describe('edit with teams', () => {
     const g = example().groups;
     const base = { kind: 'edit' as const, path: ['infra'], name: 'infra', description: 'x', match: [] };
     const kept = applyEdit(g, base) as { groups: typeof g };
-    expect(kept.groups[0].teams).toEqual([{ slug: 'konnen_team', permission: 'push' }]);
+    expect(kept.groups[0].teams).toEqual([{ slug: 'core_team', permission: 'push' }]);
     const next = applyEdit(g, { ...base, teams: [{ slug: ' a ', permission: 'push' }, { slug: 'b', permission: 'admin' }, { slug: 'a', permission: 'triage' }, { slug: '', permission: 'pull' }] }) as { groups: typeof g };
     expect(next.groups[0].teams).toEqual([{ slug: 'a', permission: 'triage' }, { slug: 'b', permission: 'admin' }]);
     const yaml = writeConfig({ version: 1, index: 'api', groups: next.groups }, 'o/.github/repo-groups.yml');

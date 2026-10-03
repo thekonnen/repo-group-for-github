@@ -47,16 +47,16 @@ describe('commitEdit (F5/F6, §7)', () => {
   it('edits a group, commits canonical YAML with the sha and a conventional message', async () => {
     const { s, f } = world();
     const kv = memoryKV();
-    const r = await commitEdit(client(f), kv, 'o', { kind: 'edit', path: ['infra', 'dagu'], name: 'dagu', description: 'Jobs', match: ['dagu', 'dags-*'] });
+    const r = await commitEdit(client(f), kv, 'o', { kind: 'edit', path: ['infra', 'dagsrv'], name: 'dagsrv', description: 'Jobs', match: ['dagsrv', 'dags-*'] });
     expect(r).toMatchObject({ status: 'ok', sha: 'sha-2' });
     const body = JSON.parse(puts(f)[0].body!);
-    expect(body.message).toBe('chore(repo-groups): edit group infra/dagu');
+    expect(body.message).toBe('chore(repo-groups): edit group infra/dagsrv');
     expect(body.sha).toBe('sha-1');
     expect(s.file!.text.startsWith('# o/.github/repo-groups.yml\nversion: 1\ngroups:\n')).toBe(true);
     const cfg = parsed(s.file!.text);
-    expect(findGroup(cfg.groups, ['infra', 'dagu'])).toMatchObject({ description: 'Jobs', match: ['dagu', 'dags-*'], logo: 'logos/infra-dagu.png' });
-    expect(findGroup(cfg.groups, ['infra'])!.teams).toEqual([{ slug: 'konnen_team', permission: 'push' }]); // untouched
-    expect(findGroup(cfg.groups, ['ai', 'litellm'])).toBeTruthy();
+    expect(findGroup(cfg.groups, ['infra', 'dagsrv'])).toMatchObject({ description: 'Jobs', match: ['dagsrv', 'dags-*'], logo: 'logos/infra-dagsrv.png' });
+    expect(findGroup(cfg.groups, ['infra'])!.teams).toEqual([{ slug: 'core_team', permission: 'push' }]); // untouched
+    expect(findGroup(cfg.groups, ['ai', 'llm-proxy'])).toBeTruthy();
     expect((await kv.get<any>('rg:file:o'))).toMatchObject({ exists: true, sha: 'sha-2' });
   });
   it('creates a group, and creates the file when it does not exist yet (no sha sent)', async () => {

@@ -28,7 +28,7 @@ const btn = (label: string | RegExp, within: ParentNode = document) =>
 const type = (el: HTMLInputElement, v: string) => ((el.value = v), el.dispatchEvent(new Event('input', { bubbles: true })));
 const names = () => $$('.rg-root[data-rg="view"] .rg-row .rg-row-title a').map((a) => a.textContent!.trim());
 
-/** The edited config the "server" returns: description changed on infra/dagu. */
+/** The edited config the "server" returns: description changed on infra/dagsrv. */
 const okEdit = (mut: (g: any) => void) => (req: any) => {
   const cfg = structuredClone(example());
   mut(cfg.groups);
@@ -46,37 +46,37 @@ async function open(hash: string, opts: Parameters<typeof fakeCall>[0] = {}) {
 
 describe('Edit group drawer (F5)', () => {
   it('opens prefilled from the group, as a modal dialog', async () => {
-    await open('#infra/dagu');
+    await open('#infra/dagsrv');
     await vi.waitFor(() => expect(btn('Edit group')).toBeTruthy());
     btn('Edit group').click();
     await vi.waitFor(() => expect(drawer()).toBeTruthy());
     expect(drawer()!.getAttribute('role')).toBe('dialog');
     expect(drawer()!.getAttribute('aria-modal')).toBe('true');
     expect(drawer()!.getAttribute('aria-labelledby')).toBe('rg-drawer-title');
-    expect($('#rg-drawer-title')!.textContent).toBe('Edit group infra / dagu');
-    expect(($('#rg-f-name') as HTMLInputElement).value).toBe('dagu');
+    expect($('#rg-drawer-title')!.textContent).toBe('Edit group infra / dagsrv');
+    expect(($('#rg-f-name') as HTMLInputElement).value).toBe('dagsrv');
     expect(($('#rg-f-desc') as HTMLInputElement).value).toBe('Jobs and crons (Airflow alternative)');
-    expect($$('.rg-drawer .rg-chip').map((c) => c.textContent!.trim())).toEqual(['dagu', 'dags-*', 'konnen-dagu']);
+    expect($$('.rg-drawer .rg-chip').map((c) => c.textContent!.trim())).toEqual(['dagsrv', 'dags-*', 'kite-dagsrv']);
     expect($('.rg-drawer-foot')!.textContent).toContain('Saved as a commit to thekonnen/.github');
     expect(document.activeElement).toBe($('#rg-f-name'));
   });
   it('lists the matching repositories live and marks those that sit in another group', async () => {
-    await open('#infra/dagu');
+    await open('#infra/dagsrv');
     await vi.waitFor(() => btn('Edit group'));
     btn('Edit group').click();
     await vi.waitFor(() => expect(drawer()).toBeTruthy());
-    expect($$('.rg-match-list li').map((l) => l.textContent!.trim())).toEqual(['konnen-dagu', 'dagu', 'dags-repo']);
+    expect($$('.rg-match-list li').map((l) => l.textContent!.trim())).toEqual(['kite-dagsrv', 'dagsrv', 'dags-repo']);
     expect($$('.rg-drawer .rg-field label').find((l) => /Matching/.test(l.textContent!))!.textContent).toBe('Matching repositories (3)');
     const ruleInput = $('#rg-f-rule') as HTMLInputElement;
-    type(ruleInput, 'konnen-*');
+    type(ruleInput, 'kite-*');
     ruleInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
-    await vi.waitFor(() => expect($$('.rg-drawer .rg-chip').map((c) => c.textContent!.trim())).toContain('konnen-*'));
+    await vi.waitFor(() => expect($$('.rg-drawer .rg-chip').map((c) => c.textContent!.trim())).toContain('kite-*'));
     const li = $$('.rg-match-list li').map((l) => l.textContent!.trim());
-    expect(li).toContain('konnen-litellm' + 'now in ai / litellm');
-    expect(li).toContain('konnen-authentik' + 'now in infra / authentik');
-    expect(li).toContain('konnen-dagu'); // already here: no mark
+    expect(li).toContain('kite-llm-proxy' + 'now in ai / llm-proxy');
+    expect(li).toContain('kite-authn' + 'now in infra / authn');
+    expect(li).toContain('kite-dagsrv'); // already here: no mark
     // remove a rule with its x
-    (document.querySelector('[aria-label="Remove rule konnen-*"]') as HTMLElement).click();
+    (document.querySelector('[aria-label="Remove rule kite-*"]') as HTMLElement).click();
     await vi.waitFor(() => expect($$('.rg-match-list li')).toHaveLength(3));
   });
   it('Name keeps capitals, spaces and accents; the slug is built from it and shown with the full path', async () => {
@@ -96,25 +96,25 @@ describe('Edit group drawer (F5)', () => {
     expect(($('#rg-f-slug') as HTMLInputElement).value).toBe('my-jobs-');
   });
   it('an existing group keeps its slug when only the name changes (the slug is in URLs)', async () => {
-    await open('#infra/dagu');
+    await open('#infra/dagsrv');
     await vi.waitFor(() => btn('Edit group'));
     btn('Edit group').click();
     await vi.waitFor(() => expect(drawer()).toBeTruthy());
-    expect(($('#rg-f-name') as HTMLInputElement).value).toBe('dagu');
-    expect(($('#rg-f-slug') as HTMLInputElement).value).toBe('dagu');
+    expect(($('#rg-f-name') as HTMLInputElement).value).toBe('dagsrv');
+    expect(($('#rg-f-slug') as HTMLInputElement).value).toBe('dagsrv');
     type($('#rg-f-name') as HTMLInputElement, 'Jobs e Crons');
     await new Promise((r) => setTimeout(r, 20));
-    expect(($('#rg-f-slug') as HTMLInputElement).value).toBe('dagu');
+    expect(($('#rg-f-slug') as HTMLInputElement).value).toBe('dagsrv');
   });
   it('validates: name required, no duplicate slug among siblings, a slug must be possible; Save stays disabled', async () => {
-    await open('#infra/dagu');
+    await open('#infra/dagsrv');
     await vi.waitFor(() => btn('Edit group'));
     btn('Edit group').click();
     await vi.waitFor(() => expect(drawer()).toBeTruthy());
-    type($('#rg-f-slug') as HTMLInputElement, 'authentik');
-    await vi.waitFor(() => expect($('#rg-f-slug-hint')!.textContent).toBe('A group named "authentik" already exists here.'));
+    type($('#rg-f-slug') as HTMLInputElement, 'authn');
+    await vi.waitFor(() => expect($('#rg-f-slug-hint')!.textContent).toBe('A group named "authn" already exists here.'));
     expect(($('.rg-drawer-foot .rg-btn-primary') as HTMLButtonElement).disabled).toBe(true);
-    type($('#rg-f-slug') as HTMLInputElement, 'dagu');
+    type($('#rg-f-slug') as HTMLInputElement, 'dagsrv');
     type($('#rg-f-name') as HTMLInputElement, '');
     type($('#rg-f-slug') as HTMLInputElement, '');
     ($('#rg-f-name') as HTMLInputElement).dispatchEvent(new Event('blur'));
@@ -127,7 +127,7 @@ describe('Edit group drawer (F5)', () => {
     await vi.waitFor(() => expect(($('.rg-drawer-foot .rg-btn-primary') as HTMLButtonElement).disabled).toBe(false));
   });
   it('Save is disabled until something changes; then commits the single edit and shows the toast', async () => {
-    const fc = await open('#infra/dagu', { edit: okEdit((g) => (g[0].groups[0].description = 'Cron jobs')) });
+    const fc = await open('#infra/dagsrv', { edit: okEdit((g) => (g[0].groups[0].description = 'Cron jobs')) });
     await vi.waitFor(() => btn('Edit group'));
     btn('Edit group').click();
     await vi.waitFor(() => expect(drawer()).toBeTruthy());
@@ -138,14 +138,14 @@ describe('Edit group drawer (F5)', () => {
     save.click();
     await vi.waitFor(() => expect(drawer()).toBeNull());
     const sent = fc.log.find((r) => r.type === 'org:edit') as any;
-    expect(sent.edit).toEqual({ kind: 'edit', path: ['infra', 'dagu'], name: 'dagu', title: 'dagu', description: 'Cron jobs', match: ['dagu', 'dags-*', 'konnen-dagu'] });
+    expect(sent.edit).toEqual({ kind: 'edit', path: ['infra', 'dagsrv'], name: 'dagsrv', title: 'dagsrv', description: 'Cron jobs', match: ['dagsrv', 'dags-*', 'kite-dagsrv'] });
     expect($('.rg-toast')!.textContent).toBe('Committed to thekonnen/.github/repo-groups.yml');
     expect($('.rg-toast code')!.textContent).toBe('thekonnen/.github/repo-groups.yml');
     expect($('.rg-toast')!.getAttribute('role')).toBe('status');
     await vi.waitFor(() => expect($('.rg-g-title p')!.textContent).toBe('Cron jobs'));
   });
   it('renaming the open group moves the URL to the new path', async () => {
-    const fc = await open('#infra/dagu', { edit: okEdit((g) => (g[0].groups[0].name = 'jobs')) });
+    const fc = await open('#infra/dagsrv', { edit: okEdit((g) => (g[0].groups[0].name = 'jobs')) });
     await vi.waitFor(() => btn('Edit group'));
     btn('Edit group').click();
     await vi.waitFor(() => expect(drawer()).toBeTruthy());
@@ -156,7 +156,7 @@ describe('Edit group drawer (F5)', () => {
     expect((fc.log.find((r) => r.type === 'org:edit') as any).edit.name).toBe('jobs');
   });
   it('keeps the drawer open and shows the error when the commit fails', async () => {
-    await open('#infra/dagu', { edit: () => { throw Object.assign(new Error('boom'), {}); } });
+    await open('#infra/dagsrv', { edit: () => { throw Object.assign(new Error('boom'), {}); } });
     // the fake rejects with a plain Error; the controller turns it into its message
     await vi.waitFor(() => btn('Edit group'));
     btn('Edit group').click();
@@ -170,7 +170,7 @@ describe('Edit group drawer (F5)', () => {
     expect($('.rg-toast')).toBeNull();
   });
   it('closes with Esc, the backdrop, Cancel and the x; focus returns to the opener', async () => {
-    await open('#infra/dagu');
+    await open('#infra/dagsrv');
     await vi.waitFor(() => btn('Edit group'));
     const opener = btn('Edit group');
     for (const how of ['esc', 'backdrop', 'cancel', 'x']) {
@@ -186,7 +186,7 @@ describe('Edit group drawer (F5)', () => {
     }
   });
   it('a click inside the drawer does not close it', async () => {
-    await open('#infra/dagu');
+    await open('#infra/dagsrv');
     await vi.waitFor(() => btn('Edit group'));
     btn('Edit group').click();
     await vi.waitFor(() => expect(drawer()).toBeTruthy());
@@ -197,13 +197,13 @@ describe('Edit group drawer (F5)', () => {
 
 describe('match rules input', () => {
   it('one field, several rules: commas, spaces, semicolons and paste become separate chips', async () => {
-    await open('#infra/dagu');
+    await open('#infra/dagsrv');
     await vi.waitFor(() => btn('Edit group'));
     btn('Edit group').click();
     await vi.waitFor(() => expect(drawer()).toBeTruthy());
     const rule = $('#rg-f-rule') as HTMLInputElement;
     type(rule, 'omni*, lite*;extra');
-    await vi.waitFor(() => expect($$('.rg-drawer .rg-chip').map((c) => c.textContent!.trim())).toEqual(['dagu', 'dags-*', 'konnen-dagu', 'omni*', 'lite*', 'extra']));
+    await vi.waitFor(() => expect($$('.rg-drawer .rg-chip').map((c) => c.textContent!.trim())).toEqual(['dagsrv', 'dags-*', 'kite-dagsrv', 'omni*', 'lite*', 'extra']));
     expect(rule.value).toBe('');
   });
   it('text still in the rule field is saved with the group', async () => {
@@ -213,12 +213,12 @@ describe('match rules input', () => {
     await vi.waitFor(() => expect(drawer()).toBeTruthy());
     type($('#rg-f-name') as HTMLInputElement, 'jobs');
     const rule = $('#rg-f-rule') as HTMLInputElement;
-    rule.value = 'dagu'; // typed but never confirmed with Enter or Add
+    rule.value = 'dagsrv'; // typed but never confirmed with Enter or Add
     rule.dispatchEvent(new Event('input', { bubbles: true }));
     await vi.waitFor(() => expect(($('.rg-drawer-foot .rg-btn-primary') as HTMLButtonElement).disabled).toBe(false));
     ($('.rg-drawer-foot .rg-btn-primary') as HTMLElement).click();
     await vi.waitFor(() => expect(fc.log.some((r) => r.type === 'org:edit')).toBe(true));
-    expect((fc.log.find((r) => r.type === 'org:edit') as any).edit.match).toEqual(['dagu']);
+    expect((fc.log.find((r) => r.type === 'org:edit') as any).edit.match).toEqual(['dagsrv']);
   });
 });
 
@@ -258,7 +258,7 @@ describe('New group and subgroup (F6)', () => {
     // back on the root, ai is open now and shows its new subgroup
     window.history.pushState(null, '', '/orgs/thekonnen/repositories');
     window.dispatchEvent(new Event('popstate'));
-    await vi.waitFor(() => expect(names()).toEqual(['infra', 'dagu', 'authentik', 'checkmate', 'ai', 'litellm', 'rag', 'omniroute', 'keep_supabase_alive']));
+    await vi.waitFor(() => expect(names()).toEqual(['infra', 'dagsrv', 'authn', 'cmonitor', 'ai', 'llm-proxy', 'rag', 'oroute', 'keep_alive_job']));
   });
   it('creates a top-level group from the root', async () => {
     const fc = await open('', { edit: okEdit((g) => g.push({ name: 'data', description: '', logo: null, teams: [], match: [], groups: [] })) });
@@ -289,7 +289,7 @@ describe('New group and subgroup (F6)', () => {
 
 describe('who can edit', () => {
   it('hides the edit buttons for members without write access to .github', async () => {
-    await open('#infra/dagu', { access: memberAccess });
+    await open('#infra/dagsrv', { access: memberAccess });
     await vi.waitFor(() => expect($('.rg-g-actions a')).toBeTruthy());
     await new Promise((r) => setTimeout(r, 30));
     expect($$('.rg-g-actions button')).toHaveLength(0);

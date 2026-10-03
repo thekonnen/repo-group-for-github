@@ -72,7 +72,7 @@ export interface Env {
   sleep?: (ms: number) => Promise<void>;
   /** Team repositories page (F12): the slug of the team whose page is open. */
   team?: string;
-  /** Display name of that team ("Konnen_Team"), when the page shows it. */
+  /** Display name of that team ("Core_Team"), when the page shows it. */
   teamName?: string;
 }
 
@@ -376,7 +376,7 @@ export function createController(org: string, env: Env) {
     openDrawer: (mode: 'edit' | 'new', path: string[], focus?: 'logo') => store.set({ drawer: { mode, path, ...(focus ? { focus } : {}) } }),
     closeDrawer: () => store.set({ drawer: null }),
     dismissToast: () => (clearTimeout(toastTimer), store.set({ toast: null })),
-    /** Hash changes (also back/forward): #infra/dagu. */
+    /** Hash changes (also back/forward): #infra/dagsrv. */
     syncHash() {
       const r = parseHash(env.location.hash);
       const path = r.layer === 'org' ? r.path : [];

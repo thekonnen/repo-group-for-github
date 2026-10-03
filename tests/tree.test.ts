@@ -5,31 +5,31 @@ import type { RepoInfo } from '../src/core/types';
 
 const at = (min: number) => new Date(Date.parse('2026-01-10T12:00:00Z') - min * 60000).toISOString();
 const repos: RepoInfo[] = [
-  { name: 'konnen-litellm', description: 'AI Gateway', pushedAt: at(31), openIssuesAndPrs: 2 },
-  { name: 'litellm', pushedAt: at(46), openIssuesAndPrs: 1 },
-  { name: 'konnen-authentik', pushedAt: at(120) },
-  { name: 'konnen-checkmate', description: 'Deploy checkmate using authentik as sso login', pushedAt: at(180) },
-  { name: 'authentik', pushedAt: at(300) },
-  { name: 'konnen-dagu', pushedAt: at(302) },
-  { name: 'dagu', pushedAt: at(360) },
-  { name: 'keep_supabase_alive', pushedAt: at(780) },
-  { name: 'omniroute', pushedAt: at(900) },
+  { name: 'kite-llm-proxy', description: 'AI Gateway', pushedAt: at(31), openIssuesAndPrs: 2 },
+  { name: 'llm-proxy', pushedAt: at(46), openIssuesAndPrs: 1 },
+  { name: 'kite-authn', pushedAt: at(120) },
+  { name: 'kite-cmonitor', description: 'Deploy the uptime monitor using authn as login', pushedAt: at(180) },
+  { name: 'authn', pushedAt: at(300) },
+  { name: 'kite-dagsrv', pushedAt: at(302) },
+  { name: 'dagsrv', pushedAt: at(360) },
+  { name: 'keep_alive_job', pushedAt: at(780) },
+  { name: 'oroute', pushedAt: at(900) },
   { name: 'dags-repo', pushedAt: at(2900) },
   { name: 'old-thing', archived: true, pushedAt: at(5000) },
 ];
 
 describe('tree model (F1 done-when)', () => {
   const m = buildTree(example().groups, repos);
-  it('shows infra and ai on the root with keep_supabase_alive ungrouped; hides archived', () => {
+  it('shows infra and ai on the root with keep_alive_job ungrouped; hides archived', () => {
     expect(m.root.children.map((c) => c.key)).toEqual(['infra', 'ai']);
-    expect(m.root.repos.map((r) => r.name)).toEqual(['keep_supabase_alive']);
+    expect(m.root.repos.map((r) => r.name)).toEqual(['keep_alive_job']);
     expect(m.visible).toBe(10);
     expect(m.root.total).toBe(10);
     expect(m.placed.has('old-thing')).toBe(false);
   });
-  it('hash #infra/dagu has dagu, dags-repo and konnen-dagu', () => {
-    const n = nodeAt(m, ['infra', 'dagu'])!;
-    expect(n.repos.map((r) => r.name).sort()).toEqual(['dags-repo', 'dagu', 'konnen-dagu']);
+  it('hash #infra/dagsrv has dagsrv, dags-repo and kite-dagsrv', () => {
+    const n = nodeAt(m, ['infra', 'dagsrv'])!;
+    expect(n.repos.map((r) => r.name).sort()).toEqual(['dags-repo', 'dagsrv', 'kite-dagsrv']);
     expect(nodeAt(m, ['nope'])).toBeNull();
   });
   it('totals are recursive; latest push and issues roll up', () => {
@@ -42,7 +42,7 @@ describe('tree model (F1 done-when)', () => {
     expect(allRepos(infra)).toHaveLength(6);
   });
   it('sorts repos by last push, newest first', () => {
-    expect(nodeAt(m, ['infra', 'dagu'])!.repos.map((r) => r.name)).toEqual(['konnen-dagu', 'dagu', 'dags-repo']);
+    expect(nodeAt(m, ['infra', 'dagsrv'])!.repos.map((r) => r.name)).toEqual(['kite-dagsrv', 'dagsrv', 'dags-repo']);
   });
 });
 
@@ -51,15 +51,15 @@ describe('rows, search, defaults', () => {
   it('lists subgroups first, expands inline with depth, then own repos', () => {
     const rows = treeRows(m.root, new Set(['infra']));
     expect(rows.map((r) => (r.kind === 'group' ? `g:${r.node.key}@${r.depth}${r.open ? '+' : ''}` : `r:${r.repo.name}@${r.depth}`))).toEqual([
-      'g:infra@0+', 'g:infra/dagu@1', 'g:infra/authentik@1', 'g:infra/checkmate@1', 'g:ai@0', 'r:keep_supabase_alive@0',
+      'g:infra@0+', 'g:infra/dagsrv@1', 'g:infra/authn@1', 'g:infra/cmonitor@1', 'g:ai@0', 'r:keep_alive_job@0',
     ]);
   });
   it('searches name and description recursively, flat, with a path prefix', () => {
-    const rows = searchRows(m, m.root, 'authentik');
-    expect(rows.map((r) => r.kind === 'repo' && r.repo.name)).toEqual(['konnen-authentik', 'konnen-checkmate', 'authentik']);
-    expect((rows[0] as any).prefix).toBe('infra / authentik / ');
-    const inInfra = searchRows(m, nodeAt(m, ['infra'])!, 'dagu');
-    expect((inInfra[0] as any).prefix).toBe('dagu / ');
+    const rows = searchRows(m, m.root, 'authn');
+    expect(rows.map((r) => r.kind === 'repo' && r.repo.name)).toEqual(['kite-authn', 'kite-cmonitor', 'authn']);
+    expect((rows[0] as any).prefix).toBe('infra / authn / ');
+    const inInfra = searchRows(m, nodeAt(m, ['infra'])!, 'dagsrv');
+    expect((inInfra[0] as any).prefix).toBe('dagsrv / ');
     expect(searchRows(m, m.root, '  ')).toEqual([]);
     expect(searchRows(m, m.root, 'zzz')).toEqual([]);
   });
@@ -72,7 +72,7 @@ describe('rows, search, defaults', () => {
   it('builds sidebar items with counts', () => {
     const s = sideItems(m);
     expect(s[0]).toMatchObject({ key: '', name: 'All groups', total: 10, depth: 0 });
-    expect(s.map((i) => `${i.key}:${i.total}@${i.depth}`)).toEqual(['', 'infra', 'infra/dagu', 'infra/authentik', 'infra/checkmate', 'ai', 'ai/litellm'].map((k, i) => `${k}:${[10, 6, 3, 2, 1, 3, 2][i]}@${[0, 1, 2, 2, 2, 1, 2][i]}`));
+    expect(s.map((i) => `${i.key}:${i.total}@${i.depth}`)).toEqual(['', 'infra', 'infra/dagsrv', 'infra/authn', 'infra/cmonitor', 'ai', 'ai/llm-proxy'].map((k, i) => `${k}:${[10, 6, 3, 2, 1, 3, 2][i]}@${[0, 1, 2, 2, 2, 1, 2][i]}`));
   });
   it('picks avatar tones by char-code sum mod 5', () => {
     expect(avatarTone('a')).toBe((97 % 5) + 1);
@@ -97,9 +97,9 @@ describe('"All repositories" flat list and sort orders', () => {
   const m = buildTree(example().groups, [
     { name: 'beta', pushedAt: at(10), stars: 5, openIssuesAndPrs: 1 },
     { name: 'Alpha', pushedAt: at(30), stars: 9, openIssuesAndPrs: 7 },
-    { name: 'dagu', pushedAt: at(20), stars: 5, openIssuesAndPrs: 7, description: 'Jobs and crons' },
+    { name: 'dagsrv', pushedAt: at(20), stars: 5, openIssuesAndPrs: 7, description: 'Jobs and crons' },
     { name: 'dags-repo', pushedAt: at(5), stars: 0, openIssuesAndPrs: 0 },
-    { name: 'authentik', pushedAt: at(60), stars: 1, openIssuesAndPrs: 3 },
+    { name: 'authn', pushedAt: at(60), stars: 1, openIssuesAndPrs: 3 },
     { name: 'archived-one', archived: true, pushedAt: at(1) },
   ]);
   const names = (key: string, sort: any, q = '') => flatRows(nodeAt(m, key ? key.split('/') : [])!, sort, q).map((r) => (r.kind === 'repo' ? r.repo.name : '?'));
@@ -109,20 +109,20 @@ describe('"All repositories" flat list and sort orders', () => {
     expect(SORT_KEYS.map((k) => SORT_LABEL[k])).toEqual(['Last pushed', 'Name', 'Stars', 'Open issues & PRs']);
   });
   it('last pushed (default) is newest first; archived repositories stay hidden', () => {
-    expect(names('', 'pushed')).toEqual(['dags-repo', 'beta', 'dagu', 'Alpha', 'authentik']);
+    expect(names('', 'pushed')).toEqual(['dags-repo', 'beta', 'dagsrv', 'Alpha', 'authn']);
   });
   it('name is alphabetical ignoring case; stars and issues are descending with newest push as tie-break', () => {
-    expect(names('', 'name')).toEqual(['Alpha', 'authentik', 'beta', 'dags-repo', 'dagu']);
-    expect(names('', 'stars')).toEqual(['Alpha', 'beta', 'dagu', 'authentik', 'dags-repo']); // beta and dagu tie on 5: beta is newer
-    expect(names('', 'issues')).toEqual(['dagu', 'Alpha', 'authentik', 'beta', 'dags-repo']); // dagu and Alpha tie on 7: dagu is newer
+    expect(names('', 'name')).toEqual(['Alpha', 'authn', 'beta', 'dags-repo', 'dagsrv']);
+    expect(names('', 'stars')).toEqual(['Alpha', 'beta', 'dagsrv', 'authn', 'dags-repo']); // beta and dagsrv tie on 5: beta is newer
+    expect(names('', 'issues')).toEqual(['dagsrv', 'Alpha', 'authn', 'beta', 'dags-repo']); // dagsrv and Alpha tie on 7: dagsrv is newer
   });
   it('is recursive and flat: a group page lists its subgroups\' repositories as one list', () => {
-    expect(names('infra', 'name')).toEqual(['authentik', 'dags-repo', 'dagu']);
-    expect(names('infra/dagu', 'name')).toEqual(['dags-repo', 'dagu']);
+    expect(names('infra', 'name')).toEqual(['authn', 'dags-repo', 'dagsrv']);
+    expect(names('infra/dagsrv', 'name')).toEqual(['dags-repo', 'dagsrv']);
   });
   it('a query filters by name and description and keeps the chosen order', () => {
-    expect(names('', 'name', 'DAG')).toEqual(['dags-repo', 'dagu']);
-    expect(names('', 'pushed', 'crons')).toEqual(['dagu']);
+    expect(names('', 'name', 'DAG')).toEqual(['dags-repo', 'dagsrv']);
+    expect(names('', 'pushed', 'crons')).toEqual(['dagsrv']);
     expect(names('', 'pushed', 'zzz')).toEqual([]);
   });
   it('sortRepos does not mutate its input', async () => {

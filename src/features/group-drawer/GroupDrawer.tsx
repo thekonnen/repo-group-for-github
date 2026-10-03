@@ -15,7 +15,7 @@ import { TeamsField } from '../teams/TeamsField';
 
 const MAX_LISTED = 200;
 
-/** "infra/dagu" -> "Infra / Dagu" using display names. */
+/** "infra/dagsrv" -> "Infra / Scheduler" using display names. */
 const titled = (model: TreeModel, key: string): string =>
   key
     .split('/')

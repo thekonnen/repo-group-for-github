@@ -29,6 +29,35 @@
 .rg-root .rg-nr-warn { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border: 1px solid var(--rg-warn-border); border-radius: 6px; background: var(--rg-warn-bg); color: var(--rg-fg); font-size: 13px; line-height: 1.45; }
 .rg-root .rg-nr-warn svg { flex: none; margin-top: 2px; fill: var(--rg-warn-fg); color: var(--rg-warn-fg); }
 .rg-root .rg-nr-warn b { color: var(--rg-warn-fg); font-weight: 600; }
+.rg-root .rg-nr-methods { display: flex; flex-direction: column; gap: 4px; }
+.rg-root .rg-pills { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.rg-root .rg-pill { height: 24px; padding: 0 10px; border: 1px solid var(--rg-border); border-radius: 999px; background: var(--rg-bg); color: var(--rg-fg); font: inherit; font-size: 12px; cursor: pointer; }
+.rg-root .rg-pill:hover:not(:disabled) { background: var(--rg-btn-hover); }
+.rg-root .rg-pill:focus-visible { outline: 2px solid var(--rg-accent); outline-offset: 1px; }
+.rg-root .rg-pill:disabled { color: var(--rg-muted); cursor: default; }
+.rg-root .rg-pill.rg-on { background: var(--rg-accent-subtle); border-color: var(--rg-accent); color: var(--rg-accent); font-weight: 600; opacity: 1; }
+.rg-root .rg-pill[data-method="llm"] { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 14px; font-size: 13px; font-weight: 600; border-color: var(--rg-accent); background: var(--rg-accent-subtle); color: var(--rg-accent); }
+.rg-root .rg-pill[data-method="llm"] svg { fill: currentColor; }
+.rg-root .rg-pill[data-method="llm"]:hover:not(:disabled) { background: var(--rg-accent-subtle); box-shadow: 0 0 0 3px var(--rg-accent-subtle); }
+.rg-root .rg-pill[data-method="llm"].rg-on { background: var(--rg-accent-emphasis); border-color: var(--rg-accent-emphasis); color: var(--rg-on-emphasis, #fff); box-shadow: 0 0 0 3px var(--rg-accent-subtle); }
+.rg-root .rg-pill[data-method="llm"]:disabled:not(.rg-on) { opacity: .7; }
+.rg-root .rg-proposal { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 2px solid var(--rg-accent); border-radius: 8px; background: var(--rg-accent-subtle); }
+.rg-root .rg-prop-head { display: flex; align-items: center; gap: 6px; color: var(--rg-accent); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+.rg-root .rg-prop-head svg { fill: currentColor; }
+.rg-root .rg-prop-path { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 18px; line-height: 1.3; color: var(--rg-fg); }
+.rg-root .rg-prop-seg { display: inline-flex; align-items: center; gap: 8px; }
+.rg-root .rg-prop-seg.rg-last { font-weight: 700; font-size: 20px; }
+.rg-root .rg-prop-sep { color: var(--rg-muted); font-weight: 400; }
+.rg-root .rg-prop-exists { font-style: normal; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--rg-border); background: var(--rg-bg); color: var(--rg-muted); }
+.rg-root .rg-prop-desc { font-size: 13px; color: var(--rg-fg); }
+.rg-root .rg-prop-choose { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 2px; }
+.rg-root .rg-create-group { min-height: 28px; padding: 3px 12px; border: 1px solid var(--rg-border); border-radius: 6px; background: var(--rg-bg); color: var(--rg-fg); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; text-align: left; }
+.rg-root .rg-create-group:hover:not(:disabled) { background: var(--rg-btn-hover); }
+.rg-root .rg-create-group.rg-rec { border-color: var(--rg-success); background: var(--rg-success); color: var(--rg-on-emphasis, #fff); }
+.rg-root .rg-create-group.rg-rec:hover:not(:disabled) { filter: brightness(1.08); background: var(--rg-success); }
+.rg-root .rg-create-group:disabled { opacity: .7; cursor: default; }
+.rg-root .rg-create-group:focus-visible { outline: 2px solid var(--rg-accent); outline-offset: 2px; }
+.rg-root .rg-nr-method-note.rg-warn { color: var(--rg-danger-fg); }
 .rg-root .rg-dest-path { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--rg-muted); }
 .rg-root .rg-dest-path b { color: var(--rg-fg); font-weight: 600; overflow-wrap: anywhere; }
 @media (max-width: 480px) { .rg-root .rg-picker { min-width: 0; width: 100%; } .rg-root .rg-picker-wrap { align-self: stretch; } }

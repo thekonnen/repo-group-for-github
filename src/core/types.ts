@@ -11,6 +11,8 @@ export interface Group {
   /** Optional display name (capitals, spaces, accents). Shown instead of `name` when present. */
   title?: string;
   description: string;
+  /** Optional words that describe what belongs here (tools, topics). Only used to suggest a group for a new repo. */
+  keywords?: string[];
   logo: string | null;
   teams: TeamTag[];
   match: string[];

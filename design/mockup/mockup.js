@@ -45,27 +45,27 @@
 
   // Repos seen in the thekonnen org (sample). "ago" is minutes since last push.
   var repos = [
-    { name: 'konnen-litellm', desc: 'AI Gateway for TheKonnen', lang: null, ago: 31 },
-    { name: 'litellm', desc: '', lang: 'Dockerfile', ago: 46 },
-    { name: 'konnen-authentik', desc: '', lang: 'Shell', ago: 120 },
-    { name: 'konnen-checkmate', desc: 'Deploy checkmate using authentik as sso login', lang: null, ago: 180 },
-    { name: 'authentik', desc: '', lang: 'Python', ago: 300 },
-    { name: 'konnen-dagu', desc: 'Alternative to AirFlow to run jobs and crons', lang: null, ago: 302 },
-    { name: 'dagu', desc: '', lang: 'Dockerfile', ago: 360 },
-    { name: 'keep_supabase_alive', desc: '*Ping the Supabase, so the project won\'t be deleted', lang: 'PLpgSQL', ago: 780 },
-    { name: 'omniroute', desc: '', lang: null, ago: 900 },
+    { name: 'kite-llm-proxy', desc: 'AI Gateway for Acme', lang: null, ago: 31 },
+    { name: 'llm-proxy', desc: '', lang: 'Dockerfile', ago: 46 },
+    { name: 'kite-authn', desc: '', lang: 'Shell', ago: 120 },
+    { name: 'kite-cmonitor', desc: 'Deploy the uptime monitor using authn as login', lang: null, ago: 180 },
+    { name: 'authn', desc: '', lang: 'Python', ago: 300 },
+    { name: 'kite-dagsrv', desc: 'Alternative to AirFlow to run jobs and crons', lang: null, ago: 302 },
+    { name: 'dagsrv', desc: '', lang: 'Dockerfile', ago: 360 },
+    { name: 'keep_alive_job', desc: '*Ping the database, so the project won\'t be deleted', lang: 'PLpgSQL', ago: 780 },
+    { name: 'oroute', desc: '', lang: null, ago: 900 },
     { name: 'dags-repo', desc: '', lang: null, ago: 2900 }
   ];
 
   // Group tree as it would live in thekonnen/.github/repo-groups.yml
   var root = { id: '', name: ORG, desc: 'All repositories, organized into groups', rules: [], children: [
     { id: 'infra', name: 'infra', desc: 'Self-hosted platform services', rules: [], children: [
-      { id: 'dagu', name: 'dagu', desc: 'Jobs and crons (Airflow alternative)', rules: ['dagu', 'dags-*', 'konnen-dagu'], children: [] },
-      { id: 'authentik', name: 'authentik', desc: 'SSO and identity', rules: ['*authentik*'], children: [] },
-      { id: 'checkmate', name: 'checkmate', desc: 'Uptime monitoring behind authentik SSO', rules: ['*checkmate*'], children: [] }
+      { id: 'dagsrv', name: 'dagsrv', desc: 'Jobs and crons (Airflow alternative)', rules: ['dagsrv', 'dags-*', 'kite-dagsrv'], children: [] },
+      { id: 'authn', name: 'authn', desc: 'SSO and identity', rules: ['*authn*'], children: [] },
+      { id: 'cmonitor', name: 'cmonitor', desc: 'Uptime monitoring', rules: ['*cmonitor*'], children: [] }
     ] },
-    { id: 'ai', name: 'ai', desc: 'LLM gateways and routing', rules: ['omniroute'], children: [
-      { id: 'litellm', name: 'litellm', desc: 'LiteLLM proxy and the Konnen deployment', rules: ['*litellm*'], children: [] }
+    { id: 'ai', name: 'ai', desc: 'LLM gateways and routing', rules: ['oroute'], children: [
+      { id: 'llm-proxy', name: 'llm-proxy', desc: 'Gateway proxy and the Acme deployment', rules: ['*llm-proxy*'], children: [] }
     ] }
   ] };
 
@@ -431,9 +431,9 @@
       '<div class="drawer-head"><h2 id="d-title">' + (d.mode === 'edit' ? 'Edit group' : 'New group') + '</h2><button type="button" class="chev" data-close="1" aria-label="Close">' + svg('x') + '</button></div>' +
       '<div class="drawer-body">' +
       logoField(d) +
-      '<div class="field"><label for="d-name">Name</label><input class="input" id="d-name" value="' + esc(d.name) + '" placeholder="e.g. dagu" autocomplete="off"><span class="hint">Used in the path: ' + esc(parentLabel) + ' / <b>' + esc(d.name || 'name') + '</b></span><span class="error" id="d-err"></span></div>' +
+      '<div class="field"><label for="d-name">Name</label><input class="input" id="d-name" value="' + esc(d.name) + '" placeholder="e.g. dagsrv" autocomplete="off"><span class="hint">Used in the path: ' + esc(parentLabel) + ' / <b>' + esc(d.name || 'name') + '</b></span><span class="error" id="d-err"></span></div>' +
       '<div class="field"><label for="d-desc">Description</label><input class="input" id="d-desc" value="' + esc(d.desc) + '" placeholder="Optional" autocomplete="off"></div>' +
-      '<div class="field"><label for="d-rule">Match rules</label><span class="hint">Repository names to include. Use <code>*</code> as a wildcard, like <code>dags-*</code> or <code>*authentik*</code>.</span>' +
+      '<div class="field"><label for="d-rule">Match rules</label><span class="hint">Repository names to include. Use <code>*</code> as a wildcard, like <code>dags-*</code> or <code>*authn*</code>.</span>' +
       '<div class="chips">' + d.rules.map(function (r, i) { return '<span class="chip">' + esc(r) + '<button type="button" data-rm="' + i + '" aria-label="Remove rule ' + esc(r) + '">' + svg('x', 12) + '</button></span>'; }).join('') + '</div>' +
       '<div class="add-rule"><input class="input mono" id="d-rule" placeholder="Add a pattern and press Enter" autocomplete="off"><button type="button" class="btn" data-addrule="1">Add</button></div></div>' +
       '<div class="field"><label>Matching repositories (' + hits.length + ')</label>' +
@@ -622,7 +622,7 @@
     '1. Read every repository in the "repositories" list (name, description, language).',
     '2. Classify each one by what it does: product or business domain, platform/infrastructure service, deployment or config of a third-party tool, data and automation, libraries and tooling, docs, experiments or archived work.',
     '3. Build a clear hierarchy from that classification. Reuse and improve the current groups when they make sense; merge, split, rename or remove them when that makes the structure clearer.',
-    '4. Put every repository in exactly one group using "match" rules. A fork or upstream copy (for example "litellm") belongs in the same group as the deployment that uses it (for example "konnen-litellm").',
+    '4. Put every repository in exactly one group using "match" rules. A fork or upstream copy (for example "llm-proxy") belongs in the same group as the deployment that uses it (for example "kite-llm-proxy").',
     '',
     'Output rules:',
     '- Answer with ONLY the complete YAML inside one ```yaml block. No explanations before or after.',

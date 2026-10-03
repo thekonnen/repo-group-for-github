@@ -29,7 +29,7 @@ function fake(opts: { access?: any } = {}) {
       case 'org:config': return { exists: true, sha: 's', config: example(), warnings: [] };
       case 'org:cached': return { repos, meta: {} };
       case 'org:access': return opts.access ?? ownerAccess;
-      case 'org:teams': return { teams: ['ai-squad', 'extra', 'konnen_team'].map((slug) => ({ slug, name: slug })), customRoles: null };
+      case 'org:teams': return { teams: ['ai-squad', 'extra', 'core_team'].map((slug) => ({ slug, name: slug })), customRoles: null };
       case 'newrepo:discard': return { discarded: true };
       case 'newrepo:pending': return { saved: true };
       default: throw new Error('unexpected ' + req.type);
@@ -75,10 +75,10 @@ describe('Teams field on Create a new repository (F12)', () => {
 
   it('is pre-filled with the effective teams of the destination (own + inherited), each with its permission', async () => {
     await open();
-    type('my-litellm');
-    await vi.waitFor(() => expect(teams()).toEqual(['ai-squad:maintain', 'konnen_team:pull'])); // ai/litellm: own konnen_team (Read) + inherited ai-squad
-    await pickGroup('dagu');
-    await vi.waitFor(() => expect(teams()).toEqual(['konnen_team:push'])); // infra/dagu inherits infra's
+    type('my-llm-proxy');
+    await vi.waitFor(() => expect(teams()).toEqual(['ai-squad:maintain', 'core_team:pull'])); // ai/llm-proxy: own core_team (Read) + inherited ai-squad
+    await pickGroup('dagsrv');
+    await vi.waitFor(() => expect(teams()).toEqual(['core_team:push'])); // infra/dagsrv inherits infra's
     type('unmatched-name');
     await pickGroup('Automatic');
     await vi.waitFor(() => expect(teams()).toEqual([])); // ungrouped: no target
@@ -88,20 +88,20 @@ describe('Teams field on Create a new repository (F12)', () => {
   it('re-fills while untouched; after a manual edit the teams stay as the user set them', async () => {
     const f = await open();
     await pickGroup('infra');
-    await vi.waitFor(() => expect(teams()).toEqual(['konnen_team:push']));
+    await vi.waitFor(() => expect(teams()).toEqual(['core_team:push']));
     const sel = $('#rg-nr-teams select') as HTMLSelectElement;
     sel.value = 'admin';
     sel.dispatchEvent(new Event('change', { bubbles: true }));
-    await vi.waitFor(() => expect(teams()).toEqual(['konnen_team:admin']));
-    await pickGroup('litellm');
+    await vi.waitFor(() => expect(teams()).toEqual(['core_team:admin']));
+    await pickGroup('llm-proxy');
     type('x-repo');
     await new Promise((r) => setTimeout(r, 20));
-    expect(teams()).toEqual(['konnen_team:admin']); // sticky
+    expect(teams()).toEqual(['core_team:admin']); // sticky
     // remove, then add from the picker
-    ($('[aria-label="Remove team konnen_team"]') as HTMLElement).click();
+    ($('[aria-label="Remove team core_team"]') as HTMLElement).click();
     await vi.waitFor(() => expect(teams()).toEqual([]));
     $$('#rg-nr-teams button').find((b) => b.textContent!.trim() === 'Add team')!.click();
-    await vi.waitFor(() => expect($$('#rg-nr-teams [role="option"]').map((o) => o.textContent!.trim())).toEqual(['ai-squad', 'extra', 'konnen_team']));
+    await vi.waitFor(() => expect($$('#rg-nr-teams [role="option"]').map((o) => o.textContent!.trim())).toEqual(['ai-squad', 'extra', 'core_team']));
     ($$('#rg-nr-teams [role="option"]').find((o) => o.textContent!.includes('extra')) as HTMLElement).dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
     await vi.waitFor(() => expect(teams()).toEqual(['extra:push']));
     // the pending entry carries the final list
@@ -110,10 +110,10 @@ describe('Teams field on Create a new repository (F12)', () => {
 
   it('the pending entry carries the pre-filled teams of the chosen group', async () => {
     const f = await open();
-    type('konnen-n8n');
-    await pickGroup('dagu');
-    await vi.waitFor(() => expect(teams()).toEqual(['konnen_team:push']));
-    expect(pending(f)).toEqual({ org: 'thekonnen', repo: 'konnen-n8n', groupPath: 'infra/dagu', explicit: true, teams: [{ slug: 'konnen_team', permission: 'push' }] });
+    type('kite-nflow');
+    await pickGroup('dagsrv');
+    await vi.waitFor(() => expect(teams()).toEqual(['core_team:push']));
+    expect(pending(f)).toEqual({ org: 'thekonnen', repo: 'kite-nflow', groupPath: 'infra/dagsrv', explicit: true, teams: [{ slug: 'core_team', permission: 'push' }] });
   });
 
   it('members get the note about admin access on the new repository; owners do not', async () => {
@@ -124,8 +124,8 @@ describe('Teams field on Create a new repository (F12)', () => {
 
 describe('toast text (F12)', () => {
   it('names the teams that got access, and the ones that did not', () => {
-    expect(filedMessage({ groupKey: 'infra/dagu', committed: true, granted: [{ team: 'konnen_team', permission: 'push' }] })).toBe('Filed in infra / dagu · konnen_team can write · repo-groups.yml updated');
-    expect(filedMessage({ groupKey: 'infra/dagu', committed: true })).toBe('Filed in infra / dagu · repo-groups.yml updated');
+    expect(filedMessage({ groupKey: 'infra/dagsrv', committed: true, granted: [{ team: 'core_team', permission: 'push' }] })).toBe('Filed in infra / dagsrv · core_team can write · repo-groups.yml updated');
+    expect(filedMessage({ groupKey: 'infra/dagsrv', committed: true })).toBe('Filed in infra / dagsrv · repo-groups.yml updated');
     expect(filedMessage({ groupKey: '', committed: false, granted: [{ team: 't', permission: 'pull' }] })).toBe('Created, not in any group yet · t can read');
     expect(teamPhrase('t', 'admin')).toBe('t has admin access');
     expect(teamPhrase('t', 'reviewer')).toBe('t has the reviewer role');
@@ -155,7 +155,7 @@ describe('post-create grants (background + toast)', () => {
       return undefined;
     });
     const h = createHandler({ fetch: f.fetch, kv: memoryKV(), session: memoryKV(), index: memoryIndexStore(), clientId: 'c' });
-    const entry = (over: object = {}) => ({ org: 'o', repo: 'konnen-n8n', groupPath: 'infra/dagu', explicit: true, teams: [{ slug: 'konnen_team', permission: 'push' }, { slug: 'ai-squad', permission: 'maintain' }], ...over });
+    const entry = (over: object = {}) => ({ org: 'o', repo: 'kite-nflow', groupPath: 'infra/dagsrv', explicit: true, teams: [{ slug: 'core_team', permission: 'push' }, { slug: 'ai-squad', permission: 'maintain' }], ...over });
     const teamPuts = () => f.calls.filter((c) => c.url.includes('/teams/'));
     const land = async (e = entry()) => {
       await h({ type: 'newrepo:pending', entry: e });
@@ -169,12 +169,12 @@ describe('post-create grants (background + toast)', () => {
     const r = await t.land();
     expect(r.committed).toBe(true);
     expect(r.grants).toEqual([
-      { team: 'konnen_team', permission: 'push', ok: true },
+      { team: 'core_team', permission: 'push', ok: true },
       { team: 'ai-squad', permission: 'maintain', ok: true },
     ]);
     expect(t.teamPuts().map((c) => [c.method, c.url, JSON.parse(c.body!)])).toEqual([
-      ['PUT', 'https://api.github.com/orgs/o/teams/konnen_team/repos/o/konnen-n8n', { permission: 'push' }],
-      ['PUT', 'https://api.github.com/orgs/o/teams/ai-squad/repos/o/konnen-n8n', { permission: 'maintain' }],
+      ['PUT', 'https://api.github.com/orgs/o/teams/core_team/repos/o/kite-nflow', { permission: 'push' }],
+      ['PUT', 'https://api.github.com/orgs/o/teams/ai-squad/repos/o/kite-nflow', { permission: 'maintain' }],
     ]);
     expect(t.f.calls.some((c) => c.method === 'DELETE')).toBe(false);
   });
@@ -182,7 +182,7 @@ describe('post-create grants (background + toast)', () => {
   it('a failed grant names the team and the reason, and the other teams still go through', async () => {
     const t = setup({ deny: { 'ai-squad': 403 } });
     const r = await t.land();
-    expect(r.grants[0]).toMatchObject({ team: 'konnen_team', ok: true });
+    expect(r.grants[0]).toMatchObject({ team: 'core_team', ok: true });
     expect(r.grants[1]).toEqual({ team: 'ai-squad', permission: 'maintain', ok: false, message: 'You need admin access to this repository — ask an org owner' });
     expect(r.committed).toBe(true);
   });
@@ -193,7 +193,7 @@ describe('post-create grants (background + toast)', () => {
     expect(ra.committed).toBe(false);
     expect(ra.error).toBeTruthy();
     expect(ra.grants.every((g: any) => g.ok)).toBe(true);
-    const b = setup({ deny: { konnen_team: 422, 'ai-squad': 404 } });
+    const b = setup({ deny: { core_team: 422, 'ai-squad': 404 } });
     const rb = await b.land();
     expect(rb.committed).toBe(true);
     expect(rb.grants.map((g: any) => g.ok)).toEqual([false, false]);
@@ -210,25 +210,25 @@ describe('post-create grants (background + toast)', () => {
   describe('toast on the repo page', () => {
     afterEach(() => (document.body.innerHTML = ''));
     const landed = (data: unknown) => vi.fn(async (req: Request): Promise<any> => (req.type === 'newrepo:landed' ? data : null));
-    it('"Filed in infra / dagu · konnen_team can write · repo-groups.yml updated"', async () => {
-      mounted = await mountRepoToast('o', 'konnen-n8n', { call: landed({ groupKey: 'infra/dagu', committed: true, teams: [], grants: [{ team: 'konnen_team', permission: 'push', ok: true }] }) as any });
-      expect($('.rg-toast')!.textContent).toBe('Filed in infra / dagu · konnen_team can write · repo-groups.yml updated');
+    it('"Filed in infra / dagsrv · core_team can write · repo-groups.yml updated"', async () => {
+      mounted = await mountRepoToast('o', 'kite-nflow', { call: landed({ groupKey: 'infra/dagsrv', committed: true, teams: [], grants: [{ team: 'core_team', permission: 'push', ok: true }] }) as any });
+      expect($('.rg-toast')!.textContent).toBe('Filed in infra / dagsrv · core_team can write · repo-groups.yml updated');
       expect($('.rg-toast a')).toBeNull();
     });
     it('a failed grant says which team and why, with a link to Settings → Collaborators and teams', async () => {
       const grants = [
-        { team: 'konnen_team', permission: 'push', ok: true },
+        { team: 'core_team', permission: 'push', ok: true },
         { team: 'ai-squad', permission: 'maintain', ok: false, message: 'You need admin access to this repository — ask an org owner' },
       ];
-      mounted = await mountRepoToast('o', 'konnen-n8n', { call: landed({ groupKey: 'infra/dagu', committed: true, teams: [], grants }) as any });
+      mounted = await mountRepoToast('o', 'kite-nflow', { call: landed({ groupKey: 'infra/dagsrv', committed: true, teams: [], grants }) as any });
       const t = $('.rg-toast.rg-err')!;
-      expect(t.textContent).toContain('Filed in infra / dagu · konnen_team can write · repo-groups.yml updated');
+      expect(t.textContent).toContain('Filed in infra / dagsrv · core_team can write · repo-groups.yml updated');
       expect(t.textContent).toContain('ai-squad was not added: You need admin access to this repository — ask an org owner.');
-      expect(t.querySelector('a')!.getAttribute('href')).toBe('https://github.com/o/konnen-n8n/settings/access');
+      expect(t.querySelector('a')!.getAttribute('href')).toBe('https://github.com/o/kite-nflow/settings/access');
       expect(t.querySelector('a')!.textContent).toBe('Settings → Collaborators and teams');
     });
     it('keeps the commit-failed text and still lists the teams that were added', async () => {
-      mounted = await mountRepoToast('o', 'r', { call: landed({ groupKey: 'infra/dagu', committed: false, error: 'You cannot write to o/.github.', teams: [], grants: [{ team: 't', permission: 'push', ok: true }] }) as any });
+      mounted = await mountRepoToast('o', 'r', { call: landed({ groupKey: 'infra/dagsrv', committed: false, error: 'You cannot write to o/.github.', teams: [], grants: [{ team: 't', permission: 'push', ok: true }] }) as any });
       expect($('.rg-toast.rg-err')!.textContent).toContain('repo-groups.yml was not updated. You cannot write to o/.github. · t can write');
     });
   });

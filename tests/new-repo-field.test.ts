@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mountNewRepo, mountRepoToast, type Disposable } from '../src/features/new-repo-field/mount';
 import { findOwnerLogin, locateNewRepo } from '../src/github/selectors';
 import type { Request } from '../src/github/messages';
+import { applyEdit } from '../src/core/edit';
 import { example } from './fixtures';
 import { memberAccess, ownerAccess, repos } from './page-helpers';
 
@@ -31,7 +32,7 @@ const key = (el: Element, k: string) => el.dispatchEvent(new KeyboardEvent('keyd
 const pop = () => $('#rg-nr-pop') as HTMLElement;
 const active = () => pop().getAttribute('aria-activedescendant');
 
-function fake(opts: { access?: any; config?: any } = {}) {
+function fake(opts: { access?: any; config?: any; extra?: (req: Request) => any } = {}) {
   const log: Request[] = [];
   const call = vi.fn(async (req: Request): Promise<any> => {
     log.push(req);
@@ -41,7 +42,9 @@ function fake(opts: { access?: any; config?: any } = {}) {
       case 'org:access': return opts.access ?? ownerAccess;
       case 'newrepo:discard': return { discarded: true };
       case 'newrepo:pending': return { saved: true };
-      default: throw new Error('unexpected ' + req.type);
+      default:
+        if (opts.extra) return opts.extra(req);
+        throw new Error('unexpected ' + req.type);
     }
   });
   return { call: call as any, log };
@@ -113,7 +116,7 @@ describe('live destination (F9)', () => {
     expect(dest()).toContain('thekonnen / new-repository');
     expect(dest()).toContain('Type a name');
     type('dags-new');
-    await vi.waitFor(() => expect(dest()).toContain('thekonnen / infra / dagu / dags-new'));
+    await vi.waitFor(() => expect(dest()).toContain('thekonnen / infra / dagsrv / dags-new'));
     expect(dest()).toContain('Lands here because it matches the rule dags-*. Pick another group to override.');
     type('brand new!');
     await vi.waitFor(() => expect(dest()).toContain('thekonnen / brand-new Not in any group yet.'));
@@ -121,14 +124,14 @@ describe('live destination (F9)', () => {
     // evidenced as a warning, and only in this case
     expect(document.querySelector('#rg-nr-dest .rg-nr-warn')!.textContent).toContain('No rule matches this name yet');
     type('dags-new');
-    await vi.waitFor(() => expect(dest()).toContain('thekonnen / infra / dagu / dags-new'));
+    await vi.waitFor(() => expect(dest()).toContain('thekonnen / infra / dagsrv / dags-new'));
     expect(document.querySelector('#rg-nr-dest .rg-nr-warn')).toBeNull();
   });
   it('shows Automatic with the group the rules would pick', async () => {
     await open();
     await ready();
     type('dags-x');
-    await vi.waitFor(() => expect($('#rg-nr-picker-lbl')!.textContent).toBe('Automatic → infra / dagu'));
+    await vi.waitFor(() => expect($('#rg-nr-picker-lbl')!.textContent).toBe('Automatic → infra / dagsrv'));
   });
 });
 
@@ -142,7 +145,7 @@ describe('picker (F9)', () => {
     expect(pop().getAttribute('role')).toBe('listbox');
     const opts = $$('#rg-nr-pop [role="option"]');
     expect(opts.map((o) => clean(o, '.rg-mini-av, .rg-tick').textContent!.replace(/\s+/g, ' ').trim())).toEqual([
-      'Automatic · by match rules', 'infra6', 'dagu3', 'authentik2', 'checkmate1', 'ai3', 'litellm2',
+      'Automatic · by match rules', 'infra6', 'dagsrv3', 'authn2', 'cmonitor1', 'ai3', 'llm-proxy2',
     ]);
     expect(opts[0].getAttribute('aria-selected')).toBe('true');
     expect(opts[2].style.paddingLeft).toBe('26px');
@@ -160,17 +163,17 @@ describe('picker (F9)', () => {
     key(pop(), 'ArrowDown');
     await vi.waitFor(() => expect(active()).toBe('rg-opt-infra'));
     key(pop(), 'ArrowDown');
-    await vi.waitFor(() => expect(active()).toBe('rg-opt-infra_dagu'));
+    await vi.waitFor(() => expect(active()).toBe('rg-opt-infra_dagsrv'));
     key(pop(), 'End');
-    await vi.waitFor(() => expect(active()).toBe('rg-opt-ai_litellm'));
+    await vi.waitFor(() => expect(active()).toBe('rg-opt-ai_llm-proxy'));
     key(pop(), 'ArrowDown');
-    expect(active()).toBe('rg-opt-ai_litellm'); // clamped
+    expect(active()).toBe('rg-opt-ai_llm-proxy'); // clamped
     key(pop(), 'Home');
     await vi.waitFor(() => expect(active()).toBe('rg-opt-auto'));
     key(pop(), 'ArrowUp');
     expect(active()).toBe('rg-opt-auto');
     key(pop(), 'End');
-    await vi.waitFor(() => expect(active()).toBe('rg-opt-ai_litellm'));
+    await vi.waitFor(() => expect(active()).toBe('rg-opt-ai_llm-proxy'));
     key(pop(), 'ArrowUp');
     await vi.waitFor(() => expect(active()).toBe('rg-opt-ai'));
     key(pop(), 'Enter');
@@ -188,8 +191,8 @@ describe('picker (F9)', () => {
     const btn = $('#rg-nr-picker') as HTMLButtonElement;
     btn.click();
     await vi.waitFor(() => expect(pop().hidden).toBe(false));
-    expect(active()).toBe('rg-opt-infra_dagu');
-    const row = $('#rg-opt-infra_dagu')!;
+    expect(active()).toBe('rg-opt-infra_dagsrv');
+    const row = $('#rg-opt-infra_dagsrv')!;
     expect(row.classList.contains('rg-auto-pick')).toBe(true);
     expect(row.getAttribute('aria-current')).toBe('true');
     expect(row.textContent).toContain('matched by dags-*');
@@ -198,11 +201,11 @@ describe('picker (F9)', () => {
     expect($$('#rg-nr-pop .rg-auto-pick')).toHaveLength(1);
     // picking another group removes the marker and selects that group
     key(pop(), 'ArrowDown');
-    await vi.waitFor(() => expect(active()).toBe('rg-opt-infra_authentik'));
+    await vi.waitFor(() => expect(active()).toBe('rg-opt-infra_authn'));
     key(pop(), 'Enter');
     await vi.waitFor(() => expect(pop().hidden).toBe(true));
     expect($$('#rg-nr-pop .rg-auto-pick')).toHaveLength(0);
-    expect($('#rg-opt-infra_authentik')!.getAttribute('aria-selected')).toBe('true');
+    expect($('#rg-opt-infra_authn')!.getAttribute('aria-selected')).toBe('true');
   });
   it('with no rule hit nothing is marked and the cursor starts on Automatic', async () => {
     await open();
@@ -233,30 +236,30 @@ describe('picker (F9)', () => {
     btn.click();
     await vi.waitFor(() => expect(pop().hidden).toBe(false));
     ($$('#rg-nr-pop [role="option"]')[2] as HTMLElement).click();
-    await vi.waitFor(() => expect(btn.textContent).toContain('infra / dagu'));
+    await vi.waitFor(() => expect(btn.textContent).toContain('infra / dagsrv'));
   });
 
   it('explains a different pick and an already-matching pick', async () => {
     await open();
     await ready();
-    type('konnen-authentik');
+    type('kite-authn');
     const btn = $('#rg-nr-picker') as HTMLButtonElement;
     btn.click();
     await vi.waitFor(() => expect(pop().hidden).toBe(false));
-    ($$('#rg-nr-pop [role="option"]')[2] as HTMLElement).click(); // infra / dagu
-    await vi.waitFor(() => expect(dest()).toContain('Adds konnen-authentik to the match list of infra / dagu in repo-groups.yml (otherwise it would land in infra / authentik).'));
+    ($$('#rg-nr-pop [role="option"]')[2] as HTMLElement).click(); // infra / dagsrv
+    await vi.waitFor(() => expect(dest()).toContain('Adds kite-authn to the match list of infra / dagsrv in repo-groups.yml (otherwise it would land in infra / authn).'));
     btn.click();
     await vi.waitFor(() => expect(pop().hidden).toBe(false));
-    ($$('#rg-nr-pop [role="option"]')[3] as HTMLElement).click(); // infra / authentik
-    await vi.waitFor(() => expect(dest()).toContain('Already matches the rule *authentik* of this group. repo-groups.yml stays the same.'));
+    ($$('#rg-nr-pop [role="option"]')[3] as HTMLElement).click(); // infra / authn
+    await vi.waitFor(() => expect(dest()).toContain('Already matches the rule *authn* of this group. repo-groups.yml stays the same.'));
   });
 
   it('preselects the group of ?rg_group=', async () => {
-    await open('/organizations/thekonnen/repositories/new?rg_group=infra%2Fdagu');
+    await open('/organizations/thekonnen/repositories/new?rg_group=infra%2Fdagsrv');
     await ready();
-    expect($('#rg-nr-picker')!.textContent).toContain('infra / dagu');
+    expect($('#rg-nr-picker')!.textContent).toContain('infra / dagsrv');
     expect($$('#rg-nr-pop [role="option"]')[2].getAttribute('aria-selected')).toBe('true');
-    expect(dest()).toContain('thekonnen / infra / dagu / new-repository');
+    expect(dest()).toContain('thekonnen / infra / dagsrv / new-repository');
   });
   it('ignores an unknown ?rg_group=', async () => {
     await open('/organizations/thekonnen/repositories/new?rg_group=nope');
@@ -271,7 +274,7 @@ describe('members (F15)', () => {
     await vi.waitFor(() => expect($('#rg-nr-note')).toBeTruthy());
     expect($('#rg-nr-picker')).toBeNull();
     expect($('#rg-nr-note')!.textContent).toContain('read-only for you');
-    type('konnen-x');
+    type('kite-x');
     $('#create')!.click();
     const pending = f.log.find((r) => r.type === 'newrepo:pending') as any;
     expect(pending.entry).toMatchObject({ explicit: false, groupPath: '' });
@@ -283,11 +286,11 @@ describe('submit (F9)', () => {
     const f = await open();
     await ready();
     expect(f.log[0]).toEqual({ type: 'newrepo:discard' });
-    type('konnen-n8n');
+    type('kite-nflow');
     $('#rg-nr-picker')!.click();
     await vi.waitFor(() => expect(pop().hidden).toBe(false));
     ($$('#rg-nr-pop [role="option"]')[2] as HTMLElement).click();
-    await vi.waitFor(() => expect($('#rg-nr-picker')!.textContent).toContain('infra / dagu'));
+    await vi.waitFor(() => expect($('#rg-nr-picker')!.textContent).toContain('infra / dagsrv'));
 
     const form = $('#new_repository') as HTMLFormElement;
     const ev = new Event('submit', { bubbles: true, cancelable: true });
@@ -295,7 +298,7 @@ describe('submit (F9)', () => {
     expect(ev.defaultPrevented).toBe(false); // GitHub's form goes on
     const pending = f.log.filter((r) => r.type === 'newrepo:pending') as any[];
     expect(pending).toHaveLength(1);
-    expect(pending[0].entry).toEqual({ org: 'thekonnen', repo: 'konnen-n8n', groupPath: 'infra/dagu', explicit: true, teams: [{ slug: 'konnen_team', permission: 'push' }] });
+    expect(pending[0].entry).toEqual({ org: 'thekonnen', repo: 'kite-nflow', groupPath: 'infra/dagsrv', explicit: true, teams: [{ slug: 'core_team', permission: 'push' }] });
   });
   it('saves the normalized name, and an Automatic choice as not explicit', async () => {
     const f = await open();
@@ -331,15 +334,15 @@ describe('toast on the repo page (F9)', () => {
     document.body.innerHTML = '';
   });
   it('shows where the repo was filed', async () => {
-    const call = landed({ groupKey: 'infra/dagu', committed: true, teams: [] });
-    mounted = await mountRepoToast('thekonnen', 'konnen-n8n', { call: call as any });
-    expect(call).toHaveBeenCalledWith({ type: 'newrepo:landed', org: 'thekonnen', repo: 'konnen-n8n' });
+    const call = landed({ groupKey: 'infra/dagsrv', committed: true, teams: [] });
+    mounted = await mountRepoToast('thekonnen', 'kite-nflow', { call: call as any });
+    expect(call).toHaveBeenCalledWith({ type: 'newrepo:landed', org: 'thekonnen', repo: 'kite-nflow' });
     const t = $('.rg-toast')!;
     expect(t.getAttribute('role')).toBe('status');
-    expect(t.textContent).toBe('Filed in infra / dagu · repo-groups.yml updated');
+    expect(t.textContent).toBe('Filed in infra / dagsrv · repo-groups.yml updated');
   });
   it('says so when the commit failed', async () => {
-    mounted = await mountRepoToast('o', 'r', { call: landed({ groupKey: 'infra/dagu', committed: false, error: 'You cannot write to o/.github.', teams: [] }) as any });
+    mounted = await mountRepoToast('o', 'r', { call: landed({ groupKey: 'infra/dagsrv', committed: false, error: 'You cannot write to o/.github.', teams: [] }) as any });
     expect($('.rg-toast.rg-err')!.textContent).toContain('repo-groups.yml was not updated');
   });
   it('shows nothing when no entry was pending, or when the call fails', async () => {
@@ -350,5 +353,346 @@ describe('toast on the repo page (F9)', () => {
   it('goes away by itself', async () => {
     mounted = await mountRepoToast('o', 'r', { call: landed({ groupKey: '', committed: false, teams: [] }) as any }, document, 10);
     await vi.waitFor(() => expect($('.rg-toast')).toBeNull());
+  });
+});
+
+describe('classify by method (pills)', () => {
+  const pill = (m: string) => $(`.rg-pill[data-method="${m}"]`) as HTMLButtonElement;
+  const note = () => $('.rg-nr-method-note')?.textContent ?? '';
+  const withAi = (suggest: (req: any) => any, configured = true) => ({
+    extra: (req: Request) => {
+      if (req.type === 'llm:status') return { configured };
+      if (req.type === 'suggest:group') return suggest(req);
+      throw new Error('unexpected ' + req.type);
+    },
+  });
+
+  it('shows Rules lit and locked when a rule catches the name, and no pills for an empty name', async () => {
+    await open();
+    await ready();
+    expect($('#rg-nr-methods')).toBeNull();
+    type('dags-new');
+    await vi.waitFor(() => expect(pill('rules')).toBeTruthy());
+    expect(pill('rules').getAttribute('aria-pressed')).toBe('true');
+    expect(pill('rules').disabled).toBe(true);
+    expect(pill('keywords').getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('disables Rules when nothing matches the name', async () => {
+    await open();
+    await ready();
+    type('zzz-brand-new');
+    await vi.waitFor(() => expect(pill('rules')).toBeTruthy());
+    expect(pill('rules').disabled).toBe(true);
+    expect(pill('rules').getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('AI pill files the repo in the group the AI chose, lights up, and the picker follows', async () => {
+    const f = await open(undefined, withAi(() => ({ source: 'llm', key: 'infra/dagsrv', model: 'm-1', score: 0, margin: 0, ranking: [] })));
+    await ready();
+    type('zzz-brand-new');
+    await vi.waitFor(() => expect(pill('llm')).toBeTruthy());
+    await vi.waitFor(() => expect(f.log.some((r) => r.type === 'llm:status')).toBe(true));
+    pill('llm').click();
+    await vi.waitFor(() => expect(pill('llm').getAttribute('aria-pressed')).toBe('true'));
+    expect(f.log.find((r) => r.type === 'suggest:group')).toMatchObject({ org: 'thekonnen', repo: { name: 'zzz-brand-new' }, method: 'llm' });
+    expect(note()).toContain('AI filed it in');
+    expect(note()).toContain('(m-1)');
+    expect($('#rg-nr-picker')!.textContent).toContain('infra / dagsrv');
+    expect(f.log.find((r) => r.type === 'newrepo:pending')).toBeUndefined(); // only on submit
+  });
+
+  it('Keywords pill runs the local method and says so when it is not sure', async () => {
+    const f = await open(undefined, withAi(() => ({ source: 'uncertain', key: null, score: 0, margin: 0, ranking: [] })));
+    await ready();
+    type('zzz-brand-new');
+    await vi.waitFor(() => expect(pill('keywords')).toBeTruthy());
+    pill('keywords').click();
+    await vi.waitFor(() => expect(note()).toContain('Keywords is not sure'));
+    expect(f.log.find((r) => r.type === 'suggest:group')).toMatchObject({ method: 'keywords' });
+    expect(pill('keywords').getAttribute('aria-pressed')).toBe('false');
+    expect($('#rg-nr-picker')!.textContent).toContain('Automatic');
+  });
+
+  it('AI without a key explains what to do and sends nothing', async () => {
+    const f = await open(undefined, withAi(() => { throw new Error('must not be called'); }, false));
+    await ready();
+    type('zzz-brand-new');
+    await vi.waitFor(() => expect(pill('llm')).toBeTruthy());
+    await vi.waitFor(() => expect(f.log.some((r) => r.type === 'llm:status')).toBe(true));
+    pill('llm').click();
+    await vi.waitFor(() => expect(note()).toContain('Options > AI assistant'));
+    expect(f.log.some((r) => r.type === 'suggest:group')).toBe(false);
+  });
+
+  it('shows why the AI failed and keeps the group unchanged', async () => {
+    await open(undefined, withAi(() => ({ source: 'uncertain', key: null, score: 0, margin: 0, ranking: [], llmError: 'No Gemini model answered. Last error: quota' })));
+    await ready();
+    type('zzz-brand-new');
+    await vi.waitFor(() => expect(pill('llm')).toBeTruthy());
+    await vi.waitFor(() => expect(pill('llm').title).toMatch(/sends the name/));
+    pill('llm').click();
+    await vi.waitFor(() => expect(note()).toContain('quota'));
+    expect($('.rg-nr-method-note')!.className).toContain('rg-warn');
+    expect($('#rg-nr-picker')!.textContent).toContain('Automatic');
+  });
+
+  it('forgets the answer when the name changes, even if a slow one arrives later', async () => {
+    let release!: (v: any) => void;
+    await open(undefined, withAi(() => new Promise((r) => (release = r))));
+    await ready();
+    type('zzz-brand-new');
+    await vi.waitFor(() => expect(pill('llm')).toBeTruthy());
+    await vi.waitFor(() => expect(pill('llm').title).toMatch(/sends the name/));
+    pill('llm').click();
+    await vi.waitFor(() => expect(note()).toContain('Asking the AI'));
+    type('zzz-other-name');
+    await vi.waitFor(() => expect(note()).toBe(''));
+    release({ source: 'llm', key: 'infra/dagsrv', model: 'm', score: 0, margin: 0, ranking: [] });
+    await new Promise((r) => setTimeout(r, 10));
+    expect($('#rg-nr-picker')!.textContent).toContain('Automatic');
+    expect(note()).toBe('');
+  });
+
+  it('offers no pills to a member who cannot write the org file', async () => {
+    await open(undefined, { access: memberAccess });
+    await vi.waitFor(() => expect($('#rg-nr-note')).toBeTruthy());
+    type('zzz-brand-new');
+    await new Promise((r) => setTimeout(r, 10));
+    expect($('#rg-nr-methods')).toBeNull();
+  });
+});
+
+describe('new group from the AI and AI by default', () => {
+  const pill = (m: string) => $(`.rg-pill[data-method="${m}"]`) as HTMLButtonElement;
+  const note = () => $('.rg-nr-method-note')?.textContent ?? '';
+  const NEW = { path: ['selfhosted-infra', 'storage'], titles: ['Self-hosted infra', 'Storage'], descriptions: ['Services you host yourself', 'Self-hosted storage services'] };
+
+  /** Backend with a stateful groups file: org:edit really applies the edit, like a commit would. */
+  function backend(opts: { auto?: boolean; suggest?: (req: any) => any } = {}) {
+    let groups = example().groups;
+    const edits: any[] = [];
+    return {
+      edits,
+      extra: (req: Request): any => {
+        if (req.type === 'llm:status') return { configured: true, auto: opts.auto ?? true };
+        if (req.type === 'suggest:group') return (opts.suggest ?? (() => ({ source: 'uncertain', key: null, score: 0, margin: 0, ranking: [], newGroup: NEW, model: 'm-1' })))(req);
+        if (req.type === 'org:edit') {
+          edits.push(req.edit);
+          const r = applyEdit(groups, req.edit);
+          if ('error' in r) throw new Error(r.error);
+          groups = r.groups;
+          return { status: 'ok', sha: 's2', config: { version: 1, index: 'api', groups }, warnings: [] };
+        }
+        throw new Error('unexpected ' + req.type);
+      },
+    };
+  }
+  const settled = () => new Promise((r) => setTimeout(r, 30));
+
+  it('suggests a new group when none fits, and creating it files the repo there', async () => {
+    const b = backend();
+    const f = await open(undefined, { extra: b.extra });
+    await ready();
+    type('minio');
+    await vi.waitFor(() => expect(pill('llm').title).toMatch(/sends the name/));
+    pill('llm').click();
+    await vi.waitFor(() => expect($('.rg-create-group.rg-rec')).toBeTruthy());
+    expect($('#rg-nr-proposal')!.textContent).toContain('Self-hosted infra');
+    expect($('.rg-prop-seg.rg-last')!.textContent).toContain('Storage');
+    expect($('#rg-nr-proposal')!.textContent).toContain('Self-hosted storage services');
+    expect($('#rg-nr-picker')!.textContent).toContain('Automatic'); // nothing is created until asked
+    expect(b.edits).toHaveLength(0);
+
+    $('.rg-create-group.rg-rec')!.click();
+    await vi.waitFor(() => expect($('#rg-nr-picker')!.textContent).toContain('Storage'));
+    // parent first, then the child, each as a normal "new group" edit
+    expect(b.edits.map((e) => [e.kind, e.parent, e.name, e.title])).toEqual([
+      ['new', [], 'selfhosted-infra', 'Self-hosted infra'],
+      ['new', ['selfhosted-infra'], 'storage', 'Storage'],
+    ]);
+    expect(b.edits[0].description).toBe('Services you host yourself'); // each level keeps its own sentence
+    expect(b.edits[1].description).toBe('Self-hosted storage services');
+    expect(note()).toContain('Created and filed');
+    expect($('.rg-create-group.rg-rec')).toBeNull();
+    expect(dest()).toContain('Adds minio to the match list of Self-hosted infra / Storage');
+    const submit = f.log.filter((r) => r.type === 'newrepo:pending');
+    expect(submit).toHaveLength(0); // filed when the form is submitted, as for any explicit pick
+  });
+
+  it('reuses a parent that already exists and creates only the missing part', async () => {
+    const b = backend({ suggest: () => ({ source: 'uncertain', key: null, score: 0, margin: 0, ranking: [], newGroup: { path: ['infra', 'object-store'], titles: ['Infra', 'Object store'], descriptions: ['', 'd'] } }) });
+    await open(undefined, { extra: b.extra });
+    await ready();
+    type('minio');
+    await vi.waitFor(() => expect(pill('llm').title).toMatch(/sends the name/));
+    pill('llm').click();
+    await vi.waitFor(() => expect($('.rg-create-group.rg-rec')).toBeTruthy());
+    $('.rg-create-group.rg-rec')!.click();
+    await vi.waitFor(() => expect($('#rg-nr-picker')!.textContent).toContain('Object store'));
+    expect(b.edits.map((e) => [e.parent, e.name])).toEqual([[['infra'], 'object-store']]);
+  });
+
+  it('shows the reason when the group cannot be created and leaves the choice alone', async () => {
+    const b = backend();
+    const extra = (req: Request) => (req.type === 'org:edit' ? { status: 'conflict', sha: 'x', config: null } : b.extra(req));
+    await open(undefined, { extra });
+    await ready();
+    type('minio');
+    await vi.waitFor(() => expect(pill('llm').title).toMatch(/sends the name/));
+    pill('llm').click();
+    await vi.waitFor(() => expect($('.rg-create-group.rg-rec')).toBeTruthy());
+    $('.rg-create-group.rg-rec')!.click();
+    await vi.waitFor(() => expect(note()).toContain('changed on GitHub'));
+    expect($('#rg-nr-picker')!.textContent).toContain('Automatic');
+  });
+
+  const leave = () => nameInput().dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+  const aiCalls = (f: { log: Request[] }) => f.log.filter((r) => r.type === 'suggest:group') as any[];
+
+  it('by default, asks the AI on its own once the person leaves the name field and no rule matches', async () => {
+    const b = backend({ suggest: () => ({ source: 'llm', key: 'infra/dagsrv', model: 'm-1', score: 0, margin: 0, ranking: [] }) });
+    const f = await open(undefined, { extra: b.extra });
+    await ready();
+    await vi.waitFor(() => expect(f.log.some((r) => r.type === 'llm:status')).toBe(true));
+    type('zzz-brand-new');
+    await settled();
+    expect(aiCalls(f)).toHaveLength(0); // still typing: nothing is sent
+    leave();
+    await vi.waitFor(() => expect(pill('llm').getAttribute('aria-pressed')).toBe('true'));
+    expect(aiCalls(f)[0]).toMatchObject({ method: 'llm', auto: true, repo: { name: 'zzz-brand-new' } });
+    expect(note()).toContain('(by default)');
+    expect($('#rg-nr-picker')!.textContent).toContain('infra / dagsrv');
+  });
+
+  it('also asks after a pause in typing (2.5 s), once', async () => {
+    const b = backend({ suggest: () => ({ source: 'llm', key: 'infra/dagsrv', score: 0, margin: 0, ranking: [] }) });
+    const f = await open(undefined, { extra: b.extra });
+    await ready();
+    await vi.waitFor(() => expect(f.log.some((r) => r.type === 'llm:status')).toBe(true));
+    type('zzz-brand-new');
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(aiCalls(f)).toHaveLength(0);
+    await vi.waitFor(() => expect(aiCalls(f)).toHaveLength(1), { timeout: 3000 });
+  }, 8000);
+
+  it('typing with pauses and leaving the field sends one request, with the final name', async () => {
+    const b = backend({ suggest: () => ({ source: 'llm', key: 'infra/dagsrv', score: 0, margin: 0, ranking: [] }) });
+    const f = await open(undefined, { extra: b.extra });
+    await ready();
+    await vi.waitFor(() => expect(f.log.some((r) => r.type === 'llm:status')).toBe(true));
+    for (const v of ['zzz', 'zzz-n', 'zzz-ne', 'zzz-new']) {
+      type(v);
+      await new Promise((r) => setTimeout(r, 40));
+    }
+    leave();
+    await vi.waitFor(() => expect(aiCalls(f)).toHaveLength(1));
+    expect(aiCalls(f)[0].repo.name).toBe('zzz-new');
+    leave(); // a second blur with the answer already there does not ask again
+    await settled();
+    expect(aiCalls(f)).toHaveLength(1);
+  });
+
+  it('ignores names shorter than 3 characters', async () => {
+    const f = await open(undefined, { extra: backend().extra });
+    await ready();
+    await vi.waitFor(() => expect(f.log.some((r) => r.type === 'llm:status')).toBe(true));
+    type('ab');
+    leave();
+    await settled();
+    expect(aiCalls(f)).toHaveLength(0);
+  });
+
+  it('does not run by default when turned off, when a rule matches, or after a manual pick', async () => {
+    const off = backend({ auto: false });
+    const f1 = await open(undefined, { extra: off.extra });
+    await ready();
+    await vi.waitFor(() => expect(f1.log.some((r) => r.type === 'llm:status')).toBe(true));
+    type('zzz-brand-new');
+    leave();
+    await settled();
+    expect(aiCalls(f1)).toHaveLength(0);
+    mounted?.dispose();
+
+    document.documentElement.innerHTML = html;
+    const f2 = await open(undefined, { extra: backend().extra });
+    await ready();
+    await vi.waitFor(() => expect(f2.log.some((r) => r.type === 'llm:status')).toBe(true));
+    type('dags-new'); // a rule catches it
+    leave();
+    await settled();
+    expect(aiCalls(f2)).toHaveLength(0);
+  });
+
+  it('does not override a group the person picked by hand', async () => {
+    const f = await open(undefined, { extra: backend().extra });
+    await ready();
+    await vi.waitFor(() => expect(f.log.some((r) => r.type === 'llm:status')).toBe(true));
+    type('zzz-brand-new');
+    $('#rg-nr-picker')!.click();
+    ($$('#rg-nr-pop [role="option"]')[2] as HTMLElement).click();
+    leave();
+    await settled();
+    expect(aiCalls(f)).toHaveLength(0);
+  });
+
+  it('a click on AI is not marked automatic', async () => {
+    const f = await open(undefined, { extra: backend({ suggest: () => ({ source: 'llm', key: 'infra/dagsrv', score: 0, margin: 0, ranking: [] }) }).extra });
+    await ready();
+    type('zzz-brand-new');
+    await vi.waitFor(() => expect(pill('llm').title).toMatch(/sends the name/));
+    pill('llm').click();
+    await vi.waitFor(() => expect(aiCalls(f)).toHaveLength(1));
+    expect(aiCalls(f)[0].auto).toBeUndefined();
+  });
+
+  const levelButtons = () => $$('.rg-create-group').map((b) => [b.dataset.depth, b.textContent, b.classList.contains('rg-rec')]);
+  const proposeAndWait = async (b: ReturnType<typeof backend>) => {
+    await open(undefined, { extra: b.extra });
+    await ready();
+    type('minio');
+    await vi.waitFor(() => expect(pill('llm').title).toMatch(/sends the name/));
+    pill('llm').click();
+    await vi.waitFor(() => expect($('#rg-nr-proposal')).toBeTruthy());
+  };
+
+  it('offers one button per level, the deepest one recommended', async () => {
+    await proposeAndWait(backend());
+    expect(levelButtons()).toEqual([
+      ['1', 'Create “Self-hosted infra”', false],
+      ['2', 'Create “Self-hosted infra / Storage”', true],
+    ]);
+  });
+
+  it('accepting only the top group creates just that one and files the repo in it', async () => {
+    const b = backend();
+    await proposeAndWait(b);
+    ($$('.rg-create-group')[0]).click();
+    await vi.waitFor(() => expect($('#rg-nr-proposal')).toBeNull());
+    expect(b.edits.map((e) => [e.parent, e.name, e.description])).toEqual([[[], 'selfhosted-infra', 'Services you host yourself']]);
+    expect($('#rg-nr-picker')!.textContent).toContain('Self-hosted infra');
+    expect($('#rg-nr-picker')!.textContent).not.toContain('Storage');
+    expect(dest()).toContain('Adds minio to the match list of Self-hosted infra');
+    expect(note()).toContain('Created and filed in Self-hosted infra');
+  });
+
+  it('shows a level that already exists as "Use", and picking it commits nothing', async () => {
+    const b = backend({ suggest: () => ({ source: 'uncertain', key: null, score: 0, margin: 0, ranking: [], newGroup: { path: ['infra', 'object-store'], titles: ['Infra', 'Object store'], descriptions: ['x', 'y'] } }) });
+    await proposeAndWait(b);
+    expect(levelButtons().map((x) => x[1])).toEqual(['Use “Infra”', 'Create “Infra / Object store”']);
+    expect($('.rg-prop-exists')!.textContent).toBe('exists');
+    ($$('.rg-create-group')[0]).click();
+    await vi.waitFor(() => expect($('#rg-nr-proposal')).toBeNull());
+    expect(b.edits).toHaveLength(0);
+    expect($('#rg-nr-picker')!.textContent).toContain('infra'); // the existing group keeps its own display name
+  });
+
+  it('works with three levels', async () => {
+    const b = backend({ suggest: () => ({ source: 'uncertain', key: null, score: 0, margin: 0, ranking: [], newGroup: { path: ['a1', 'b1', 'c1'], titles: ['A', 'B', 'C'], descriptions: ['da', 'db', 'dc'] } }) });
+    await proposeAndWait(b);
+    expect(levelButtons().map((x) => x[1])).toEqual(['Create “A”', 'Create “A / B”', 'Create “A / B / C”']);
+    ($$('.rg-create-group')[1]).click();
+    await vi.waitFor(() => expect($('#rg-nr-proposal')).toBeNull());
+    expect(b.edits.map((e) => [e.parent, e.name])).toEqual([[[], 'a1'], [['a1'], 'b1']]);
   });
 });

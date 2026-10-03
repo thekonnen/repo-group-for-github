@@ -1,6 +1,7 @@
 import { APP_SLUG, GITHUB_CLIENT_ID } from '../config';
 import { loadYamlParser, readConfig } from '../core/yaml-read';
-import type { ConfigResult, ErrorInfo, OrgPrefs, OrgSnapshot, Progress, Request, Response, TeamsResult } from '../github/messages';
+import type { Config } from '../core/types';
+import type { ConfigResult, ErrorInfo, GroupSuggestion, OrgPrefs, SuggestMethod, OrgSnapshot, Progress, Request, Response, TeamsResult } from '../github/messages';
 import { createClient, explainTokenRejection, GitHubError, type FetchLike } from './api';
 import { describeToken, loadAuth, pollDeviceFlow, publicAuth, saveAuth, signOut, startDeviceFlow } from './auth';
 import type { KV } from './kv';
@@ -17,6 +18,9 @@ import { refreshActionIndex } from './action-index';
 import { loadDetails } from './details';
 import { cachedTeamSlugs, grantTeam, loadTeamAccess, loadTeams } from './teams-data';
 import { teamSlugs } from '../core/teams';
+import { postOrder } from '../core/placement';
+import { suggest } from '../core/suggest';
+import { askLlm, classifyPrompt, clearLlmConfig, llmOrigin, llmStatus, LlmError, loadLlmConfig, parseChoice, parseNewGroup, saveLlmConfig, setLlmAuto } from './llm';
 
 export interface Deps {
   fetch: FetchLike;
@@ -76,6 +80,97 @@ export function createHandler(deps: Deps) {
   const tokenKind = async () => (await loadAuth(deps.kv))?.kind ?? 'oauth';
   /** The signed-in user's own account (github.com/<login>), as opposed to an organization. */
   const isSelf = async (owner: string) => (await loadAuth(deps.kv))?.login?.toLowerCase() === owner.toLowerCase();
+
+  /** The provider's origin is an optional host permission the Options page asks for on save (needs a click). */
+  async function requireLlmOrigin(): Promise<void> {
+    const c = await loadLlmConfig(deps.kv);
+    const origin = c && llmOrigin(c);
+    if (c && origin && deps.origins && !(await deps.origins.has(origin))) {
+      throw new LlmError(`The browser has not allowed requests to ${origin.replace('/*', '')}. Save the key again and accept the prompt.`);
+    }
+  }
+
+  // AI calls started by the page on its own are cheap on purpose: cached, shared, capped and paused on failure.
+  const AUTO_PER_MINUTE = 6;
+  const PAUSE_MS = 10 * 60_000;
+  const CACHE_MAX = 50;
+  const CACHE_TTL_MS = 60 * 60_000;
+  const PAUSE_KEY = 'rg:llm:pause';
+  const CACHE_KEY = 'rg:llm:cache';
+  const autoRuns: number[] = [];
+  const inflight = new Map<string, Promise<GroupSuggestion>>();
+  const clock = () => (deps.now ?? Date.now)();
+  const hash = (text: string) => {
+    let h = 5381;
+    for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0;
+    return (h >>> 0).toString(36);
+  };
+  type CachedAnswer = { key?: string | null; newGroup?: GroupSuggestion['newGroup']; model?: string; none?: string };
+  const loadCache = async () => (await deps.kv.get<{ k: string; at: number; v: CachedAnswer }[]>(CACHE_KEY)) ?? [];
+
+  /** Asks the AI (cached by name + description + groups, one call at a time per question) and fills `out`. */
+  async function askGroups(cfg: Config, org: string, repo: { name: string; description?: string | null }, out: GroupSuggestion, auto: boolean): Promise<GroupSuggestion> {
+    const choices = postOrder(cfg.groups).map((n) => ({ key: n.key, title: n.group.title, description: n.group.description, keywords: n.group.keywords }));
+    const prompt = classifyPrompt(choices, repo);
+    const cacheKey = [org, repo.name.toLowerCase(), repo.description ?? '', hash(JSON.stringify(choices))].join('|');
+    const answer = (a: CachedAnswer): GroupSuggestion => {
+      if (a.key) return { ...out, source: 'llm', key: a.key, model: a.model };
+      if (a.newGroup) return { ...out, source: 'uncertain', key: null, model: a.model, newGroup: a.newGroup };
+      return { ...out, source: 'uncertain', key: null, model: a.model, llmError: `The AI found no fitting group (it answered: "${a.none ?? ''}").` };
+    };
+
+    const cached = (await loadCache()).find((e) => e.k === cacheKey && clock() - e.at < CACHE_TTL_MS);
+    if (cached) return answer(cached.v);
+
+    if (auto) {
+      const pause = await deps.kv.get<number>(PAUSE_KEY);
+      const now = clock();
+      while (autoRuns.length && now - autoRuns[0] > 60_000) autoRuns.shift();
+      if ((pause && pause > now) || autoRuns.length >= AUTO_PER_MINUTE) {
+        return { ...out, source: 'uncertain', key: null, llmError: 'Automatic AI is paused for a few minutes to protect your quota. Click AI to try now.' };
+      }
+    }
+    const running = inflight.get(cacheKey);
+    if (running) return running;
+
+    const run = (async (): Promise<GroupSuggestion> => {
+      try {
+        await requireLlmOrigin();
+        if (auto) autoRuns.push(clock());
+        const { text, model } = await askLlm({ fetch: deps.fetch, kv: deps.kv, now: deps.now, maxTries: auto ? 2 : undefined }, prompt);
+        const key = parseChoice(text, choices.map((c) => c.key));
+        const a: CachedAnswer = key ? { key, model } : { model, newGroup: parseNewGroup(text) ?? undefined, none: parseNewGroup(text) ? undefined : text.replace(/\s+/g, ' ').slice(0, 80) };
+        const list = (await loadCache()).filter((e) => e.k !== cacheKey && clock() - e.at < CACHE_TTL_MS);
+        await deps.kv.set(CACHE_KEY, [...list, { k: cacheKey, at: clock(), v: a }].slice(-CACHE_MAX));
+        await deps.kv.remove(PAUSE_KEY); // it worked: automatic runs may resume
+        return answer(a);
+      } catch (e) {
+        if (auto) await deps.kv.set(PAUSE_KEY, clock() + PAUSE_MS); // quota or outage: stop asking on our own for a while
+        return { ...out, source: 'uncertain', key: null, llmError: e instanceof Error ? e.message : String(e) }; // an explicit AI request that fails must not look answered
+      }
+    })();
+    inflight.set(cacheKey, run);
+    try {
+      return await run;
+    } finally {
+      inflight.delete(cacheKey);
+    }
+  }
+
+  /**
+   * Without `method`: rules, then the local score, then the AI (only when the score is unsure and a key is set).
+   * `keywords` runs the local score alone; `llm` asks the AI right away, whatever the score says.
+   */
+  async function suggestGroup(org: string, repo: { name: string; description?: string | null }, method?: SuggestMethod, auto = false): Promise<GroupSuggestion> {
+    const file = await readOrgFile(client, deps.kv, org);
+    const cfg = file.exists ? readConfig(file.text, await loadYamlParser(), { org }).config : undefined;
+    if (!cfg) throw new Error(`${org} has no valid repo-groups.yml to classify against.`);
+    const s = suggest(cfg.groups, repo);
+    const out: GroupSuggestion = { source: s.source, key: s.key, rule: s.rule, score: s.score, margin: s.margin, ranking: s.ranking.slice(0, 3) };
+    if (method === 'keywords') return out;
+    if (method !== 'llm' && (s.source !== 'uncertain' || !(await loadLlmConfig(deps.kv))?.apiKey)) return out;
+    return askGroups(cfg, org, repo, out, auto);
+  }
 
   async function handle(req: Request): Promise<unknown> {
     switch (req.type) {
@@ -213,6 +308,24 @@ export function createHandler(deps: Deps) {
         return loadSettings(deps.kv);
       case 'settings:set':
         return saveSettings(deps.kv, req.settings);
+      case 'llm:status':
+        return llmStatus(deps.kv);
+      case 'llm:save': {
+        const status = await saveLlmConfig(deps.kv, req.config);
+        await requireLlmOrigin();
+        return status;
+      }
+      case 'llm:auto':
+        return setLlmAuto(deps.kv, req.auto);
+      case 'llm:clear':
+        return clearLlmConfig(deps.kv);
+      case 'llm:test': {
+        await requireLlmOrigin();
+        const { model } = await askLlm({ fetch: deps.fetch, kv: deps.kv, now: deps.now }, 'Reply with the single word OK.');
+        return { model };
+      }
+      case 'suggest:group':
+        return suggestGroup(req.org, req.repo, req.method, req.auto);
       case 'org:file':
         return readOrgFile(client, deps.kv, req.org);
       case 'org:access':

@@ -18,6 +18,8 @@ export type Request =
   | { type: 'org:progress'; org: string }
   | { type: 'org:edit'; org: string; edit: Edit }
   | { type: 'org:create-dotgithub'; org: string }
+  | { type: 'yaml:validate'; org: string; text: string }
+  | { type: 'org:apply-yaml'; org: string; text: string; baseSha: string | null; changes: number }
   | { type: 'prefs:get'; org: string }
   | { type: 'prefs:set'; org: string; prefs: Partial<OrgPrefs> };
 

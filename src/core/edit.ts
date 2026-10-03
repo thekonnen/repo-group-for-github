@@ -3,17 +3,51 @@ import type { Group } from './types';
 
 /** The single change behind Edit group / New group. Re-applied to a fresh file when a commit conflicts (§7). */
 export type Edit =
-  | { kind: 'edit'; path: string[]; name: string; description: string; match: string[] }
-  | { kind: 'new'; parent: string[]; name: string; description: string; match: string[] };
+  | { kind: 'edit'; path: string[]; name: string; title?: string; description: string; match: string[] }
+  | { kind: 'new'; parent: string[]; name: string; title?: string; description: string; match: string[] };
+
+/** Letters that do not decompose into base + accent. */
+const FOLD: Record<string, string> = { ß: 'ss', æ: 'ae', œ: 'oe', ø: 'o', đ: 'd', ð: 'd', ł: 'l', þ: 'th', ı: 'i' };
+
+/**
+ * Display name -> slug, the way GitLab builds a path: "Grupo: Competição" -> "grupo-competicao".
+ * Accents are removed, other characters become "-". Letters with no Latin form (e.g. 日本語) leave nothing,
+ * so the person types a slug.
+ */
+export function slugify(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[ßæœøđðłþı]/g, (c) => FOLD[c])
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^[-.]+|[-.]+$/g, '')
+    .replace(/-{2,}/g, '-');
+}
+
+/** What people see: the title, or the slug when there is none. */
+export const displayName = (g: { name: string; title?: string }): string => g.title || g.name;
+
+/** Title to store: trimmed, and dropped when it only repeats the slug. */
+export const cleanTitle = (title: string | undefined, slug: string): string | undefined => {
+  const t = (title ?? '').replace(/\s+/g, ' ').trim();
+  return t && t !== slug ? t : undefined;
+};
+
+/**
+ * "dag, dagu;dags" -> three rules. Repository names cannot contain commas or spaces, so splitting a rule on them
+ * can only fix input (typed, pasted, or written by hand into the YAML); it never changes a valid rule.
+ */
+export const splitRules = (input: string): string[] => [...new Set(input.split(/[\s,;]+/).map((r) => r.trim()).filter(Boolean))];
 
 /** Group names are slugs: lowercase, other characters become "-". Edge dashes are kept while typing. */
 export const slugName = (v: string): string => v.toLowerCase().replace(/[^a-z0-9._-]+/g, '-');
 export const finalName = (v: string): string => slugName(v.trim()).replace(/^-+|-+$/g, '');
 
 /** Error text for the drawer, or null when the draft is valid. */
-export function validateDraft(groups: Group[], d: { mode: 'edit' | 'new'; path: string[]; name: string }): string | null {
+export function validateDraft(groups: Group[], d: { mode: 'edit' | 'new'; path: string[]; name: string; title?: string }): string | null {
   const name = finalName(d.name);
-  if (!name) return 'Name is required.';
+  if (!name) return (d.title ?? '').trim() ? 'Could not make a slug from this name. Type one in the Slug field.' : 'Name is required.';
   const parent = d.mode === 'edit' ? d.path.slice(0, -1) : d.path;
   const siblings = parent.length ? findGroup(groups, parent)?.groups : groups;
   const self = d.mode === 'edit' ? d.path[d.path.length - 1] : null;
@@ -33,7 +67,7 @@ export function applyEdit(groups: Group[], edit: Edit): { groups: Group[] } | { 
     if (!list) return { error: `The group "${edit.parent.join('/')}" no longer exists. Reload the page and try again.` };
     if (!name) return { error: 'Name is required.' };
     if (list.some((g) => g.name === name)) return { error: `A group named "${name}" already exists here.` };
-    list.push({ name, description: edit.description.trim(), logo: null, teams: [], match, groups: [] });
+    list.push({ name, ...(cleanTitle(edit.title, name) ? { title: cleanTitle(edit.title, name) } : {}), description: edit.description.trim(), logo: null, teams: [], match, groups: [] });
     return { groups: next };
   }
   const g = findGroup(next, edit.path);
@@ -43,6 +77,11 @@ export function applyEdit(groups: Group[], edit: Edit): { groups: Group[] } | { 
   if (!name) return { error: 'Name is required.' };
   if (siblings.some((s) => s !== g && s.name === name)) return { error: `A group named "${name}" already exists here.` };
   g.name = name;
+  if (edit.title !== undefined) {
+    const t = cleanTitle(edit.title, name);
+    if (t) g.title = t;
+    else delete g.title;
+  }
   g.description = edit.description.trim();
   g.match = match;
   return { groups: next };

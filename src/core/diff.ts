@@ -29,6 +29,8 @@ export function diffTrees(a: Group[], b: Group[], repos: Pick<RepoInfo, 'name'>[
   for (const [k, nb] of gb) {
     const na = ga.get(k);
     if (!na) continue;
+    if ((na.title || '') !== (nb.title || ''))
+      items.push({ k: '~', cls: 'chg', text: `Name of ${k}`, to: `“${nb.title || nb.name}”` });
     if (na.description !== nb.description)
       items.push({ k: '~', cls: 'chg', text: `Description of ${k}`, to: `“${nb.description || '(empty)'}”` });
     if ((na.logo || '') !== (nb.logo || ''))

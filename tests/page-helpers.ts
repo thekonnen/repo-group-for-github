@@ -1,4 +1,5 @@
 import { vi } from 'vitest';
+import { checkYaml } from '../src/background/commit';
 import { example } from './fixtures';
 import type { Request } from '../src/github/messages';
 
@@ -11,7 +12,7 @@ export const repos = [
 export const ownerAccess = { access: { level: 'owner', canWriteOrg: true, hasOrgFile: true, suggestMode: false, canForkSuggest: true, syncNeedsRepoAdmin: false, publicOnly: false } };
 export const memberAccess = { access: { level: 'member', canWriteOrg: false, hasOrgFile: true, suggestMode: true, canForkSuggest: true, syncNeedsRepoAdmin: true, publicOnly: false } };
 
-export function fakeCall(opts: { signedIn?: boolean; config?: any; access?: any; edit?: (req: any) => any } = {}) {
+export function fakeCall(opts: { signedIn?: boolean; config?: any; access?: any; edit?: (req: any) => any; apply?: (req: any) => any; repos?: any[] } = {}) {
   const log: Request[] = [];
   const config = opts.config ?? { exists: true, sha: 'sha1', config: example(), warnings: [] };
   const call = vi.fn(async (req: Request): Promise<any> => {
@@ -20,13 +21,15 @@ export function fakeCall(opts: { signedIn?: boolean; config?: any; access?: any;
       case 'auth:status': return { signedIn: opts.signedIn ?? true };
       case 'prefs:get': return {};
       case 'prefs:set': return {};
-      case 'org:cached': return { repos, meta: { lastFullSync: at(5), lastIncrementalSync: at(5), total: repos.length } };
+      case 'org:cached': return { repos: opts.repos ?? repos, meta: { lastFullSync: at(5), lastIncrementalSync: at(5), total: repos.length } };
       case 'org:config': return config;
-      case 'org:refresh': return { status: 'ok', mode: 'incremental', repos, meta: { lastFullSync: at(5), lastIncrementalSync: at(0), total: repos.length } };
+      case 'org:refresh': return { status: 'ok', mode: 'incremental', repos: opts.repos ?? repos, meta: { lastFullSync: at(5), lastIncrementalSync: at(0), total: repos.length } };
       case 'org:progress': return null;
       case 'org:access': return opts.access ?? ownerAccess;
       case 'org:edit': if (opts.edit) return opts.edit(req); throw new Error('unexpected org:edit');
       case 'org:create-dotgithub': return { created: true };
+      case 'yaml:validate': return checkYaml(req.org, req.text); // the real validator
+      case 'org:apply-yaml': if (opts.apply) return opts.apply(req); throw new Error('unexpected org:apply-yaml');
       case 'auth:start': return { deviceCode: 'dc', userCode: 'ABCD-1234', verificationUri: 'https://github.com/login/device', expiresIn: 900, interval: 5 };
       default: throw new Error('unexpected ' + req.type);
     }

@@ -141,3 +141,71 @@ describe('createDotGithub and the message handler', () => {
     expect(decodeBase64Utf8(encodeBase64Utf8(t))).toBe(t);
   });
 });
+
+describe('Edit YAML backend (F8)', () => {
+  const draftText = (extra = '') => `\`\`\`yaml\n${EXAMPLE.replace('groups:\n', 'groups:\n  - name: data\n    match: ["etl-*"]\n')}${extra}repositories:\n  - name: x\n\`\`\`\nHope this helps!`;
+
+  it('validates: strips fences, ignores repositories:, reports errors with a line, warns about odd roles', async () => {
+    const { checkYaml } = await import('../src/background/commit');
+    const ok = await checkYaml('o', draftText());
+    expect(ok.error).toBeUndefined();
+    expect(ok.stripped).toBe(true);
+    expect(ok.config!.groups.map((g) => g.name)).toEqual(['data', 'infra', 'ai']);
+    const bad = await checkYaml('o', 'groups:\n  - name: [a\n');
+    expect(bad.config).toBeUndefined();
+    expect(bad.error).toMatch(/\(line \d+\)$/);
+    expect(bad.line).toBeGreaterThan(0);
+    expect((await checkYaml('o', 'version: 1')).error).toBe('The file needs a top-level "groups:" list.');
+  });
+  it('commits the pasted answer as canonical YAML with the sha and a change count', async () => {
+    const { commitYaml } = await import('../src/background/commit');
+    const { s, f } = world();
+    const r = await commitYaml(client(f), memoryKV(), 'o', draftText(), 'sha-1', 19);
+    expect(r).toMatchObject({ status: 'ok', sha: 'sha-2' });
+    const body = JSON.parse(puts(f)[0].body!);
+    expect(body.message).toBe('chore(repo-groups): apply YAML edit (19 changes)');
+    expect(body.sha).toBe('sha-1');
+    expect(s.file!.text).not.toContain('```');
+    expect(s.file!.text).not.toContain('repositories:');
+    expect(parsed(s.file!.text).groups.map((g) => g.name)).toEqual(['data', 'infra', 'ai']);
+  });
+  it('creates the file when none exists (base sha null, no sha sent)', async () => {
+    const { commitYaml } = await import('../src/background/commit');
+    const { s, f } = world({ file: null });
+    expect((await commitYaml(client(f), memoryKV(), 'o', 'version: 1\ngroups:\n  - name: a\n', null, 1)).status).toBe('ok');
+    expect('sha' in JSON.parse(puts(f)[0].body!)).toBe(false);
+    expect(parsed(s.file!.text).groups[0].name).toBe('a');
+  });
+  it('reports a conflict, without committing, when the file changed since the editor opened', async () => {
+    const { commitYaml } = await import('../src/background/commit');
+    const { f } = world({ file: { text: 'version: 1\ngroups:\n  - name: theirs\n', sha: 'sha-7' } });
+    const r: any = await commitYaml(client(f), memoryKV(), 'o', draftText(), 'sha-1', 2);
+    expect(r.status).toBe('conflict');
+    expect(r.sha).toBe('sha-7');
+    expect(r.config.groups.map((g: any) => g.name)).toEqual(['theirs']);
+    expect(puts(f)).toHaveLength(0);
+  });
+  it('reports a conflict (not an error) when the PUT itself loses the race; no automatic retry', async () => {
+    const { commitYaml } = await import('../src/background/commit');
+    const { f } = world({ putErrors: [{ status: 409, message: 'does not match' }] });
+    const r: any = await commitYaml(client(f), memoryKV(), 'o', draftText(), 'sha-1', 2);
+    expect(r.status).toBe('conflict');
+    expect(puts(f)).toHaveLength(1);
+  });
+  it('refuses invalid text and asks to create .github when it is missing', async () => {
+    const { commitYaml } = await import('../src/background/commit');
+    const { f } = world();
+    await expect(commitYaml(client(f), memoryKV(), 'o', 'groups: [x', 'sha-1', 1)).rejects.toThrow(/The YAML has a problem/);
+    expect(puts(f)).toHaveLength(0);
+    const w = world({ file: null, repo: false });
+    expect(await commitYaml(client(w.f), memoryKV(), 'o', 'version: 1\ngroups: []\n', null, 1)).toEqual({ status: 'needs-repo' });
+  });
+  it('is reachable through the message handler', async () => {
+    const { f } = world();
+    const h = createHandler({ fetch: f.fetch, kv: memoryKV(), index: memoryIndexStore(), clientId: 'c' });
+    const v: any = await h({ type: 'yaml:validate', org: 'o', text: 'groups: []' });
+    expect(v.data.config.groups).toEqual([]);
+    const a: any = await h({ type: 'org:apply-yaml', org: 'o', text: draftText(), baseSha: 'sha-1', changes: 3 });
+    expect(a.data.status).toBe('ok');
+  });
+});

@@ -1,0 +1,28 @@
+<!-- Hand-written to mirror design/screenshots/github-org-repositories.png. NOT captured from live GitHub:
+     re-check src/github/selectors.ts against the real page when GitHub changes. -->
+<body>
+  <style>body{margin:0;font-family:system-ui} .layout{display:grid;grid-template-columns:280px minmax(0,1fr)} #sidebar{padding:12px;border-right:1px solid #d1d9e0} main{padding:24px 32px} #sidebar ul{list-style:none;padding:0;margin:0} #sidebar a{display:block;padding:6px 8px;color:inherit;text-decoration:none}</style>
+  <header><a href="/thekonnen">thekonnen</a></header>
+  <nav aria-label="Organization"><a href="/orgs/thekonnen/repositories" aria-current="page">Repositories <span>45</span></a><a href="/orgs/thekonnen/teams">Teams</a></nav>
+  <div class="layout">
+    <aside id="sidebar">
+      <nav aria-label="Repository filters">
+        <ul>
+          <li><a href="/orgs/thekonnen/repositories" aria-current="page">All</a></li>
+          <li><a href="/orgs/thekonnen/repositories?type=member">Contributed by me</a></li>
+          <li><a href="/orgs/thekonnen/repositories?type=admin">Admin access</a></li>
+          <li><a href="/orgs/thekonnen/repositories?type=public">Public</a></li>
+          <li><a href="/orgs/thekonnen/repositories?type=source">Sources</a></li>
+          <li><a href="/orgs/thekonnen/repositories?type=fork">Forks</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <main>
+      <div id="content">
+        <div class="head"><h2>All</h2><a href="/organizations/thekonnen/repositories/new">New repository</a></div>
+        <div class="searchbox"><input placeholder="Search repositories" /></div>
+        <ul id="native-list"><li>konnen-litellm</li><li>litellm</li></ul>
+      </div>
+    </main>
+  </div>
+</body>

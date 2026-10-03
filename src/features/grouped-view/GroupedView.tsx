@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { langColor } from '../../core/lang-colors';
 import { displayName } from '../../core/edit';
+import { detailTotals, DETAILS_MAX_REPOS } from '../../core/details';
 import { ago } from '../../core/time';
 import { allRepos, searchRows, treeRows, VIRTUALIZE_AFTER, windowRange, type GroupNode, type Row, type TreeModel } from '../../core/tree';
 import type { RepoInfo } from '../../core/types';
@@ -73,6 +74,12 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
   const cfg = s.config;
 
   useSlashFocus();
+  const scope = node.total <= DETAILS_MAX_REPOS ? allRepos(node) : [];
+  const scopeKey = scope.map((r) => r.name).join('\n');
+  useEffect(() => {
+    if (s.phase === 'ready' && scope.length) void ctl.ensureDetails(scope.map((r) => r.name));
+  }, [scopeKey, s.phase]);
+  const split = detailTotals(scope, s.details);
 
   const tab = s.tab === 'rules' && isRoot ? 'items' : s.tab === 'ungrouped' && !isRoot ? 'items' : s.tab;
   let rows: Row[];
@@ -121,7 +128,14 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
       <div class="rg-stats">
         <Stat label="Repositories" value={node.total.toLocaleString()} />
         <Stat label={isRoot ? 'Groups' : 'Subgroups'} value={node.subgroups.toLocaleString()} />
-        <Stat label="Open issues & PRs" value={node.issues.toLocaleString()} />
+        {split ? (
+          <>
+            <Stat label="Open issues" value={split.issues.toLocaleString()} />
+            <Stat label="Open pull requests" value={split.prs.toLocaleString()} />
+          </>
+        ) : (
+          <Stat label="Open issues & PRs" value={node.issues.toLocaleString()} />
+        )}
         <Stat label="Last push" value={ago(node.latest)} />
       </div>
       <div class="rg-tabs" role="tablist">
@@ -156,7 +170,7 @@ function IndexStatus({ ctl, s, model }: { ctl: Controller; s: State; model: Tree
     const p = r.progress;
     return (
       <div class="rg-status" role="status" aria-live="polite">
-        {p ? <>Indexing {p.loaded.toLocaleString()} of about {p.estimatedTotal.toLocaleString()} repositories…<span class="rg-bar"><i style={{ width: `${Math.min(100, (p.loaded / p.estimatedTotal) * 100)}%` }} /></span></> : 'Loading repositories…'}
+        {p?.phase === 'action' ? <>Loading the organization index…<span class="rg-bar"><i style={{ width: `${Math.min(100, p.loaded)}%` }} /></span></> : p ? <>Indexing {p.loaded.toLocaleString()} of about {p.estimatedTotal.toLocaleString()} repositories…<span class="rg-bar"><i style={{ width: `${Math.min(100, (p.loaded / p.estimatedTotal) * 100)}%` }} /></span></> : 'Loading repositories…'}
       </div>
     );
   }

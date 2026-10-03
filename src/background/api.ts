@@ -31,6 +31,8 @@ export interface RequestOptions {
   etag?: string;
   /** Accept 404 as a normal answer (returned with status 404, data null). */
   allow404?: boolean;
+  /** Overrides the Accept header (e.g. the raw media type for files over 1 MB). */
+  accept?: string;
 }
 
 const API = 'https://api.github.com';
@@ -52,7 +54,7 @@ export function createClient(deps: { fetch: FetchLike; getToken: () => Promise<s
   async function rest<T = any>(path: string, opts: RequestOptions = {}): Promise<RestResult<T>> {
     const token = await deps.getToken();
     const headers: Record<string, string> = {
-      Accept: 'application/vnd.github+json',
+      Accept: opts.accept ?? 'application/vnd.github+json',
       'X-GitHub-Api-Version': deps.version ?? '2022-11-28',
     };
     if (token) headers.Authorization = `Bearer ${token}`;

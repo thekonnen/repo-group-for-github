@@ -10,6 +10,7 @@ import { defaultExpanded, memoTree, type TreeModel } from '../../core/tree';
 import { hasGithubFilter } from '../../github/route';
 import { CallError, type Call } from '../../github/client';
 import type { ConfigResult, ErrorInfo, OrgPrefs, OrgSnapshot, Progress } from '../../github/messages';
+import { DETAILS_MAX_REPOS, type DetailsMap } from '../../core/details';
 import { createLogoStore } from '../logos/logo-store';
 import { createStore, type Store } from '../store';
 import { createTeamsController } from '../teams/teams-controller';
@@ -39,6 +40,8 @@ export interface State {
   tab: 'items' | 'ungrouped' | 'rules';
   query: string;
   access: Access | null;
+  /** Separate open issue / PR counts (F14), loaded lazily for small groups. */
+  details: DetailsMap;
   drawer: { mode: 'edit' | 'new'; path: string[]; focus?: 'logo' } | null;
   yaml: { text: string } | null;
   toast: { text: string; kind: 'ok' | 'error' } | null;
@@ -97,6 +100,7 @@ export function createController(org: string, env: Env) {
     tab: 'items',
     query: '',
     access: null,
+    details: {},
     drawer: null,
     yaml: null,
     toast: null,
@@ -245,6 +249,23 @@ export function createController(org: string, env: Env) {
     }
   }
 
+  let detailsKey = '';
+  /** Asks the background for split issue / PR counts of these repos (groups of 200 or fewer). Never throws. */
+  async function ensureDetails(names: string[]) {
+    const have = store.get().details;
+    const missing = names.filter((n) => !have[n]);
+    if (!missing.length || names.length > DETAILS_MAX_REPOS || store.get().phase !== 'ready') return;
+    const key = names.join('\n');
+    if (key === detailsKey) return; // same request already made for this group and index
+    detailsKey = key;
+    try {
+      const d = await env.call<DetailsMap>({ type: 'org:details', org, repos: names });
+      if (!disposed && d) store.set({ details: { ...store.get().details, ...d } });
+    } catch {
+      /* the combined number stays */
+    }
+  }
+
   async function startSignIn() {
     try {
       const d = await env.call<SignIn & { expiresIn: number }>({ type: 'auth:start' });
@@ -293,6 +314,7 @@ export function createController(org: string, env: Env) {
     model,
     init,
     refresh,
+    ensureDetails,
     startSignIn,
     openVerification: (s: SignIn) => env.open(`${s.verificationUri}?user_code=${encodeURIComponent(s.userCode)}`),
     dispose() {

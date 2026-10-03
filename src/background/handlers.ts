@@ -13,6 +13,8 @@ import { probeAccess, readOrgFile, type OrgFile } from './org-data';
 import { clearCache, loadSettings, saveSettings, withinInterval } from './cache';
 import { listOrgs } from './orgs';
 import { refreshIndex, type IndexStore } from './repo-index';
+import { refreshActionIndex } from './action-index';
+import { loadDetails } from './details';
 import { cachedTeamSlugs, grantTeam, loadTeamAccess, loadTeams } from './teams-data';
 import { teamSlugs } from '../core/teams';
 
@@ -58,6 +60,19 @@ export function createHandler(deps: Deps) {
       }
     : deps.kv;
   const progress = new Map<string, Progress>();
+  /** `index: action` in repo-groups.yml (read from the ETag cache when there is one). */
+  const fileLoads = new Map<string, Promise<OrgFile>>();
+  const wantsActionIndex = async (org: string): Promise<boolean> => {
+    try {
+      // Never costs a request of its own: it reuses the org:config read that the page starts right before refreshing,
+      // or the ETag cache.
+      const file = (await fileLoads.get(org)) ?? (await deps.kv.get<OrgFile>(`rg:file:${org}`));
+      if (!file || !file.exists) return false;
+      return readConfig(file.text, await loadYamlParser(), { org }).config?.index === 'action';
+    } catch {
+      return false;
+    }
+  };
   const tokenKind = async () => (await loadAuth(deps.kv))?.kind ?? 'oauth';
 
   async function handle(req: Request): Promise<unknown> {
@@ -88,29 +103,47 @@ export function createHandler(deps: Deps) {
         await signOut(deps.kv);
         return publicAuth(undefined);
       case 'org:cached':
-        return (await deps.index.load(req.org)) satisfies OrgSnapshot | null;
+      {
+        // Only repos and meta: entries of the Action index file that are not confirmed yet are never part of this.
+        const snap = await deps.index.load(req.org);
+        return (snap ? { repos: snap.repos, meta: snap.meta } : null) satisfies OrgSnapshot | null;
+      }
       case 'org:refresh': {
         const publicOnly = !(await loadAuth(deps.kv));
         if (!req.force) {
           // Inside the refresh interval a visit costs no request: serve the cached snapshot.
           const cached = await deps.index.load(req.org);
-          if (cached && withinInterval(cached.meta, (await loadSettings(deps.kv)).refreshMinutes, (deps.now ?? Date.now)())) return { status: 'ok', mode: 'incremental', repos: cached.repos, meta: cached.meta };
+          // An Action index still being confirmed is never served from here: the flow below resumes it.
+          const confirming = !!(await deps.index.loadUnconfirmed?.(req.org));
+          if (cached && !confirming && withinInterval(cached.meta, (await loadSettings(deps.kv)).refreshMinutes, (deps.now ?? Date.now)())) return { status: 'ok', mode: 'incremental', repos: cached.repos, meta: cached.meta };
         }
         try {
-          return await refreshIndex(client, req.org, deps.index, {
+          const opts = {
             force: req.force,
             now: deps.now,
             concurrency: publicOnly ? 2 : 6,
-            onProgress: (p) => progress.set(req.org, { loaded: p.loaded, estimatedTotal: p.estimatedTotal }),
-          });
+            onProgress: (p: { loaded: number; estimatedTotal: number; phase?: 'action' }) => progress.set(req.org, { loaded: p.loaded, estimatedTotal: p.estimatedTotal, phase: p.phase }),
+          };
+          if (await wantsActionIndex(req.org)) return await refreshActionIndex(client, req.org, deps.index, { ...opts, publicOnly });
+          return await refreshIndex(client, req.org, deps.index, opts);
         } finally {
           progress.delete(req.org);
         }
       }
+      case 'org:details':
+        return loadDetails(client, deps.kv, req.org, req.repos);
       case 'org:progress':
         return progress.get(req.org) ?? null;
       case 'org:config': {
-        const file = req.cachedOnly ? await deps.kv.get<OrgFile>(`rg:file:${req.org}`) : await readOrgFile(client, deps.kv, req.org);
+        let fileP: Promise<OrgFile | undefined>;
+        if (req.cachedOnly) fileP = deps.kv.get<OrgFile>(`rg:file:${req.org}`);
+        else {
+          const p = readOrgFile(client, deps.kv, req.org);
+          fileLoads.set(req.org, p);
+          p.then(() => undefined, () => undefined).then(() => fileLoads.get(req.org) === p && fileLoads.delete(req.org));
+          fileP = p;
+        }
+        const file = await fileP;
         if (!file) return null; // nothing cached yet
         if (!file.exists) return { exists: false } satisfies ConfigResult;
         const load = await loadYamlParser();

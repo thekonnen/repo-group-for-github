@@ -5,13 +5,34 @@ import type { Client } from './api';
 export interface IndexStore {
   load(org: string): Promise<{ repos: RepoInfo[]; meta: IndexMeta } | null>;
   save(org: string, repos: RepoInfo[], meta: IndexMeta): Promise<void>;
-  /** Removes every stored index (Options > Clear cache). */
+  /**
+   * Entries from repo-index.json that the user's own calls have not confirmed yet. They live in a separate
+   * record, so load() can never return them to the page (F15 §5). Only action-index.ts reads or writes this.
+   */
+  loadUnconfirmed?(org: string): Promise<Unconfirmed | null>;
+  saveUnconfirmed?(org: string, entry: Unconfirmed | null): Promise<void>;
+  /** Removes every stored index, including the unconfirmed lists (Options > Clear cache). */
   clear(): Promise<void>;
+}
+
+export interface Unconfirmed {
+  repos: RepoInfo[];
+  /** `generatedAt` of the repo-index.json they came from. */
+  generatedAt: string;
 }
 
 export function memoryIndexStore(): IndexStore {
   const m = new Map<string, { repos: RepoInfo[]; meta: IndexMeta }>();
+  const pending = new Map<string, Unconfirmed>();
   return {
+    async loadUnconfirmed(org) {
+      const p = pending.get(org);
+      return p ? structuredClone(p) : null;
+    },
+    async saveUnconfirmed(org, entry) {
+      if (entry) pending.set(org, structuredClone(entry));
+      else pending.delete(org);
+    },
     async load(org) {
       return m.get(org) ?? null;
     },
@@ -20,6 +41,7 @@ export function memoryIndexStore(): IndexStore {
     },
     async clear() {
       m.clear();
+      pending.clear();
     },
   };
 }
@@ -47,7 +69,8 @@ const pagePath = (org: string, page: number) => `/orgs/${encodeURIComponent(org)
 export interface IndexOptions {
   concurrency?: number; // 6 normally, 2 in public-only mode
   now?: () => number;
-  onProgress?: (p: { loaded: number; estimatedTotal: number; repos: RepoInfo[] }) => void;
+  /** `phase: 'action'` = confirming the organization index file; loaded/estimatedTotal are then a percentage (0-100). */
+  onProgress?: (p: { loaded: number; estimatedTotal: number; repos: RepoInfo[]; phase?: 'action' }) => void;
 }
 
 export type RefreshResult = { status: 'ok'; repos: RepoInfo[]; meta: IndexMeta; mode: 'full' | 'incremental' } | { status: 'paused'; resumeAt?: Date };

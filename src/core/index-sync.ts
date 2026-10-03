@@ -56,6 +56,8 @@ export interface IndexMeta {
   lastFullSync: string | null;
   lastIncrementalSync: string | null;
   total: number;
+  /** How the first index was built: from the user's own API calls, or from repo-index.json (after confirmation). */
+  index?: 'api' | 'action';
 }
 
 /** Whether a background full reconciliation is due (§F14). */

@@ -5,6 +5,9 @@ import { createClient, explainTokenRejection, GitHubError, type FetchLike } from
 import { describeToken, loadAuth, pollDeviceFlow, publicAuth, saveAuth, signOut, startDeviceFlow } from './auth';
 import type { KV } from './kv';
 import { commitEdit, createDotGithub, EditError } from './commit';
+import { commitEditWithLogo } from './commit-logo';
+import { createLogoService, memoryLogoCache, type LogoCache, type Origins } from './logos';
+import { editLogoPath, hasPng } from '../core/edit';
 import { probeAccess, readOrgFile, type OrgFile } from './org-data';
 import { refreshIndex, type IndexStore } from './repo-index';
 
@@ -13,6 +16,8 @@ export interface Deps {
   kv: KV; // storage.local, background only
   index: IndexStore;
   clientId?: string;
+  logos?: LogoCache; // blob SHA -> data URL (IndexedDB in the browser)
+  origins?: Origins; // optional host permissions for logo links
 }
 
 export function toErrorInfo(e: unknown): ErrorInfo {
@@ -26,6 +31,7 @@ export function toErrorInfo(e: unknown): ErrorInfo {
 export function createHandler(deps: Deps) {
   const clientId = deps.clientId ?? GITHUB_CLIENT_ID;
   const client = createClient({ fetch: deps.fetch, getToken: async () => (await loadAuth(deps.kv))?.token ?? null });
+  const logos = createLogoService({ client, fetch: deps.fetch, cache: deps.logos ?? memoryLogoCache(), origins: deps.origins });
   const FLOW_KEY = 'rg:device-flow';
   // The popup closes as soon as the user opens github.com/login/device, so the pending code lives here
   // and the popup resumes polling with it when it is opened again.
@@ -88,8 +94,18 @@ export function createHandler(deps: Deps) {
         const r = readConfig(file.text, await loadYamlParser(), { org: req.org });
         return { exists: true, sha: file.sha, config: r.config, error: r.error, line: r.line, warnings: r.warnings } satisfies ConfigResult;
       }
-      case 'org:edit':
-        return commitEdit(client, deps.kv, req.org, req.edit);
+      case 'org:edit': {
+        if (!hasPng(req.edit)) return commitEdit(client, deps.kv, req.org, req.edit);
+        const r = await commitEditWithLogo(client, deps.kv, req.org, req.edit);
+        if (r.status === 'ok' && r.logoSha && req.edit.logo && 'png' in req.edit.logo && editLogoPath(req.edit)) {
+          await logos.prime(req.org, r.logoSha, `data:image/png;base64,${req.edit.logo.png}`).catch(() => {});
+        }
+        return r;
+      }
+      case 'logos:get':
+        return logos.load(req.org, req.srcs);
+      case 'logo:fetch-link':
+        return logos.fetchLink(req.url);
       case 'org:create-dotgithub':
         await createDotGithub(client, req.org);
         return { created: true };

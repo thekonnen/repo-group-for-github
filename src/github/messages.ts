@@ -18,6 +18,8 @@ export type Request =
   | { type: 'org:progress'; org: string }
   | { type: 'org:edit'; org: string; edit: Edit }
   | { type: 'org:create-dotgithub'; org: string }
+  | { type: 'logos:get'; org: string; srcs: string[] } // F7: logo references of the org file -> data URLs
+  | { type: 'logo:fetch-link'; url: string } // F7: an image from a link, for the cropper
   | { type: 'prefs:get'; org: string }
   | { type: 'prefs:set'; org: string; prefs: Partial<OrgPrefs> };
 

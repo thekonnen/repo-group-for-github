@@ -77,6 +77,7 @@ describe('pending entry and post-create filing (F9)', () => {
   function setup(opts: { putStatus?: number } = {}) {
     let file = { text: EXAMPLE, sha: 'sha-1' };
     const f = fakeFetch((u, call) => {
+      if (u.pathname === '/repos/o/konnen-n8n') return { json: { name: 'konnen-n8n', description: 'new', private: true, pushed_at: null, created_at: '2026-10-03T10:00:00Z', permissions: { admin: true } } };
       if (u.pathname !== '/repos/o/.github/contents/repo-groups.yml') return undefined;
       if (call.method === 'PUT') {
         if (opts.putStatus) return { status: opts.putStatus, json: { message: 'Resource not accessible by integration' } };
@@ -88,10 +89,11 @@ describe('pending entry and post-create filing (F9)', () => {
     });
     const kv = memoryKV();
     const session = memoryKV();
-    const h = createHandler({ fetch: f.fetch, kv, session, index: memoryIndexStore(), clientId: 'c' });
+    const index = memoryIndexStore();
+    const h = createHandler({ fetch: f.fetch, kv, session, index, clientId: 'c' });
     const entry = (over: object = {}) => ({ org: 'o', repo: 'konnen-n8n', groupPath: 'infra/dagu', explicit: true, teams: [], ...over });
     const puts = () => f.calls.filter((c) => c.method === 'PUT');
-    return { h, f, kv, session, entry, puts, file: () => file };
+    return { h, f, kv, session, index, entry, puts, file: () => file };
   }
 
   it('keeps the entry in session storage, not local', async () => {
@@ -115,6 +117,18 @@ describe('pending entry and post-create filing (F9)', () => {
     // consumed: a reload of the repo page does nothing
     expect(((await t.h({ type: 'newrepo:landed', org: 'o', repo: 'konnen-n8n' })) as any).data).toBeNull();
     expect(t.puts()).toHaveLength(1);
+  });
+
+  it('puts the new repo in the cached index so the group and team pages show it', async () => {
+    const t = setup();
+    const old = { name: 'old', description: '', language: null, languageColor: null, private: false, archived: false, fork: false, pushedAt: '2026-01-01T00:00:00Z', stars: 0, forks: 0, openIssuesAndPrs: 0 };
+    await t.index.save('o', [old], { lastFullSync: 'x', lastIncrementalSync: 'x', total: 1 });
+    await t.h({ type: 'newrepo:pending', entry: t.entry() });
+    await t.h({ type: 'newrepo:landed', org: 'o', repo: 'konnen-n8n' });
+    const snap = await t.index.load('o');
+    expect(snap!.repos.map((r) => r.name).sort()).toEqual(['konnen-n8n', 'old']);
+    expect(snap!.meta.total).toBe(2);
+    expect(t.f.calls.every((c) => c.method !== 'DELETE')).toBe(true);
   });
 
   it('commits nothing when the choice equals the automatic placement', async () => {

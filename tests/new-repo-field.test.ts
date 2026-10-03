@@ -21,10 +21,10 @@ const clean = (el: Element, drop: string) => {
   return c;
 };
 const dest = () => {
-  const box = clean($('#rg-nr-dest')!, '.rg-mini-av');
+  const box = clean($('#rg-nr-dest')!, '.rg-mini-av, .rg-nr-warn svg');
   box.querySelectorAll('[aria-hidden]').forEach((n) => (n.textContent = ' / '));
   const path = box.querySelector('.rg-dest-path')!.textContent!;
-  const hint = box.querySelector('.rg-hint')!.textContent!;
+  const hint = (box.querySelector('.rg-hint') ?? box.querySelector('.rg-nr-warn'))!.textContent!;
   return `${path} ${hint}`.replace(/\s+/g, ' ').trim();
 };
 const key = (el: Element, k: string) => el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
@@ -116,8 +116,13 @@ describe('live destination (F9)', () => {
     await vi.waitFor(() => expect(dest()).toContain('thekonnen / infra / dagu / dags-new'));
     expect(dest()).toContain('Lands here because it matches the rule dags-*. Pick another group to override.');
     type('brand new!');
-    await vi.waitFor(() => expect(dest()).toContain('thekonnen / brand-new No rule'));
+    await vi.waitFor(() => expect(dest()).toContain('thekonnen / brand-new Not in any group yet.'));
     expect(dest()).toContain('No rule matches this name yet, so it will show under Ungrouped.');
+    // evidenced as a warning, and only in this case
+    expect(document.querySelector('#rg-nr-dest .rg-nr-warn')!.textContent).toContain('No rule matches this name yet');
+    type('dags-new');
+    await vi.waitFor(() => expect(dest()).toContain('thekonnen / infra / dagu / dags-new'));
+    expect(document.querySelector('#rg-nr-dest .rg-nr-warn')).toBeNull();
   });
   it('shows Automatic with the group the rules would pick', async () => {
     await open();

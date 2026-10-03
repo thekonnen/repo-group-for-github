@@ -75,9 +75,18 @@ export function GroupField({ ctl }: { ctl: NrController }) {
             <span aria-hidden="true">/</span>
             <b>{name}</b>
           </div>
-          <span class="rg-hint">
-            <Sentence d={d} groups={s.groups} />
-          </span>
+          {d.kind === 'auto-miss' ? (
+            <div class="rg-nr-warn" id="rg-nr-ungrouped" role="status">
+              <Icon name="alert" size={16} />
+              <span>
+                <b>Not in any group yet.</b> <Sentence d={d} groups={s.groups} />
+              </span>
+            </div>
+          ) : (
+            <span class="rg-hint">
+              <Sentence d={d} groups={s.groups} />
+            </span>
+          )}
         </div>
       </div>
     </div>

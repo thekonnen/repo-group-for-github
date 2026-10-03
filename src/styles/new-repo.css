@@ -21,6 +21,9 @@
 .rg-root .rg-pop li .rg-tick { width: 16px; color: var(--rg-accent); display: inline-flex; }
 .rg-root .rg-pop .rg-sep { height: 1px; background: var(--rg-border); margin: 4px 0; padding: 0; pointer-events: none; }
 .rg-root .rg-nr-dest { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.rg-root .rg-nr-warn { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border: 1px solid var(--rg-warn-border); border-radius: 6px; background: var(--rg-warn-bg); color: var(--rg-fg); font-size: 13px; line-height: 1.45; }
+.rg-root .rg-nr-warn svg { flex: none; margin-top: 2px; fill: var(--rg-warn-fg); color: var(--rg-warn-fg); }
+.rg-root .rg-nr-warn b { color: var(--rg-warn-fg); font-weight: 600; }
 .rg-root .rg-dest-path { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--rg-muted); }
 .rg-root .rg-dest-path b { color: var(--rg-fg); font-weight: 600; overflow-wrap: anywhere; }
 @media (max-width: 480px) { .rg-root .rg-picker { min-width: 0; width: 100%; } .rg-root .rg-picker-wrap { align-self: stretch; } }

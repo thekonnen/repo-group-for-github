@@ -36,6 +36,10 @@
   --rg-shadow: var(--shadow-floating-large, 0 8px 24px rgba(140, 149, 159, 0.2));
   /* Marker for UI the extension adds (the "Repository Group" tag). Done/purple in Primer. */
   --rg-ext: var(--bgColor-done-emphasis, #8250df);
+  /* Warning callout (e.g. a new repository that no rule files). */
+  --rg-warn-bg: var(--bgColor-attention-muted, #fff8c5);
+  --rg-warn-border: var(--borderColor-attention-muted, #d4a72c66);
+  --rg-warn-fg: var(--fgColor-attention, #9a6700);
 
   /* Letter avatars (group initials). Primer "muted" scales per hue. */
   --rg-av1-bg: var(--bgColor-accent-muted, #ddf4ff);    --rg-av1-fg: var(--fgColor-accent, #0550ae);

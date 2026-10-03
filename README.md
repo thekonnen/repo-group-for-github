@@ -1,27 +1,35 @@
 # Repository Group for Github
 
-Browser extension (Chrome, Edge, Brave, Firefox) that organizes the repositories of a GitHub organization into groups and subgroups. The build spec is [CLAUDE.md](CLAUDE.md); the mockup in `design/` is the source of truth for look and behavior.
+Browser extension (Chrome, Edge, Brave, Firefox) that organizes an organization's repositories into nested groups, shared through `repo-groups.yml` in `<org>/.github`. No server. Spec: [CLAUDE.md](CLAUDE.md).
 
 ## Develop
 
 ```bash
 npm install
-npm run dev            # Chromium, with HMR
-npm run dev:firefox
-npm test               # Vitest, core/ logic
-npm run typecheck
-npm run build && npm run size   # budgets from CLAUDE.md §10
+npm run dev            # Chromium (npm run dev:firefox for Firefox)
+npm test
+npm run build && npm run size
 ```
+
+## Create the GitHub App
+
+Generate a registration link with the permissions preselected:
+
+```bash
+node scripts/app-link.mjs            # personal account
+node scripts/app-link.mjs <org>      # organization
+```
+
+Open it, then on the form:
+
+1. Check **Enable Device Flow**.
+2. Uncheck **Expire user authorization tokens**.
+3. Click **Create GitHub App**. Do not generate a client secret or private key.
+4. Set the Client ID and slug in `src/config.ts`.
+5. **Install App** on each account or org with **All repositories**.
+
+Permissions: Metadata (read), Contents (read & write), Issues (read), Pull requests (read), Administration (read & write), Organization Members (read). Details in [docs/github-app.md](docs/github-app.md).
 
 ## Status
 
-| Milestone | State |
-|---|---|
-| 1. Scaffold (WXT, TS, Preact, CI, size check) | done |
-| 2. Core (`src/core/`: glob, placement, YAML read/write/validate, diff, highlight, AI prompt, teams, index-sync, access levels, layers, My groups chunking) | done, tested |
-| 3. Auth and data (device flow, PAT, REST index, caches, access detection) | next |
-| 4+ UI features (grouped view, drawers, YAML editor, logos, new-repo field, teams, My groups, F15 modes) | todo |
-
-## Open items
-
-Create the GitHub App first: see [docs/github-app.md](docs/github-app.md) (pre-filled links for a personal account or an org). Then set the client id and slug in `src/config.ts`. Nothing that talks to GitHub works without them.
+Milestones 1–2 done (scaffold, tested `core/`). Next: auth and data.

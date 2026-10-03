@@ -2,7 +2,7 @@ import { render } from 'preact';
 import tokensCss from '../styles/tokens-page.css?inline';
 import groupedCss from '../styles/grouped.css?inline';
 import { call } from '../github/client';
-import { locateOrgRepos } from '../github/selectors';
+import { locateOrgRepos, locateTeamRepos } from '../github/selectors';
 import { waitFor } from '../github/navigation';
 import { createController, type Env } from './grouped-view/controller';
 import { GroupedView } from './grouped-view/GroupedView';
@@ -31,8 +31,8 @@ let warned = false;
  * Mounts the grouped view next to GitHub's list on /orgs/<org>/repositories. Idempotent per URL (the caller keys it).
  * If a mount point is not found it logs once and does nothing.
  */
-export async function mountOrgRepos(org: string, env?: Partial<Env>, doc: Document = document, timeoutMs = 8000): Promise<Mounted | null> {
-  const found = await waitFor(() => locateOrgRepos(doc), timeoutMs, doc);
+export async function mountOrgRepos(org: string, env?: Partial<Env>, doc: Document = document, timeoutMs = 8000, team?: string): Promise<Mounted | null> {
+  const found = await waitFor(() => (team ? locateTeamRepos(doc, org) : locateOrgRepos(doc)), timeoutMs, doc);
   if (!found) {
     if (!warned) console.debug('[RG] could not find the repositories list to take over; leaving the page as is');
     warned = true;
@@ -65,6 +65,7 @@ export async function mountOrgRepos(org: string, env?: Partial<Env>, doc: Docume
 
   const ctl = createController(org, {
     call,
+    team,
     location: window.location,
     history: window.history,
     open: (url) => void window.open(url, '_blank', 'noopener'),
@@ -84,7 +85,7 @@ export async function mountOrgRepos(org: string, env?: Partial<Env>, doc: Docume
   void ctl.init();
 
   return {
-    key: `org-repos:${org}`,
+    key: team ? `team-repos:${org}:${team}` : `org-repos:${org}`,
     root,
     dispose() {
       window.removeEventListener('hashchange', onHash);
@@ -101,3 +102,6 @@ export async function mountOrgRepos(org: string, env?: Partial<Env>, doc: Docume
     },
   };
 }
+
+/** F12: the same view on /orgs/<org>/teams/<slug>/repositories, limited to what the team can access. */
+export const mountTeamRepos = (org: string, team: string, env?: Partial<Env>, doc: Document = document, timeoutMs = 8000) => mountOrgRepos(org, env, doc, timeoutMs, team);

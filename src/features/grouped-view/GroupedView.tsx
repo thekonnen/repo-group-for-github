@@ -7,6 +7,9 @@ import type { RepoInfo } from '../../core/types';
 import { Avatar } from '../../ui/Avatar';
 import { Icon } from '../../ui/Icon';
 import { useStore } from '../store';
+import { chipTeams } from '../../core/teams';
+import { TeamBanners } from '../teams/TeamBanners';
+import { TeamChips } from '../teams/TeamChips';
 import type { Controller, State } from './controller';
 
 const ROW_H = 76;
@@ -64,7 +67,8 @@ function SignInEmpty({ ctl, s }: { ctl: Controller; s: State }) {
 function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel }) {
   const node = (s.path.length && model.byKey.get(s.path.join('/'))) || model.root;
   const isRoot = node === model.root;
-  const name = isRoot ? s.org : displayName(node.group);
+  const team = ctl.teams.team; // F12: team repositories page
+  const name = isRoot ? team ?? s.org : displayName(node.group);
   const ungrouped = model.root.repos;
   const cfg = s.config;
 
@@ -103,6 +107,7 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
       {cfg && cfg.exists && cfg.error && (
         <div class="rg-banner rg-banner-warn" role="alert"><span class="rg-grow"><b>repo-groups.yml has a problem:</b> {cfg.error}. Showing every repository as ungrouped.</span></div>
       )}
+      <TeamBanners ctl={ctl} />
       <Crumbs ctl={ctl} s={s} model={model} node={node} />
       <Header ctl={ctl} s={s} node={node} name={name} isRoot={isRoot} />
       <div class="rg-stats">
@@ -122,7 +127,7 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
           <Toolbar ctl={ctl} s={s} placeholder={`Search in ${name}`} />
           <div class="rg-box">
             <div class="rg-box-head"><span>{head}</span><span class="rg-muted">Sort: Last pushed</span></div>
-            {rows.length ? <Rows ctl={ctl} s={s} rows={rows} /> : <Empty tab={tab} query={s.query} isRoot={isRoot} />}
+            {rows.length ? <Rows ctl={ctl} s={s} rows={rows} /> : <Empty tab={tab} query={s.query} isRoot={isRoot} team={team} />}
           </div>
         </>
       )}
@@ -130,7 +135,8 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
   );
 }
 
-function Empty({ tab, query, isRoot }: { tab: string; query: string; isRoot: boolean }) {
+function Empty({ tab, query, isRoot, team }: { tab: string; query: string; isRoot: boolean; team?: string }) {
+  if (team && isRoot && !query.trim()) return <div class="rg-empty"><b>No repositories yet</b>{team} cannot access any repository. Use Sync access to give it the access set in repo-groups.yml.</div>;
   if (query.trim()) return <div class="rg-empty"><b>No repositories match</b>Try a shorter name or clear the search.</div>;
   if (tab === 'ungrouped') return <div class="rg-empty"><b>Every repository is in a group</b>New repositories land here until a rule matches them.</div>;
   return <div class="rg-empty"><b>{isRoot ? 'No repositories yet' : 'This group is empty'}</b>{isRoot ? 'Repositories you can access will show here.' : 'Add a match rule or create a subgroup.'}</div>;
@@ -161,7 +167,7 @@ function IndexStatus({ ctl, s, model }: { ctl: Controller; s: State; model: Tree
 }
 
 function Crumbs({ ctl, s, model, node }: { ctl: Controller; s: State; model: TreeModel; node: GroupNode }) {
-  const chain = [{ key: '', path: [] as string[], label: s.org, slug: s.org, root: true }, ...node.path.map((_, i) => { const k = node.path.slice(0, i + 1).join('/'); const g = model.byKey.get(k)?.group; return { key: k, path: node.path.slice(0, i + 1), label: g ? displayName(g) : node.path[i], slug: node.path[i], root: false }; })];
+  const chain = [{ key: '', path: [] as string[], label: ctl.teams.team ?? s.org, slug: ctl.teams.team ?? s.org, root: true }, ...node.path.map((_, i) => { const k = node.path.slice(0, i + 1).join('/'); const g = model.byKey.get(k)?.group; return { key: k, path: node.path.slice(0, i + 1), label: g ? displayName(g) : node.path[i], slug: node.path[i], root: false }; })];
   return (
     <nav class="rg-crumbs" aria-label="Group path">
       {chain.map((c, i) => (
@@ -179,18 +185,21 @@ function Crumbs({ ctl, s, model, node }: { ctl: Controller; s: State; model: Tre
 }
 
 function Header({ ctl, s, node, name, isRoot }: { ctl: Controller; s: State; node: GroupNode; name: string; isRoot: boolean }) {
-  const canEdit = !!s.access?.canWriteOrg; // members without write access get suggest mode later (F15)
+  const team = ctl.teams.team;
+  const canEdit = !!s.access?.canWriteOrg && !team; // members without write access get suggest mode later (F15); the team page is a read-only view
+  const cfg = s.config;
+  const chips = cfg && cfg.exists && cfg.config ? chipTeams(cfg.config.groups, node.path) : [];
   const q = node.path.length ? `?rg_group=${encodeURIComponent(node.key)}` : '';
   return (
     <div class="rg-g-head">
       <div class="rg-g-title">
         <Avatar name={isRoot ? name : node.group.name} label={name} cls="rg-big-av" root={isRoot} />
-        <div style="min-width:0"><h1>{name}</h1><p>{node.group.description}</p></div>
+        <div style="min-width:0"><h1>{name}</h1><p>{isRoot && team ? `Repositories this team can access, in ${s.org}’s groups` : node.group.description}</p>{!isRoot && <TeamChips org={s.org} teams={chips} active={team} onSync={(slug) => void ctl.teams.openSync({ teams: [slug], groupKey: node.key })} />}</div>
       </div>
       <div class="rg-g-actions">
         {canEdit && !isRoot && <button type="button" class="rg-btn" onClick={() => ctl.openDrawer('edit', node.path)}><Icon name="pencil" />Edit group</button>}
         {canEdit && <button type="button" class="rg-btn" onClick={() => ctl.openDrawer('new', node.path)}><Icon name="folder" />{isRoot ? 'New group' : 'New subgroup'}</button>}
-        <a class="rg-btn rg-btn-primary" href={`https://github.com/organizations/${s.org}/repositories/new${q}`}>New repository</a>
+        {!team && <a class="rg-btn rg-btn-primary" href={`https://github.com/organizations/${s.org}/repositories/new${q}`}>New repository</a>}
       </div>
     </div>
   );
@@ -273,13 +282,15 @@ function Rows({ ctl, s, rows }: { ctl: Controller; s: State; rows: Row[] }) {
   const slice = virtual ? rows.slice(range.start, range.end) : rows;
   return (
     <div class="rg-rows" ref={ref} style={virtual ? { paddingTop: range.start * ROW_H, paddingBottom: Math.max(0, rows.length - range.end) * ROW_H } : undefined}>
-      {slice.map((r) => (r.kind === 'group' ? <GroupRow key={`g:${r.node.key}`} ctl={ctl} row={r} fixed={virtual} /> : <RepoRow key={`r:${r.repo.name}`} org={s.org} row={r} fixed={virtual} />))}
+      {slice.map((r) => (r.kind === 'group' ? <GroupRow key={`g:${r.node.key}`} ctl={ctl} row={r} fixed={virtual} /> : <RepoRow key={`r:${r.repo.name}`} org={s.org} row={r} fixed={virtual} label={ctl.teams.repoLabel(r.repo.name)} />))}
     </div>
   );
 }
 
 function GroupRow({ ctl, row, fixed }: { ctl: Controller; row: Extract<Row, { kind: 'group' }>; fixed: boolean }) {
   const { node, open, depth } = row;
+  const cfg = ctl.store.get().config;
+  const chips = cfg && cfg.exists && cfg.config ? chipTeams(cfg.config.groups, node.path) : [];
   const n = node.total;
   const sub = node.subgroups;
   return (
@@ -292,6 +303,7 @@ function GroupRow({ ctl, row, fixed }: { ctl: Controller; row: Extract<Row, { ki
           <span class="rg-label">Group</span>
         </div>
         {node.group.description && <p class="rg-desc">{node.group.description}</p>}
+        {chips.length > 0 && <div class="rg-row-teams"><TeamChips org={ctl.store.get().org} teams={chips} active={ctl.teams.team} /></div>}
         <div class="rg-meta">
           <span><Icon name="repo" size={14} />{plural(n, 'repository', 'repositories')}</span>
           {sub > 0 && <span><Icon name="folder" size={14} />{plural(sub, 'subgroup', 'subgroups')}</span>}
@@ -303,7 +315,8 @@ function GroupRow({ ctl, row, fixed }: { ctl: Controller; row: Extract<Row, { ki
   );
 }
 
-function RepoRow({ org, row, fixed }: { org: string; row: Extract<Row, { kind: 'repo' }>; fixed: boolean }) {
+/** `label` is the team's permission on the team page; otherwise the label shows Public or Private. */
+function RepoRow({ org, row, fixed, label }: { org: string; row: Extract<Row, { kind: 'repo' }>; fixed: boolean; label?: string }) {
   const r: RepoInfo = row.repo;
   return (
     <div class={`rg-row${fixed ? ' rg-fixed' : ''}`} style={{ '--rg-depth': row.depth } as any}>
@@ -312,7 +325,7 @@ function RepoRow({ org, row, fixed }: { org: string; row: Extract<Row, { kind: '
       <div class="rg-row-main">
         <div class="rg-row-title">
           <a href={repoUrl(org, r.name)}>{row.prefix && <span class="rg-path-pre">{row.prefix}</span>}{r.name}</a>
-          <span class="rg-label">{r.private ? 'Private' : 'Public'}</span>
+          <span class="rg-label">{label ?? (r.private ? 'Private' : 'Public')}</span>
           {r.fork && <span class="rg-label">Fork</span>}
         </div>
         {r.description && <p class="rg-desc">{r.description}</p>}

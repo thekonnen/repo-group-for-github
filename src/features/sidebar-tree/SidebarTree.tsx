@@ -2,6 +2,7 @@ import { sideItems } from '../../core/tree';
 import { Icon } from '../../ui/Icon';
 import type { Controller } from '../grouped-view/controller';
 import { useStore } from '../store';
+import { SidebarTeams } from '../teams/SidebarTeams';
 
 /** Groups tree below GitHub's own filter list (F2). */
 export function SidebarTree({ ctl }: { ctl: Controller }) {
@@ -33,6 +34,7 @@ export function SidebarTree({ ctl }: { ctl: Controller }) {
           </li>
         ))}
       </ul>
+      <SidebarTeams ctl={ctl} />
     </div>
   );
 }

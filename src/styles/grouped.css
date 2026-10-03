@@ -161,3 +161,52 @@
 @media (prefers-reduced-motion: no-preference) { .rg-root .rg-drawer { animation: rg-slide .14s ease-out; } }
 @keyframes rg-slide { from { transform: translateX(24px); opacity: .6; } to { transform: none; opacity: 1; } }
 .rg-root .rg-form { display: flex; flex-direction: column; gap: 18px; }
+
+/* Teams (F12): chips, picker, permission select, Sync access drawer, team page banners */
+.rg-root .rg-tchips { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; vertical-align: middle; }
+.rg-root .rg-tchip { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border: 1px solid var(--rg-border); border-radius: 999px; background: var(--rg-bg-subtle); color: var(--rg-fg); font: inherit; font-size: 12px; font-weight: 500; line-height: 1; cursor: pointer; text-decoration: none; }
+.rg-root a.rg-tchip { color: var(--rg-fg); }
+.rg-root .rg-tchip svg { color: var(--rg-muted); }
+.rg-root .rg-tchip:hover { background: var(--rg-selected); text-decoration: none; }
+.rg-root .rg-tchip.rg-inh { color: var(--rg-muted); border-style: dashed; background: transparent; }
+.rg-root a.rg-tchip.rg-inh { color: var(--rg-muted); }
+.rg-root .rg-tchip.rg-on { border-color: var(--rg-accent); background: var(--rg-accent-subtle); color: var(--rg-accent); }
+.rg-root a.rg-tchip.rg-on, .rg-root .rg-tchip.rg-on svg { color: var(--rg-accent); }
+.rg-root .rg-tchip.rg-more { color: var(--rg-muted); }
+.rg-root span.rg-tchip { cursor: default; }
+.rg-root .rg-tmenu { position: relative; display: inline-flex; }
+.rg-root .rg-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 5; min-width: 200px; padding: 4px; display: flex; flex-direction: column; border: 1px solid var(--rg-border); border-radius: 6px; background: var(--rg-bg); box-shadow: var(--rg-shadow); }
+.rg-root .rg-menu a, .rg-root .rg-menu button { display: block; padding: 6px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--rg-fg); text-align: left; cursor: pointer; font-size: 13px; }
+.rg-root .rg-menu a:hover, .rg-root .rg-menu button:hover { background: var(--rg-selected); text-decoration: none; }
+.rg-root .rg-select { height: 28px; padding: 0 8px; border: 1px solid var(--rg-border); border-radius: 6px; background: var(--rg-btn); color: var(--rg-fg); font: inherit; font-size: 13px; }
+.rg-root .rg-tlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.rg-root .rg-trow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
+.rg-root .rg-trow-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.rg-root .rg-icon-btn { width: 28px; height: 28px; padding: 0; justify-content: center; }
+.rg-root .rg-field .rg-hint.rg-warn { color: var(--rg-danger-fg); }
+.rg-root .rg-picker { position: relative; display: inline-block; }
+.rg-root .rg-pop { position: absolute; top: calc(100% + 4px); left: 0; z-index: 6; width: min(300px, 80vw); padding: 8px; display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--rg-border); border-radius: 6px; background: var(--rg-bg); box-shadow: var(--rg-shadow); }
+.rg-root .rg-listbox { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow-y: auto; }
+.rg-root .rg-listbox li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+.rg-root .rg-listbox li.rg-active { background: var(--rg-selected); }
+.rg-root .rg-listbox li.rg-empty-opt { color: var(--rg-muted); cursor: default; }
+.rg-root .rg-listbox .rg-grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.rg-root .rg-sync-head { margin: 0; font-size: 16px; font-weight: 600; }
+.rg-root .rg-sync { border: 1px solid var(--rg-border); border-radius: 6px; overflow: hidden; }
+.rg-root .rg-sync-row { display: grid; grid-template-columns: 28px minmax(0, 1.4fr) minmax(0, 1fr) 64px 72px; align-items: center; gap: 4px 8px; padding: 8px 10px; border-top: 1px solid var(--rg-border-muted); font-size: 13px; }
+.rg-root .rg-sync-row:first-child { border-top: 0; }
+.rg-root .rg-sync-th { background: var(--rg-bg-subtle); font-weight: 600; font-size: 12px; }
+.rg-root .rg-sync-row.rg-off { opacity: .75; }
+.rg-root .rg-sync-repo { overflow-wrap: anywhere; }
+.rg-root .rg-sync-note { grid-column: 2 / -1; font-size: 12px; }
+.rg-root .rg-ok { color: var(--rg-success-fg); }
+.rg-root .rg-mono { font-family: var(--rg-mono); font-size: 12px; overflow-wrap: anywhere; }
+.rg-root .rg-progress { height: 6px; border-radius: 3px; background: var(--rg-selected); overflow: hidden; }
+.rg-root .rg-progress > i { display: block; height: 100%; background: var(--rg-accent); transition: width .12s ease; }
+.rg-root .rg-untagged { margin: 8px 0 0; padding-left: 18px; font-size: 13px; }
+@media (max-width: 520px) { .rg-root .rg-sync-row { grid-template-columns: 24px minmax(0, 1fr) minmax(0, .8fr) 52px 60px; font-size: 12px; } }
+@media (prefers-reduced-motion: reduce) { .rg-root .rg-progress > i { transition: none; } }
+.rg-root .rg-nav-link { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border-radius: 6px; color: var(--rg-fg); text-align: left; }
+.rg-root .rg-nav-link:hover { background: var(--rg-selected); text-decoration: none; }
+.rg-root .rg-nav-link svg { color: var(--rg-muted); }
+.rg-root .rg-row-teams { display: flex; flex-wrap: wrap; }

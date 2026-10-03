@@ -1,10 +1,21 @@
 import { findGroup } from './placement';
-import type { Group } from './types';
+import type { Group, TeamTag } from './types';
 
 /** The single change behind Edit group / New group. Re-applied to a fresh file when a commit conflicts (§7). */
 export type Edit =
-  | { kind: 'edit'; path: string[]; name: string; title?: string; description: string; match: string[] }
-  | { kind: 'new'; parent: string[]; name: string; title?: string; description: string; match: string[] };
+  /** `teams` (F12): when given it replaces the group's own team tags; when absent they are kept. */
+  | { kind: 'edit'; path: string[]; name: string; title?: string; description: string; match: string[]; teams?: TeamTag[] }
+  | { kind: 'new'; parent: string[]; name: string; title?: string; description: string; match: string[]; teams?: TeamTag[] };
+
+/** Trimmed tags, empty slugs dropped, one tag per slug (the last one wins). */
+export function cleanTeams(teams: TeamTag[]): TeamTag[] {
+  const map = new Map<string, TeamTag>();
+  for (const t of teams) {
+    const slug = t.slug.trim();
+    if (slug) map.set(slug, { slug, permission: t.permission.trim() || 'push' });
+  }
+  return [...map.values()];
+}
 
 /** Letters that do not decompose into base + accent. */
 const FOLD: Record<string, string> = { ß: 'ss', æ: 'ae', œ: 'oe', ø: 'o', đ: 'd', ð: 'd', ł: 'l', þ: 'th', ı: 'i' };
@@ -67,7 +78,7 @@ export function applyEdit(groups: Group[], edit: Edit): { groups: Group[] } | { 
     if (!list) return { error: `The group "${edit.parent.join('/')}" no longer exists. Reload the page and try again.` };
     if (!name) return { error: 'Name is required.' };
     if (list.some((g) => g.name === name)) return { error: `A group named "${name}" already exists here.` };
-    list.push({ name, ...(cleanTitle(edit.title, name) ? { title: cleanTitle(edit.title, name) } : {}), description: edit.description.trim(), logo: null, teams: [], match, groups: [] });
+    list.push({ name, ...(cleanTitle(edit.title, name) ? { title: cleanTitle(edit.title, name) } : {}), description: edit.description.trim(), logo: null, teams: edit.teams ? cleanTeams(edit.teams) : [], match, groups: [] });
     return { groups: next };
   }
   const g = findGroup(next, edit.path);
@@ -84,6 +95,7 @@ export function applyEdit(groups: Group[], edit: Edit): { groups: Group[] } | { 
   }
   g.description = edit.description.trim();
   g.match = match;
+  if (edit.teams) g.teams = cleanTeams(edit.teams);
   return { groups: next };
 }
 

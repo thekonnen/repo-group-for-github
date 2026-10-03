@@ -7,12 +7,15 @@ import type { KV } from './kv';
 import { checkYaml, commitEdit, commitYaml, createDotGithub, EditError } from './commit';
 import { probeAccess, readOrgFile, type OrgFile } from './org-data';
 import { refreshIndex, type IndexStore } from './repo-index';
+import { cachedTeamSlugs, grantTeam, loadTeamAccess, loadTeams } from './teams-data';
+import { teamSlugs } from '../core/teams';
 
 export interface Deps {
   fetch: FetchLike;
   kv: KV; // storage.local, background only
   index: IndexStore;
   clientId?: string;
+  now?: () => number;
 }
 
 export function toErrorInfo(e: unknown): ErrorInfo {
@@ -85,13 +88,25 @@ export function createHandler(deps: Deps) {
         const file = req.cachedOnly ? await deps.kv.get<OrgFile>(`rg:file:${req.org}`) : await readOrgFile(client, deps.kv, req.org);
         if (!file) return null; // nothing cached yet
         if (!file.exists) return { exists: false } satisfies ConfigResult;
-        const r = readConfig(file.text, await loadYamlParser(), { org: req.org });
+        const load = await loadYamlParser();
+        let r = readConfig(file.text, load, { org: req.org });
+        // Unknown team slugs are only a warning. The team list is fetched when the file tags teams (cached, 5 min).
+        if (r.config && teamSlugs(r.config.groups).length) {
+          const t = await loadTeams(client, deps.kv, req.org, { now: deps.now }).catch(() => null);
+          if (t) r = readConfig(file.text, load, { org: req.org, knownTeams: t.teams.map((x) => x.slug) });
+        }
         return { exists: true, sha: file.sha, config: r.config, error: r.error, line: r.line, warnings: r.warnings } satisfies ConfigResult;
       }
       case 'org:edit':
         return commitEdit(client, deps.kv, req.org, req.edit);
+      case 'org:teams':
+        return loadTeams(client, deps.kv, req.org, { force: req.force, now: deps.now });
+      case 'team:access':
+        return loadTeamAccess(client, deps.kv, req.org, req.slugs, { force: req.force, now: deps.now });
+      case 'team:grant':
+        return grantTeam(client, deps.kv, req.org, req.team, req.repo, req.permission);
       case 'yaml:validate':
-        return checkYaml(req.org, req.text);
+        return checkYaml(req.org, req.text, await cachedTeamSlugs(deps.kv, req.org));
       case 'org:apply-yaml':
         return commitYaml(client, deps.kv, req.org, req.text, req.baseSha, req.changes);
       case 'org:create-dotgithub':

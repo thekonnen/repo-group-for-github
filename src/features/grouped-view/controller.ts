@@ -9,6 +9,7 @@ import { hasGithubFilter } from '../../github/route';
 import { CallError, type Call } from '../../github/client';
 import type { ConfigResult, ErrorInfo, OrgPrefs, OrgSnapshot, Progress } from '../../github/messages';
 import { createStore, type Store } from '../store';
+import { createTeamsController } from '../teams/teams-controller';
 
 export interface SignIn {
   deviceCode: string;
@@ -47,6 +48,8 @@ export interface Env {
   history: Pick<History, 'pushState'>;
   open: (url: string) => void;
   sleep?: (ms: number) => Promise<void>;
+  /** Team repositories page (F12): the slug of the team whose page is open. */
+  team?: string;
 }
 
 export type Controller = ReturnType<typeof createController>;
@@ -54,6 +57,8 @@ export type Controller = ReturnType<typeof createController>;
 const infoOf = (e: unknown): ErrorInfo => (e instanceof CallError ? e.info : { kind: 'other', message: e instanceof Error ? e.message : String(e) });
 
 export function createController(org: string, env: Env) {
+  // The team page keeps its own view preferences, apart from the org page.
+  const prefsOrg = env.team ? `${org}/teams/${env.team}` : org;
   const sleep = env.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const store: Store<State> = createStore<State>({
     org,
@@ -75,12 +80,13 @@ export function createController(org: string, env: Env) {
     drawer: null,
     toast: null,
   });
+  const teams = createTeamsController({ org, team: env.team, call: env.call, store });
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
   let prefsTimer: ReturnType<typeof setTimeout> | undefined;
 
   const savePrefs = (prefs: Partial<OrgPrefs>) => {
-    env.call({ type: 'prefs:set', org, prefs }).catch(() => {});
+    env.call({ type: 'prefs:set', org: prefsOrg, prefs }).catch(() => {});
   };
 
   /** Tree for the current data; placement is memoized per (config sha, index version). */
@@ -88,7 +94,10 @@ export function createController(org: string, env: Env) {
     const s = store.get();
     if (!s.config) return null;
     const groups = s.config.exists && s.config.config ? s.config.config.groups : [];
-    return memoTree(s.config.exists ? s.config.sha : null, `${s.org}:${s.indexVersion}`, groups, s.repos);
+    const sha = s.config.exists ? s.config.sha : null;
+    const team = teams.teamModel(sha, `${s.org}:${s.indexVersion}`, groups, s.repos);
+    if (team !== undefined) return team;
+    return memoTree(sha, `${s.org}:${s.indexVersion}`, groups, s.repos);
   }
 
   function applyDefaults() {
@@ -137,7 +146,7 @@ export function createController(org: string, env: Env) {
   }
 
   async function init() {
-    const prefs = await env.call<Partial<OrgPrefs>>({ type: 'prefs:get', org }).catch(() => ({}) as Partial<OrgPrefs>);
+    const prefs = await env.call<Partial<OrgPrefs>>({ type: 'prefs:get', org: prefsOrg }).catch(() => ({}) as Partial<OrgPrefs>);
     if (prefs.expanded) store.set({ expanded: new Set(prefs.expanded), expandedTouched: true });
     if (!hasGithubFilter(env.location.search) && prefs.view) store.set({ view: prefs.view });
     const auth = await env.call<{ signedIn: boolean }>({ type: 'auth:status' }).catch(() => ({ signedIn: false }));
@@ -230,6 +239,7 @@ export function createController(org: string, env: Env) {
 
   return {
     store,
+    teams,
     model,
     init,
     refresh,
@@ -237,6 +247,7 @@ export function createController(org: string, env: Env) {
     openVerification: (s: SignIn) => env.open(`${s.verificationUri}?user_code=${encodeURIComponent(s.userCode)}`),
     dispose() {
       disposed = true;
+      teams.dispose();
       clearTimeout(prefsTimer);
       clearTimeout(toastTimer);
     },

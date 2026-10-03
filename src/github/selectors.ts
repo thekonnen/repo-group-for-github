@@ -90,3 +90,34 @@ export function locateOrgRepos(doc: Document): OrgReposMount | null {
   if (!column || column === search || isRoot(column) || (filterList && column.contains(filterList))) return null;
   return { column, extras: findExtras(doc, column, filterList), filterList };
 }
+
+/**
+ * F12: GitHub's team repositories page, /orgs/<org>/teams/<slug>/repositories. NOT written from a screenshot (the spec has
+ * none): the locators lean on structure and hrefs, and the fixture in tests/fixtures/team-repos.html was written by hand.
+ * We keep GitHub's team header and tabs and take over only the list column.
+ */
+const TEAM_TABS = 'a[href*="/teams/"][href$="/members"], a[href*="/teams/"][href$="/discussions"], a[href*="/teams/"][href$="/teams"], a[href*="/teams/"][href$="/projects"]';
+const TEAM_SEARCH = 'input[placeholder*="repositor" i], input[aria-label*="repositor" i], input[placeholder*="Find" i], input[type="search"]';
+
+export function locateTeamRepos(doc: Document, org: string): OrgReposMount | null {
+  const root = doc.querySelector('main') ?? doc.body;
+  const isRoot = (el: Element) => el === root || el === doc.body || el === doc.documentElement;
+  const tabLink = root.querySelector(TEAM_TABS);
+  const tabs = tabLink?.closest('nav, ul, [role="tablist"], [role="navigation"]') ?? tabLink?.parentElement ?? null;
+  const heading = root.querySelector('h1');
+  const isRepoLink = (a: Element) => {
+    const href = a.getAttribute('href') ?? '';
+    const path = href.replace(/^https:\/\/github\.com/, '').split(/[?#]/)[0].replace(/\/$/, '');
+    const m = path.match(/^\/([^/]+)\/([^/]+)$/);
+    return !!m && m[1].toLowerCase() === org.toLowerCase() && !tabs?.contains(a);
+  };
+  const search = Array.from(root.querySelectorAll(TEAM_SEARCH)).find((i) => !tabs?.contains(i)) ?? null;
+  const link = Array.from(root.querySelectorAll('a[href]')).find(isRepoLink) ?? null;
+  const anchor = (search && link && commonAncestor(search, link)) || search || link;
+  if (!anchor || isRoot(anchor)) return null;
+  // Climb to the widest element that still holds neither the team header nor the tabs.
+  let column: Element = anchor;
+  while (column.parentElement && !isRoot(column.parentElement) && !(tabs && column.parentElement.contains(tabs)) && !(heading && column.parentElement.contains(heading))) column = column.parentElement;
+  if (column === search || column === link || /^(A|INPUT|BUTTON)$/.test(column.tagName)) return null; // cannot isolate the list
+  return { column, extras: [], filterList: null };
+}

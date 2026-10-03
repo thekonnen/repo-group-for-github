@@ -1,5 +1,5 @@
 import { defineContentScript } from 'wxt/utils/define-content-script';
-import { mountOrgRepos, type Mounted } from '../features/mount';
+import { mountOrgRepos, mountTeamRepos, type Mounted } from '../features/mount';
 import { watchUrl } from '../github/navigation';
 import { routeOf } from '../github/route';
 
@@ -11,14 +11,14 @@ export default defineContentScript({
 
     const sync = async () => {
       const route = routeOf(window.location);
-      const key = route ? `${route.kind}:${route.org}` : null;
+      const key = route ? `${route.kind}:${route.org}${route.kind === 'team-repos' ? ':' + route.team : ''}` : null;
       // Turbo may have replaced the page: remount when our root is gone.
       if (current && key === current.key && current.root.isConnected) return;
       current?.dispose();
       current = null;
       if (!route) return;
       const mine = ++token;
-      const mounted = await mountOrgRepos(route.org);
+      const mounted = route.kind === 'team-repos' ? await mountTeamRepos(route.org, route.team) : await mountOrgRepos(route.org);
       if (mine !== token) return mounted?.dispose(); // navigated away while waiting for GitHub's DOM
       current = mounted;
     };

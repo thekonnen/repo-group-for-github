@@ -65,7 +65,7 @@ function world(w: Partial<World> = {}) {
   return { s, f: fakeFetch(...routes) };
 }
 
-const editLogo = (extra: object = {}) => ({ kind: 'edit' as const, path: ['infra', 'dagu'], name: 'dagu', description: 'Jobs', match: ['dagu'], logo: { png: PNG }, ...extra });
+const editLogo = (extra: object = {}) => ({ kind: 'edit' as const, path: ['infra', 'dagsrv'], name: 'dagsrv', description: 'Jobs', match: ['dagsrv'], logo: { png: PNG }, ...extra });
 
 describe('commitEditWithLogo (F7, §7)', () => {
   it('commits the PNG and the YAML in ONE commit through the Git Data API', async () => {
@@ -87,17 +87,17 @@ describe('commitEditWithLogo (F7, §7)', () => {
       'PATCH /git/refs/heads/main',
     ]);
     expect(s.commits).toHaveLength(1);
-    expect(s.commits[0]).toMatchObject({ message: 'chore(repo-groups): add logo for infra/dagu', tree: 'tree-new', parents: ['c1'] });
+    expect(s.commits[0]).toMatchObject({ message: 'chore(repo-groups): add logo for infra/dagsrv', tree: 'tree-new', parents: ['c1'] });
     expect(s.blobs.get('blob-1')).toEqual({ content: PNG, encoding: 'base64' });
     const yml = decodeBase64Utf8(s.blobs.get('blob-2')!.content);
     expect(yml.startsWith('# o/.github/repo-groups.yml\nversion: 1\n')).toBe(true);
-    expect(findGroup(parsed(yml).groups, ['infra', 'dagu'])).toMatchObject({ logo: 'logos/infra-dagu.png', description: 'Jobs', match: ['dagu'] });
-    expect(findGroup(parsed(yml).groups, ['infra'])!.teams).toEqual([{ slug: 'konnen_team', permission: 'push' }]);
+    expect(findGroup(parsed(yml).groups, ['infra', 'dagsrv'])).toMatchObject({ logo: 'logos/infra-dagsrv.png', description: 'Jobs', match: ['dagsrv'] });
+    expect(findGroup(parsed(yml).groups, ['infra'])!.teams).toEqual([{ slug: 'core_team', permission: 'push' }]);
     expect(s.trees[0]).toEqual({
       base_tree: 'tree-of-c1',
       tree: [
         { path: 'repo-groups.yml', mode: '100644', type: 'blob', sha: 'blob-2' },
-        { path: 'logos/infra-dagu.png', mode: '100644', type: 'blob', sha: 'blob-1' },
+        { path: 'logos/infra-dagsrv.png', mode: '100644', type: 'blob', sha: 'blob-1' },
       ],
     });
     expect(s.head).toBe('commit-1');
@@ -131,7 +131,7 @@ describe('commitEditWithLogo (F7, §7)', () => {
     expect(f.calls.filter((c) => c.method === 'POST' && c.url.endsWith('/git/blobs'))).toHaveLength(3); // the PNG blob is reused
     const yml = decodeBase64Utf8(s.blobs.get('blob-3')!.content);
     expect(parsed(yml).groups.map((g) => g.name)).toContain('theirs');
-    expect(findGroup(parsed(yml).groups, ['infra', 'dagu'])!.logo).toBe('logos/infra-dagu.png');
+    expect(findGroup(parsed(yml).groups, ['infra', 'dagsrv'])!.logo).toBe('logos/infra-dagsrv.png');
   });
 
   it('gives up after a second conflict with a plain message', async () => {
@@ -174,7 +174,7 @@ describe('commitEditWithLogo (F7, §7)', () => {
     await h2({ type: 'org:edit', org: 'o', edit: { ...editLogo(), logo: { remove: true } } });
     expect(g.calls.some((c) => c.url.includes('/git/'))).toBe(false);
     const put = JSON.parse(g.calls.find((c) => c.method === 'PUT')!.body!);
-    expect(findGroup(parsed(decodeBase64Utf8(put.content)).groups, ['infra', 'dagu'])!.logo).toBeNull();
+    expect(findGroup(parsed(decodeBase64Utf8(put.content)).groups, ['infra', 'dagsrv'])!.logo).toBeNull();
   });
 });
 

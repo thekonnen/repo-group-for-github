@@ -1,6 +1,6 @@
 import { APP_SLUG, GITHUB_CLIENT_ID } from '../config';
 import { loadYamlParser, readConfig } from '../core/yaml-read';
-import type { ConfigResult, ErrorInfo, OrgPrefs, OrgSnapshot, Progress, Request, Response, TeamsResult } from '../github/messages';
+import type { ConfigResult, ErrorInfo, GroupSuggestion, OrgPrefs, SuggestMethod, OrgSnapshot, Progress, Request, Response, TeamsResult } from '../github/messages';
 import { createClient, explainTokenRejection, GitHubError, type FetchLike } from './api';
 import { describeToken, loadAuth, pollDeviceFlow, publicAuth, saveAuth, signOut, startDeviceFlow } from './auth';
 import type { KV } from './kv';
@@ -17,6 +17,9 @@ import { refreshActionIndex } from './action-index';
 import { loadDetails } from './details';
 import { cachedTeamSlugs, grantTeam, loadTeamAccess, loadTeams } from './teams-data';
 import { teamSlugs } from '../core/teams';
+import { postOrder } from '../core/placement';
+import { suggest } from '../core/suggest';
+import { askLlm, classifyPrompt, clearLlmConfig, llmOrigin, llmStatus, LlmError, loadLlmConfig, parseChoice, parseNewGroup, saveLlmConfig, setLlmAuto } from './llm';
 
 export interface Deps {
   fetch: FetchLike;
@@ -76,6 +79,43 @@ export function createHandler(deps: Deps) {
   const tokenKind = async () => (await loadAuth(deps.kv))?.kind ?? 'oauth';
   /** The signed-in user's own account (github.com/<login>), as opposed to an organization. */
   const isSelf = async (owner: string) => (await loadAuth(deps.kv))?.login?.toLowerCase() === owner.toLowerCase();
+
+  /** The provider's origin is an optional host permission the Options page asks for on save (needs a click). */
+  async function requireLlmOrigin(): Promise<void> {
+    const c = await loadLlmConfig(deps.kv);
+    const origin = c && llmOrigin(c);
+    if (c && origin && deps.origins && !(await deps.origins.has(origin))) {
+      throw new LlmError(`The browser has not allowed requests to ${origin.replace('/*', '')}. Save the key again and accept the prompt.`);
+    }
+  }
+
+  /**
+   * Without `method`: rules, then the local score, then the AI (only when the score is unsure and a key is set).
+   * `keywords` runs the local score alone; `llm` asks the AI right away, whatever the score says.
+   */
+  async function suggestGroup(org: string, repo: { name: string; description?: string | null }, method?: SuggestMethod): Promise<GroupSuggestion> {
+    const file = await readOrgFile(client, deps.kv, org);
+    const cfg = file.exists ? readConfig(file.text, await loadYamlParser(), { org }).config : undefined;
+    if (!cfg) throw new Error(`${org} has no valid repo-groups.yml to classify against.`);
+    const s = suggest(cfg.groups, repo);
+    const out: GroupSuggestion = { source: s.source, key: s.key, rule: s.rule, score: s.score, margin: s.margin, ranking: s.ranking.slice(0, 3) };
+    if (method === 'keywords') return out;
+    if (method !== 'llm' && (s.source !== 'uncertain' || !(await loadLlmConfig(deps.kv))?.apiKey)) return out;
+    try {
+      await requireLlmOrigin();
+      const choices = postOrder(cfg.groups).map((n) => ({ key: n.key, title: n.group.title, description: n.group.description }));
+      const { text, model } = await askLlm({ fetch: deps.fetch, kv: deps.kv, now: deps.now }, classifyPrompt(choices, repo));
+      const key = parseChoice(text, choices.map((c) => c.key));
+      if (key) return { ...out, source: 'llm', key, model };
+      const newGroup = parseNewGroup(text);
+      if (newGroup) return { ...out, source: 'uncertain', key: null, model, newGroup };
+      // Show what the model said, so "it chose none" can be told apart from an answer that could not be read.
+      const said = text.replace(/\s+/g, ' ').slice(0, 80);
+      return { ...out, source: 'uncertain', key: null, model, llmError: `The AI found no fitting group (it answered: "${said}").` };
+    } catch (e) {
+      return { ...out, source: 'uncertain', key: null, llmError: e instanceof Error ? e.message : String(e) }; // an explicit AI request that fails must not look answered
+    }
+  }
 
   async function handle(req: Request): Promise<unknown> {
     switch (req.type) {
@@ -213,6 +253,24 @@ export function createHandler(deps: Deps) {
         return loadSettings(deps.kv);
       case 'settings:set':
         return saveSettings(deps.kv, req.settings);
+      case 'llm:status':
+        return llmStatus(deps.kv);
+      case 'llm:save': {
+        const status = await saveLlmConfig(deps.kv, req.config);
+        await requireLlmOrigin();
+        return status;
+      }
+      case 'llm:auto':
+        return setLlmAuto(deps.kv, req.auto);
+      case 'llm:clear':
+        return clearLlmConfig(deps.kv);
+      case 'llm:test': {
+        await requireLlmOrigin();
+        const { model } = await askLlm({ fetch: deps.fetch, kv: deps.kv, now: deps.now }, 'Reply with the single word OK.');
+        return { model };
+      }
+      case 'suggest:group':
+        return suggestGroup(req.org, req.repo, req.method);
       case 'org:file':
         return readOrgFile(client, deps.kv, req.org);
       case 'org:access':

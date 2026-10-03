@@ -109,7 +109,7 @@ Route: `https://github.com/orgs/<org>/repositories` (also when GitHub adds query
   - The `/` key focuses the search (only when the user is not typing in a field).
 - Expanded/collapsed state per org is remembered in `storage.local`. `infra`-style first-level groups start collapsed except the first one.
 - Repos are sorted by last push (newest first), matching GitHub's default "Last pushed".
-- **Done when:** with the example YAML, the root shows `infra` and `ai`, with `keep_supabase_alive` ungrouped. Hash `#infra/dagu` opens the dagu page with `dagu`, `dags-repo`, `konnen-dagu`. Browser back/forward moves between groups.
+- **Done when:** with the example YAML, the root shows `infra` and `ai`, with `keep_alive_job` ungrouped. Hash `#infra/dagsrv` opens the dagsrv page with `dagsrv`, `dags-repo`, `kite-dagsrv`. Browser back/forward moves between groups.
 
 ### F2 — Groups tree in the left sidebar
 - Below GitHub's own filter list (All, Contributed by me, …), add a divider, then a **Groups** heading with the purple "Repository Group" tag.
@@ -143,7 +143,7 @@ Route: `https://github.com/orgs/<org>/repositories` (also when GitHub adds query
   - **Logo** (F7);
   - **Name**: slug, lowercased; non-slug characters become `-`. A hint shows the full path;
   - **Description**;
-  - **Teams** (org layer only, F12): chips for this group's own teams, each with a permission select (Read, Triage, Write, Maintain, Admin) and ×, plus **Add team** (a picker of the org's teams). Inherited teams show read-only and muted, e.g. "konnen_team · Write · from infra";
+  - **Teams** (org layer only, F12): chips for this group's own teams, each with a permission select (Read, Triage, Write, Maintain, Admin) and ×, plus **Add team** (a picker of the org's teams). Inherited teams show read-only and muted, e.g. "core_team · Write · from infra";
   - **Match rules**: chips with ×, plus an input that adds on Enter;
   - **Matching repositories (n)**: a live list. It marks repos that currently sit in another group with "now in x/y";
   - a link **Edit .github/repo-groups.yml** that opens F8 with this draft included.
@@ -176,7 +176,7 @@ Route: `https://github.com/orgs/<org>/repositories` (also when GitHub adds query
   - **Cancel**.
 - **Use the letter instead** removes the logo.
 - **Storage:**
-  - on save, commit the PNG to `<org>/.github` at `logos/<group-path-with-dashes>.png` (e.g. `logos/infra-dagu.png`);
+  - on save, commit the PNG to `<org>/.github` at `logos/<group-path-with-dashes>.png` (e.g. `logos/infra-dagsrv.png`);
   - set `logo:` in the YAML in the **same commit** (§7).
 - **Display:**
   - the `.github` repo may be private, so `<img src="https://raw.githubusercontent…">` will not work;
@@ -248,7 +248,7 @@ Route: `https://github.com/organizations/<org>/repositories/new` (also `https://
   - When the browser lands on `https://github.com/<org>/<repo>` (the repo exists), the background worker:
     1. adds the exact name to the chosen group's `match` and commits. This only happens if the choice differs from the automatic placement;
     2. grants each selected team its permission (`PUT /orgs/{org}/teams/{slug}/repos/{org}/{repo}`).
-  - Then show a small toast on the repo page: "Filed in infra / dagu · konnen_team can write · repo-groups.yml updated". If a team grant fails, the toast says which team and why ("You need admin access to this repository — ask an org owner"), with a link to the repo's **Settings → Collaborators and teams** page.
+  - Then show a small toast on the repo page: "Filed in infra / dagsrv · core_team can write · repo-groups.yml updated". If a team grant fails, the toast says which team and why ("You need admin access to this repository — ask an org owner"), with a link to the repo's **Settings → Collaborators and teams** page.
   - If creation fails (the user stays on `/new`), discard the pending entry.
 - **Never break the page:** if the Description field cannot be found, do not inject.
 
@@ -299,7 +299,7 @@ Route: `https://github.com/organizations/<org>/repositories/new` (also `https://
   - A list/grouped toggle exactly like F4.
 - **Sync access drawer** — opened from the banner, from a team chip menu, or from **Edit group → Teams → Sync access**:
   - **One row per (repository, team)** where the current access is lower than the target. Columns: repo, team, current (`none`, `Read`, …), target. Each row has a checkbox, checked by default.
-  - The header reads "Give konnen_team access to 5 repositories".
+  - The header reads "Give core_team access to 5 repositories".
   - **Grant access** applies the checked rows with `PUT /orgs/{org}/teams/{slug}/repos/{org}/{repo}` and body `{"permission": "<target>"}`, 3 at a time, with a progress bar and a result per row ("Granted", or the error).
   - **Never** removes a team, and never lowers a permission. If the current access is higher than the target, the row does not appear.
   - **Errors:**
@@ -314,9 +314,9 @@ Route: `https://github.com/organizations/<org>/repositories/new` (also `https://
 
   Both come through GraphQL (§8), paginated, cached per team. **Do not** make one request per repository to read access.
 - **Done when:**
-  - Setup: `infra` is tagged `konnen_team` (Write). konnen_team already has Write on `dagu` and `konnen-dagu`, Read on `authentik`, and nothing on `dags-repo`, `konnen-authentik`, `konnen-checkmate`.
-  - The team page then shows the banner "4 repositories…", and Sync access lists exactly those four rows (authentik as Read → Write).
-  - Granting them leaves `keep_supabase_alive`, which the team can access outside its groups, untouched.
+  - Setup: `infra` is tagged `core_team` (Write). core_team already has Write on `dagsrv` and `kite-dagsrv`, Read on `authn`, and nothing on `dags-repo`, `kite-authn`, `kite-cmonitor`.
+  - The team page then shows the banner "4 repositories…", and Sync access lists exactly those four rows (authn as Read → Write).
+  - Granting them leaves `keep_alive_job`, which the team can access outside its groups, untouched.
 
 ### F13 — My groups (personal layer)
 **Why:** in orgs with hundreds or thousands of repositories, one person usually cares about a few dozen. They need their own organization without changing the shared structure.
@@ -456,19 +456,20 @@ groups:                    # required list (may be empty)
   - name: infra            # required: the slug. ^[a-z0-9._-]+$ ; unique among siblings. Used in URLs, rules and paths
     title: "Infra"         # optional display name, any characters (e.g. "Grupo: Competição" with slug grupo-competicao)
     description: "..."     # optional string
+    keywords: ["s3", "backup"]  # optional list of words (tools, topics). Only used to suggest a group for a new repo (core/suggest.ts); never changes placement
     logo: "logos/infra.png" # optional; path inside <org>/.github, or an https URL
-    teams: ["konnen_team", { slug: "ai-squad", permission: "maintain" }]
+    teams: ["core_team", { slug: "ai-squad", permission: "maintain" }]
                            # optional (F12). A plain string = that team with "push" (Write).
                            # permission: pull | triage | push | maintain | admin | <custom repository role name>
                            # Inherited by every subgroup; the closest definition of a slug wins.
-    match: ["dagu", "dags-*"]  # optional list of exact names or * patterns (a single string is accepted)
+    match: ["dagsrv", "dags-*"]  # optional list of exact names or * patterns (a single string is accepted)
     groups: [ ... ]        # optional nested groups, any depth (UI and AI prompt recommend ≤ 3)
 ```
 - UI labels for permissions: `pull` = Read, `triage` = Triage, `push` = Write, `maintain` = Maintain, `admin` = Admin (GitHub's own names).
 - The personal **My groups** file (F13) uses the same schema without `index` and `teams`.
 - Unknown keys are ignored on read and dropped on write.
 - `repositories:` is reserved (AI context) and ignored.
-- The **writer** emits the canonical format: the order is `name, title, description, logo, teams, match, groups`; `teams` uses plain strings for `push` and the `{ slug, permission }` form otherwise; strings in double quotes; `match` in flow style (`["a", "b"]`); 2-space indentation; a leading comment line `# <org>/.github/repo-groups.yml`. See `yamlPreview()` in `mockup.js`. Write it by hand; do not ship a YAML dumper.
+- The **writer** emits the canonical format: the order is `name, title, description, keywords, logo, teams, match, groups`; `teams` uses plain strings for `push` and the `{ slug, permission }` form otherwise; strings in double quotes; `match` in flow style (`["a", "b"]`); 2-space indentation; a leading comment line `# <org>/.github/repo-groups.yml`. See `yamlPreview()` in `mockup.js`. Write it by hand; do not ship a YAML dumper.
 - The **reader** uses a real YAML parser (js-yaml), lazy-loaded.
 
 ### 5.2 Validation errors (copy from the mockup)
@@ -476,6 +477,7 @@ groups:                    # required list (may be empty)
 - `groups → item N: name "X" must use lowercase letters, numbers, - _ or .`
 - `Two groups are named "x" in <parent>.`
 - `"x": match must be a list of names or patterns.`
+- `"x": keywords must be a list of words.`
 - `"x": groups must be a list.`
 - `"x": teams must be a list of team slugs or { slug, permission }.`
 - `"x": permission "y" must be one of pull, triage, push, maintain, admin, or a custom repository role of <org>.` (When the custom roles cannot be read, accept any non-empty name and show a warning instead.)
@@ -578,7 +580,7 @@ Never yield removals or downgrades. Put this in `core/teams.ts`, pure and unit t
   3. `POST trees` with base_tree;
   4. `POST commits`;
   5. `PATCH ref`.
-- **Commit messages:** `chore(repo-groups): <action>`, e.g. `chore(repo-groups): edit group infra/dagu`, `chore(repo-groups): add logo for infra/dagu`, `chore(repo-groups): file konnen-n8n in infra/dagu`, `chore(repo-groups): apply YAML edit (19 changes)`.
+- **Commit messages:** `chore(repo-groups): <action>`, e.g. `chore(repo-groups): edit group infra/dagsrv`, `chore(repo-groups): add logo for infra/dagsrv`, `chore(repo-groups): file kite-nflow in infra/dagsrv`, `chore(repo-groups): apply YAML edit (19 changes)`.
 - **Conflicts:** on 409/422 (sha mismatch), refetch the file.
   - For F5/F6/F7/F9, re-apply the single change to the fresh tree and retry once.
   - For F8, show "The file changed on GitHub since you opened it" with **Reload and keep my text**, which re-runs the diff against the fresh file.

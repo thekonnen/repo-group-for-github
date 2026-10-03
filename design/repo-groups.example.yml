@@ -17,24 +17,24 @@ version: 1
 groups:
   - name: infra
     description: "Self-hosted platform services"
-    teams: ["konnen_team"]                       # Write on everything under infra
+    teams: ["core_team"]                       # Write on everything under infra
     groups:
-      - name: dagu
+      - name: dagsrv
         description: "Jobs and crons (Airflow alternative)"
-        logo: "logos/infra-dagu.png"             # file committed next to this YAML
-        match: ["dagu", "dags-*", "konnen-dagu"]
-      - name: authentik
+        logo: "logos/infra-dagsrv.png"             # file committed next to this YAML
+        match: ["dagsrv", "dags-*", "kite-dagsrv"]
+      - name: authn
         description: "SSO and identity"
-        match: ["*authentik*"]
-      - name: checkmate
-        description: "Uptime monitoring behind authentik SSO"
-        match: ["*checkmate*"]
+        match: ["*authn*"]
+      - name: cmonitor
+        description: "Uptime monitoring"
+        match: ["*cmonitor*"]
   - name: ai
     description: "LLM gateways and routing"
     teams: [{ slug: "ai-squad", permission: "maintain" }]           # example team
-    match: ["omniroute"]
+    match: ["oroute"]
     groups:
-      - name: litellm
-        description: "LiteLLM proxy and the Konnen deployment"
-        teams: [{ slug: "konnen_team", permission: "pull" }]        # Read only, plus ai-squad from the parent
-        match: ["*litellm*"]
+      - name: llm-proxy
+        description: "Gateway proxy and the Acme deployment"
+        teams: [{ slug: "core_team", permission: "pull" }]        # Read only, plus ai-squad from the parent
+        match: ["*llm-proxy*"]

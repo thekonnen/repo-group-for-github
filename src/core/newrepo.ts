@@ -20,7 +20,7 @@ export interface Destination {
   needsCommit: boolean;
 }
 
-/** "infra/dagu" -> "infra / dagu", or with display names ("Infraestrutura / Jobs") when the groups are given. */
+/** "infra/dagsrv" -> "infra / dagsrv", or with display names ("Infraestrutura / Jobs") when the groups are given. */
 export function pathLabel(key: string, groups?: Group[]): string {
   const parts = key.split('/').filter(Boolean);
   return parts
@@ -92,13 +92,13 @@ export const PENDING_TTL_MS = 10 * 60 * 1000;
 /** What happened to one selected team after the repo was created (F12). */
 export type GrantOutcome = { team: string; permission: string; ok: true } | { team: string; permission: string; ok: false; message: string };
 
-/** "konnen_team can write": the sentence part for a team that now has access. */
+/** "core_team can write": the sentence part for a team that now has access. */
 export function teamPhrase(team: string, permission: string): string {
   const what: Record<string, string> = { pull: 'can read', triage: 'can triage', push: 'can write', maintain: 'can maintain', admin: 'has admin access' };
   return `${team} ${what[permission] ?? `has the ${permission} role`}`;
 }
 
-/** Text of the toast shown on the repo page after filing, e.g. "Filed in infra / dagu · konnen_team can write · repo-groups.yml updated". */
+/** Text of the toast shown on the repo page after filing, e.g. "Filed in infra / dagsrv · core_team can write · repo-groups.yml updated". */
 export function filedMessage(p: { groupKey: string; committed: boolean; groupLabel?: string; granted?: { team: string; permission: string }[] }): string {
   const where = p.groupKey ? `Filed in ${p.groupLabel ?? pathLabel(p.groupKey)}` : 'Created, not in any group yet';
   const teams = (p.granted ?? []).map((t) => ` · ${teamPhrase(t.team, t.permission)}`).join('');

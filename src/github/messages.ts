@@ -5,6 +5,7 @@ import type { GrantResult } from '../core/grant';
 import type { PendingRepo } from '../core/newrepo';
 import type { TeamAccess } from '../core/teams';
 import type { Config, Permission, RepoInfo } from '../core/types';
+import type { LlmConfig } from '../background/llm';
 
 /** Content script / popup / options -> background. The token never leaves the background. */
 export type Request =
@@ -37,7 +38,33 @@ export type Request =
   | { type: 'orgs:list'; force?: boolean }
   | { type: 'cache:clear' }
   | { type: 'settings:get' }
-  | { type: 'settings:set'; settings: Partial<{ refreshMinutes: number }> };
+  | { type: 'settings:set'; settings: Partial<{ refreshMinutes: number }> }
+  | { type: 'llm:status' }
+  | { type: 'llm:save'; config: Partial<LlmConfig> }
+  | { type: 'llm:auto'; auto: boolean }
+  | { type: 'llm:clear' }
+  | { type: 'llm:test' }
+  | { type: 'suggest:group'; org: string; repo: { name: string; description?: string | null }; method?: SuggestMethod };
+
+/** Which classifier to run. Left out, the background tries rules, then the local score, then the AI only if the score is unsure. */
+export type SuggestMethod = 'keywords' | 'llm';
+
+/** Answer of `suggest:group`. `llm` means the local score was not sure and the AI picked. */
+export interface GroupSuggestion {
+  source: 'rule' | 'lexical' | 'llm' | 'uncertain';
+  /** Group key ("infra/cloud") or null. */
+  key: string | null;
+  rule?: string;
+  score: number;
+  margin: number;
+  /** Best three local candidates. */
+  ranking: { key: string; score: number }[];
+  model?: string;
+  /** No group fits: the AI proposes creating this one (the page asks before creating it). */
+  newGroup?: { path: string[]; titles: string[]; descriptions: string[] };
+  /** Why the AI was not used or failed, when it was needed. */
+  llmError?: string;
+}
 
 /** Per-org view preferences. The content script never touches storage; it asks the background. */
 export interface OrgPrefs {

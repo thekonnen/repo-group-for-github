@@ -6,7 +6,7 @@ import type { Group, RepoInfo } from './types';
 export interface GroupNode {
   group: Group;
   path: string[];
-  key: string; // 'infra/dagu'; '' for the virtual root
+  key: string; // 'infra/dagsrv'; '' for the virtual root
   repos: RepoInfo[]; // placed here (root: the ungrouped ones), newest push first
   children: GroupNode[];
   total: number; // recursive repo count (root: every visible repo)

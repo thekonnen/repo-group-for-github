@@ -1,7 +1,7 @@
 import { globRe, isExact, matches } from './glob';
 import type { Group, RepoInfo } from './types';
 
-/** A group plus its path, e.g. ['infra', 'dagu']. */
+/** A group plus its path, e.g. ['infra', 'dagsrv']. */
 export interface Node {
   group: Group;
   path: string[];

@@ -243,11 +243,11 @@ describe('message handler', () => {
 describe('config, progress and prefs messages', () => {
   const b64 = (s: string) => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
   it('parses the org file in the background and reports invalid YAML without throwing', async () => {
-    let body = 'version: 1\ngroups:\n  - name: infra\n    match: ["dagu"]\n';
+    let body = 'version: 1\ngroups:\n  - name: infra\n    match: ["dagsrv"]\n';
     const f = fakeFetch((u) => (u.pathname.endsWith('/contents/repo-groups.yml') ? { json: { content: b64(body), sha: 's1' }, headers: { etag: `"${body.length}"` } } : undefined));
     const h = createHandler({ fetch: f.fetch, kv: memoryKV(), index: memoryIndexStore(), clientId: 'c' });
     const ok: any = await h({ type: 'org:config', org: 'o' });
-    expect(ok.data).toMatchObject({ exists: true, sha: 's1', config: { groups: [{ name: 'infra', match: ['dagu'] }] } });
+    expect(ok.data).toMatchObject({ exists: true, sha: 's1', config: { groups: [{ name: 'infra', match: ['dagsrv'] }] } });
     body = 'groups: [x';
     const bad: any = await h({ type: 'org:config', org: 'o' });
     expect(bad.ok).toBe(true);

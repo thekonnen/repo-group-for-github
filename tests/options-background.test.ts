@@ -162,7 +162,7 @@ describe('helpers', () => {
   it('finds the org of a tab url', () => {
     expect(orgFromUrl('https://github.com/orgs/thekonnen/repositories', () => false)).toBe('thekonnen');
     expect(orgFromUrl('https://github.com/orgs/other/people', () => false)).toBe('other');
-    expect(orgFromUrl('https://github.com/TheKonnen/dagu/issues', known)).toBe('TheKonnen');
+    expect(orgFromUrl('https://github.com/TheKonnen/dagsrv/issues', known)).toBe('TheKonnen');
     expect(orgFromUrl('https://github.com/someuser/repo', known)).toBeNull();
     expect(orgFromUrl('https://github.com/settings/profile', () => true)).toBeNull();
     expect(orgFromUrl('https://example.com/orgs/x', known)).toBeNull();

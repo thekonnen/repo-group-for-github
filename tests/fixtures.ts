@@ -9,6 +9,6 @@ export const EXAMPLE = readFileSync(join(process.cwd(), 'design/repo-groups.exam
 export const example = (): Config => readConfig(EXAMPLE, load, { org: 'thekonnen' }).config!;
 
 export const REPOS: RepoInfo[] = [
-  'konnen-litellm', 'litellm', 'konnen-authentik', 'konnen-checkmate', 'authentik',
-  'konnen-dagu', 'dagu', 'keep_supabase_alive', 'omniroute', 'dags-repo',
+  'kite-llm-proxy', 'llm-proxy', 'kite-authn', 'kite-cmonitor', 'authn',
+  'kite-dagsrv', 'dagsrv', 'keep_alive_job', 'oroute', 'dags-repo',
 ].map((name) => ({ name }));

@@ -48,7 +48,7 @@ async function open(opts: Parameters<typeof fakeCall>[0] = {}, hash = '') {
 
 /** What an AI would answer: fenced, with the repositories list echoed back, and a new group plus a moved repo. */
 const answer = () => {
-  const y = EXAMPLE.replace('groups:\n', 'groups:\n  - name: data\n    description: "Pipelines"\n    match: ["omniroute", "etl-*"]\n');
+  const y = EXAMPLE.replace('groups:\n', 'groups:\n  - name: data\n    description: "Pipelines"\n    match: ["oroute", "etl-*"]\n');
   return `Here you go!\n\`\`\`yaml\n${y}repositories:\n  - name: x\n\`\`\`\nLet me know.`;
 };
 
@@ -86,7 +86,7 @@ describe('Edit YAML drawer (F8)', () => {
     expect(status()).toContain('code fences removed');
     expect(status()).toMatch(/^Valid\. 2 changes · 7 groups · /);
     const items = $$('.rg-y-diff li').map((l) => l.textContent!.replace(/\s+/g, ' ').trim());
-    expect(items).toEqual(['+New groupdata', '→omnirouteai → data']);
+    expect(items).toEqual(['+New groupdata', '→orouteai → data']);
     expect($('.rg-y-diff .rg-add')).toBeTruthy();
     expect($('.rg-y-diff .rg-mov')).toBeTruthy();
   });
@@ -145,7 +145,7 @@ describe('copy buttons and scope (F8/F14)', () => {
     expect(t).toContain('the "thekonnen" organization');
     expect(t).toContain('Current file and repositories:\n\n```yaml\nversion: 1\ngroups:\n  - name: mine\n');
     expect(t).toContain('repositories:  # read-only context, ignored when pasted back');
-    expect(t).toContain('  - name: konnen-litellm\n    description: "AI Gateway for TheKonnen"');
+    expect(t).toContain('  - name: kite-llm-proxy\n    description: "AI Gateway for Acme"');
     expect(t).not.toContain(SCOPE_LINE); // scope is "all"
     await vi.waitFor(() => expect(btn(/^Copied$/)).toBeTruthy());
   });
@@ -170,7 +170,7 @@ describe('copy buttons and scope (F8/F14)', () => {
     expect(t.indexOf(SCOPE_LINE)).toBeGreaterThan(-1);
     expect(t.indexOf(SCOPE_LINE)).toBeLessThan(t.indexOf('Output rules:'));
     const listed = t.split('repositories:  # read-only')[1].match(/- name: /g)!.length;
-    expect(listed).toBe(1); // only keep_supabase_alive
+    expect(listed).toBe(1); // only keep_alive_job
   });
   it('warns above 500 repositories in scope and suggests a smaller one', async () => {
     const many = Array.from({ length: 501 }, (_, i) => ({ name: `r${i}`, pushedAt: new Date().toISOString() }));
@@ -251,7 +251,7 @@ describe('conflicts, missing repo, entry points', () => {
     await vi.waitFor(() => expect($('#rg-drawer-title')!.textContent).toBe('New group'));
   });
   it('Edit group has a link that opens the YAML editor with the draft already applied', async () => {
-    window.history.replaceState(null, '', '/orgs/thekonnen/repositories#infra/dagu');
+    window.history.replaceState(null, '', '/orgs/thekonnen/repositories#infra/dagsrv');
     const fc = fakeCall();
     mounted = (await mountOrgRepos('thekonnen', { call: fc.call }, document, 200))!;
     await vi.waitFor(() => expect(btn('Edit group')).toBeTruthy());
@@ -266,7 +266,7 @@ describe('conflicts, missing repo, entry points', () => {
     expect($('#rg-drawer-title')).toBeNull();
     expect(area().value).toContain('description: "My new description"');
     await vi.waitFor(() => expect(status()).toContain('1 change'));
-    expect($$('.rg-y-diff li')[0].textContent).toContain('Description of infra/dagu');
+    expect($$('.rg-y-diff li')[0].textContent).toContain('Description of infra/dagsrv');
     expect(apply().disabled).toBe(false);
   });
   it('is not offered to members without write access', async () => {

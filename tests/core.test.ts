@@ -16,7 +16,7 @@ describe('glob', () => {
   it('matches case-insensitively and escapes regex chars', () => {
     expect(globRe('dags-*').test('DAGS-repo')).toBe(true);
     expect(globRe('a.b').test('axb')).toBe(false);
-    expect(matches(['*authentik*'], 'konnen-authentik')).toBe(true);
+    expect(matches(['*authn*'], 'kite-authn')).toBe(true);
   });
   it('normalizes repository names like GitHub', () => {
     expect(normName('  my repo!! name ')).toBe('my-repo-name');
@@ -28,11 +28,11 @@ describe('placement', () => {
   const cfg = example();
   const p = placement(cfg.groups, REPOS);
   it('matches the F1 done-when', () => {
-    expect(p['keep_supabase_alive']).toBe('');
-    expect(Object.values(p).filter((k) => k === 'infra/dagu')).toHaveLength(3);
-    expect(p['dagu'] && p['dags-repo'] && p['konnen-dagu']).toBe('infra/dagu');
-    expect(p['omniroute']).toBe('ai');
-    expect(p['konnen-litellm']).toBe('ai/litellm');
+    expect(p['keep_alive_job']).toBe('');
+    expect(Object.values(p).filter((k) => k === 'infra/dagsrv')).toHaveLength(3);
+    expect(p['dagsrv'] && p['dags-repo'] && p['kite-dagsrv']).toBe('infra/dagsrv');
+    expect(p['oroute']).toBe('ai');
+    expect(p['kite-llm-proxy']).toBe('ai/llm-proxy');
   });
   it('exact names beat patterns, even in a shallower group', () => {
     const c = read('groups:\n  - name: a\n    match: ["x-tool"]\n  - name: b\n    match: ["x-*"]\n').config!;
@@ -43,12 +43,12 @@ describe('placement', () => {
     expect(placement(c.groups, [{ name: 'a-svc' }])['a-svc']).toBe('p/c');
   });
   it('post-order puts children before parents', () => {
-    expect(postOrder(cfg.groups).map((n) => n.key)).toEqual(['infra/dagu', 'infra/authentik', 'infra/checkmate', 'infra', 'ai/litellm', 'ai']);
+    expect(postOrder(cfg.groups).map((n) => n.key)).toEqual(['infra/dagsrv', 'infra/authn', 'infra/cmonitor', 'infra', 'ai/llm-proxy', 'ai']);
   });
   it('ruleFor and pickIn', () => {
-    const g = findGroup(cfg.groups, ['infra', 'dagu'])!;
+    const g = findGroup(cfg.groups, ['infra', 'dagsrv'])!;
     expect(ruleFor(g, 'dags-x')).toBe('dags-*');
-    expect(ruleFor(g, 'dagu')).toBe('dagu');
+    expect(ruleFor(g, 'dagsrv')).toBe('dagsrv');
     expect(pickIn(postOrder(cfg.groups), 'nothing')).toBeNull();
   });
 });
@@ -56,7 +56,7 @@ describe('placement', () => {
 describe('yaml read + validate', () => {
   it('reads the example with both teams forms', () => {
     const c = example();
-    expect(c.groups[0].teams).toEqual([{ slug: 'konnen_team', permission: 'push' }]);
+    expect(c.groups[0].teams).toEqual([{ slug: 'core_team', permission: 'push' }]);
     expect(c.groups[1].teams).toEqual([{ slug: 'ai-squad', permission: 'maintain' }]);
     expect(c.version).toBe(1);
     expect(c.index).toBe('api');
@@ -90,7 +90,7 @@ describe('yaml read + validate', () => {
     expect(open.warnings).toHaveLength(1);
   });
   it('warns, not errors, on unknown team slugs', () => {
-    const r = read(EXAMPLE, { knownTeams: ['konnen_team'] });
+    const r = read(EXAMPLE, { knownTeams: ['core_team'] });
     expect(r.error).toBeUndefined();
     expect(r.warnings).toContain('"ai": team "ai-squad" was not found in thekonnen.');
   });
@@ -105,9 +105,9 @@ describe('yaml write', () => {
   });
   it('emits canonical format', () => {
     const t = writeConfig(example(), 'x');
-    expect(t).toContain('    teams: ["konnen_team"]\n');
+    expect(t).toContain('    teams: ["core_team"]\n');
     expect(t).toContain('    teams: [{ slug: "ai-squad", permission: "maintain" }]\n');
-    expect(t).toContain('        match: ["dagu", "dags-*", "konnen-dagu"]\n');
+    expect(t).toContain('        match: ["dagsrv", "dags-*", "kite-dagsrv"]\n');
   });
   it('escapes quotes and supports empty files, index and personal layer', () => {
     const c = read('index: action\ngroups:\n  - name: a\n    description: say "hi"\n    teams: [t]\n').config!;
@@ -124,7 +124,7 @@ describe('diff', () => {
   it('lists added/removed groups, edits and moves', () => {
     const a = example().groups;
     const b = read(
-      'groups:\n  - name: infra\n    description: "changed"\n    match: ["omniroute"]\n  - name: new\n',
+      'groups:\n  - name: infra\n    description: "changed"\n    match: ["oroute"]\n  - name: new\n',
     ).config!.groups;
     const d = diffTrees(a, b, REPOS);
     const kinds = d.items.map((i) => i.k + ' ' + i.text);
@@ -132,14 +132,14 @@ describe('diff', () => {
     expect(kinds).toContain('− Removed group');
     expect(kinds).toContain('~ Description of infra');
     expect(kinds).toContain('~ Rules of infra');
-    expect(d.items.find((i) => i.text === 'omniroute')!.to).toBe('ai → infra');
+    expect(d.items.find((i) => i.text === 'oroute')!.to).toBe('ai → infra');
     expect(d.groups).toBe(2);
   });
   it('reports team changes and no changes', () => {
     const a = example().groups;
     expect(diffTrees(a, a, REPOS).items).toEqual([]);
-    const b = read(writeConfig({ version: 1, index: 'api', groups: a }, 'x').replace('["konnen_team"]', '[{ slug: "konnen_team", permission: "pull" }]')).config!.groups;
-    expect(diffTrees(a, b, REPOS).items[0]).toMatchObject({ k: '~', text: 'Teams of infra', to: 'konnen_team · Read' });
+    const b = read(writeConfig({ version: 1, index: 'api', groups: a }, 'x').replace('["core_team"]', '[{ slug: "core_team", permission: "pull" }]')).config!.groups;
+    expect(diffTrees(a, b, REPOS).items[0]).toMatchObject({ k: '~', text: 'Teams of infra', to: 'core_team · Read' });
   });
 });
 
@@ -185,7 +185,7 @@ describe('time + layers', () => {
     expect(ago(null)).toBe('No pushes');
   });
   it('parses and builds hashes for both layers', () => {
-    expect(parseHash('#infra/dagu')).toEqual({ layer: 'org', path: ['infra', 'dagu'] });
+    expect(parseHash('#infra/dagsrv')).toEqual({ layer: 'org', path: ['infra', 'dagsrv'] });
     expect(parseHash('#~my/a/b')).toEqual({ layer: 'my', path: ['a', 'b'] });
     expect(parseHash('')).toEqual({ layer: 'org', path: [] });
     expect(buildHash({ layer: 'my', path: ['a'] })).toBe('#~my/a');

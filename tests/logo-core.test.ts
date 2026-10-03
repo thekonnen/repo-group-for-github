@@ -68,7 +68,7 @@ describe('crop math (F7)', () => {
 describe('logo files and links (F7)', () => {
   it('builds the storage path from the group path', () => {
     expect(logoPath(['infra'])).toBe('logos/infra.png');
-    expect(logoPath(['infra', 'dagu'])).toBe('logos/infra-dagu.png');
+    expect(logoPath(['infra', 'dagsrv'])).toBe('logos/infra-dagsrv.png');
   });
   it('accepts PNG, JPG, SVG and WebP up to 5 MB with plain errors otherwise', () => {
     for (const type of ['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp']) expect(validateLogoFile({ type, size: 1000 })).toBeNull();
@@ -91,23 +91,23 @@ describe('logo files and links (F7)', () => {
 });
 
 describe('edits with a logo', () => {
-  const base = { description: 'Jobs', match: ['dagu'] };
+  const base = { description: 'Jobs', match: ['dagsrv'] };
   it('a new PNG sets logo: to the path of the final slug; remove drops it; no change keeps it', () => {
     const g = example().groups;
-    const set = applyEdit(g, { kind: 'edit', path: ['infra', 'dagu'], name: 'dagu2', ...base, logo: { png: 'AA' } });
-    expect(findGroup((set as any).groups, ['infra', 'dagu2'])!.logo).toBe('logos/infra-dagu2.png');
-    const rm = applyEdit(g, { kind: 'edit', path: ['infra', 'dagu'], name: 'dagu', ...base, logo: { remove: true } });
-    expect(findGroup((rm as any).groups, ['infra', 'dagu'])!.logo).toBeNull();
-    const keep = applyEdit(g, { kind: 'edit', path: ['infra', 'dagu'], name: 'dagu', ...base });
-    expect(findGroup((keep as any).groups, ['infra', 'dagu'])!.logo).toBe('logos/infra-dagu.png');
+    const set = applyEdit(g, { kind: 'edit', path: ['infra', 'dagsrv'], name: 'dagsrv2', ...base, logo: { png: 'AA' } });
+    expect(findGroup((set as any).groups, ['infra', 'dagsrv2'])!.logo).toBe('logos/infra-dagsrv2.png');
+    const rm = applyEdit(g, { kind: 'edit', path: ['infra', 'dagsrv'], name: 'dagsrv', ...base, logo: { remove: true } });
+    expect(findGroup((rm as any).groups, ['infra', 'dagsrv'])!.logo).toBeNull();
+    const keep = applyEdit(g, { kind: 'edit', path: ['infra', 'dagsrv'], name: 'dagsrv', ...base });
+    expect(findGroup((keep as any).groups, ['infra', 'dagsrv'])!.logo).toBe('logos/infra-dagsrv.png');
     const fresh = applyEdit(g, { kind: 'new', parent: ['ai'], name: 'Vision', description: '', match: [], logo: { png: 'AA' } });
     expect(findGroup((fresh as any).groups, ['ai', 'vision'])!.logo).toBe('logos/ai-vision.png');
   });
   it('names the commit after the logo and exposes the file path', () => {
-    const e = { kind: 'edit' as const, path: ['infra', 'dagu'], name: 'dagu', ...base, logo: { png: 'AA' } };
-    expect(commitMessage(e)).toBe('chore(repo-groups): add logo for infra/dagu');
-    expect(editLogoPath(e)).toBe('logos/infra-dagu.png');
+    const e = { kind: 'edit' as const, path: ['infra', 'dagsrv'], name: 'dagsrv', ...base, logo: { png: 'AA' } };
+    expect(commitMessage(e)).toBe('chore(repo-groups): add logo for infra/dagsrv');
+    expect(editLogoPath(e)).toBe('logos/infra-dagsrv.png');
     expect(editLogoPath({ ...e, logo: { remove: true } })).toBeNull();
-    expect(commitMessage({ ...e, logo: { remove: true } })).toBe('chore(repo-groups): edit group infra/dagu');
+    expect(commitMessage({ ...e, logo: { remove: true } })).toBe('chore(repo-groups): edit group infra/dagsrv');
   });
 });

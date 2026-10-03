@@ -12,7 +12,7 @@ Task:
 1. Read every repository in the "repositories" list (name, description, language).
 2. Classify each one by what it does: product or business domain, platform/infrastructure service, deployment or config of a third-party tool, data and automation, libraries and tooling, docs, experiments or archived work.
 3. Build a clear hierarchy from that classification. Reuse and improve the current groups when they make sense; merge, split, rename or remove them when that makes the structure clearer.
-4. Put every repository in exactly one group using "match" rules. A fork or upstream copy (for example "litellm") belongs in the same group as the deployment that uses it (for example "konnen-litellm").
+4. Put every repository in exactly one group using "match" rules. A fork or upstream copy (for example "llm-proxy") belongs in the same group as the deployment that uses it (for example "kite-llm-proxy").
 
 Output rules:
 - Answer with ONLY the complete YAML inside one ```yaml block. No explanations before or after.

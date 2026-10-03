@@ -78,7 +78,7 @@ export function sourceRect(c: Crop): { sx: number; sy: number; side: number } {
   return { sx: (MARGIN - c.tx) / c.s, sy: (MARGIN - c.ty) / c.s, side: CROP / c.s };
 }
 
-/** `logos/infra-dagu.png` for the group `infra/dagu` (§7). */
+/** `logos/infra-dagsrv.png` for the group `infra/dagsrv` (§7). */
 export const logoPath = (groupPath: string[]): string => `logos/${groupPath.join('-')}.png`;
 
 const TYPES = ['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp'];

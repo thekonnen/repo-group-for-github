@@ -5,7 +5,7 @@ export interface Route {
   path: string[];
 }
 
-/** `#infra/dagu` -> org layer; `#~my/infra/dagu` -> personal layer. */
+/** `#infra/dagsrv` -> org layer; `#~my/infra/dagsrv` -> personal layer. */
 export function parseHash(hash: string): Route {
   const raw = decodeURIComponent(hash.replace(/^#/, ''));
   const parts = raw.split('/').filter(Boolean);

@@ -142,5 +142,84 @@
         "content": "$1"
       }
     }
+  },
+  "optionsAiHeading": {
+    "message": "AI assistant"
+  },
+  "optionsAiIntro": {
+    "message": "When the rules and the local score cannot place a new repository, an AI can suggest the group. It is optional and only runs on those cases."
+  },
+  "optionsAiPrivacy": {
+    "message": "Only the repository name, its description and the list of group names and descriptions are sent to the provider. On free plans the provider may use what you send to improve its products."
+  },
+  "optionsAiModeGemini": {
+    "message": "Google Gemini (AI Studio)"
+  },
+  "optionsAiModeCustom": {
+    "message": "Another provider (OpenAI-compatible endpoint)"
+  },
+  "optionsAiKeyLabel": {
+    "message": "API key"
+  },
+  "optionsAiKeyHint": {
+    "message": "Paste only the key. The extension finds a Gemini model that is responding and keeps using it until it stops."
+  },
+  "optionsAiKeySaved": {
+    "message": "A key is saved. Leave this empty to keep it."
+  },
+  "optionsAiGetKey": {
+    "message": "Get a free key in Google AI Studio"
+  },
+  "optionsAiEndpoint": {
+    "message": "Endpoint URL (without /chat/completions)"
+  },
+  "optionsAiModel": {
+    "message": "Model name"
+  },
+  "optionsAiSave": {
+    "message": "Save"
+  },
+  "optionsAiTest": {
+    "message": "Test"
+  },
+  "optionsAiRemove": {
+    "message": "Remove key"
+  },
+  "optionsAiSaved": {
+    "message": "Saved."
+  },
+  "optionsAiRemoved": {
+    "message": "Key removed."
+  },
+  "optionsAiTestOk": {
+    "message": "Working. Model in use: $MODEL$.",
+    "placeholders": {
+      "model": {
+        "content": "$1"
+      }
+    }
+  },
+  "optionsAiStatus": {
+    "message": "Key saved. Model in use: $MODEL$.",
+    "placeholders": {
+      "model": {
+        "content": "$1"
+      }
+    }
+  },
+  "optionsAiStatusPending": {
+    "message": "Key saved. The model is chosen on first use."
+  },
+  "optionsAiDenied": {
+    "message": "The browser did not allow requests to the provider, so the key was not saved."
+  },
+  "optionsAiAuto": {
+    "message": "Classify new repositories with the AI by default"
+  },
+  "optionsAiAutoHint": {
+    "message": "When no rule matches the name of a new repository, the AI runs on its own and files it in a group, or suggests a new one. Uncheck to run it only when you click AI. Each run sends the repository name to the provider."
+  },
+  "optionsAiAutoSaved": {
+    "message": "Preference saved."
   }
 }

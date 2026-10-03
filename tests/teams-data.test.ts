@@ -69,16 +69,16 @@ describe('org teams (GraphQL)', () => {
 
 describe('team access (GraphQL)', () => {
   const data = {
-    konnen_team: [['dagu', 'WRITE'], ['konnen-dagu', 'WRITE'], ['authentik', 'READ'], ['keep_supabase_alive', 'WRITE'], ['x', 'TRIAGE']] as [string, string][],
-    'ai-squad': [['omniroute', 'MAINTAIN']] as [string, string][],
+    core_team: [['dagsrv', 'WRITE'], ['kite-dagsrv', 'WRITE'], ['authn', 'READ'], ['keep_alive_job', 'WRITE'], ['x', 'TRIAGE']] as [string, string][],
+    'ai-squad': [['oroute', 'MAINTAIN']] as [string, string][],
   };
   it('maps permissions, pages, and fetches only the teams asked for (never per repository)', async () => {
     const f = fakeFetch(teamReposRoute(data));
-    const access = await loadTeamAccess(client(f), memoryKV(), 'o', ['konnen_team']);
-    expect(access).toEqual({ konnen_team: { dagu: 'push', 'konnen-dagu': 'push', authentik: 'pull', keep_supabase_alive: 'push', x: 'triage' } });
+    const access = await loadTeamAccess(client(f), memoryKV(), 'o', ['core_team']);
+    expect(access).toEqual({ core_team: { dagsrv: 'push', 'kite-dagsrv': 'push', authn: 'pull', keep_alive_job: 'push', x: 'triage' } });
     expect(f.calls).toHaveLength(3); // 5 repos in pages of 2
     expect(f.calls.every((c) => c.url.endsWith('/graphql'))).toBe(true);
-    expect(f.calls.map((c) => gqlBody(c).variables.slug)).toEqual(['konnen_team', 'konnen_team', 'konnen_team']);
+    expect(f.calls.map((c) => gqlBody(c).variables.slug)).toEqual(['core_team', 'core_team', 'core_team']);
   });
   it('caches each team with the refresh interval; force bypasses it; a team that is not found has no repositories', async () => {
     const f = fakeFetch(teamReposRoute(data));
@@ -86,7 +86,7 @@ describe('team access (GraphQL)', () => {
     const now = () => 5000;
     await loadTeamAccess(client(f), kv, 'o', ['ai-squad', 'nope'], { now });
     const n = f.calls.length;
-    expect(await loadTeamAccess(client(f), kv, 'o', ['ai-squad', 'nope'], { now: () => 6000 })).toEqual({ 'ai-squad': { omniroute: 'maintain' }, nope: {} });
+    expect(await loadTeamAccess(client(f), kv, 'o', ['ai-squad', 'nope'], { now: () => 6000 })).toEqual({ 'ai-squad': { oroute: 'maintain' }, nope: {} });
     expect(f.calls.length).toBe(n);
     await loadTeamAccess(client(f), kv, 'o', ['ai-squad'], { now: () => 6000, force: true });
     expect(f.calls.length).toBe(n + 1);
@@ -140,16 +140,16 @@ describe('handler messages', () => {
     expect(f.calls.map((c) => c.method)).toEqual(['PUT']);
   });
   it('org:config warns about team slugs that do not exist in the org (and only warns)', async () => {
-    const yml = 'groups:\n  - name: infra\n    teams: ["konnen_team", "ghost"]\n    match: ["a"]\n';
+    const yml = 'groups:\n  - name: infra\n    teams: ["core_team", "ghost"]\n    match: ["a"]\n';
     const f = fakeFetch(
       (u) => (u.pathname === '/repos/o/.github/contents/repo-groups.yml' ? { json: { sha: 's1', content: btoa(yml) }, headers: { etag: 'e1' } } : undefined),
-      teamsRoute(['konnen_team']),
+      teamsRoute(['core_team']),
       roles,
     );
     const h = createHandler({ ...deps(f), kv: authedKV() });
     const r: any = await h({ type: 'org:config', org: 'o' });
     expect(r.ok).toBe(true);
-    expect(r.data.config.groups[0].teams.map((t: any) => t.slug)).toEqual(['konnen_team', 'ghost']);
+    expect(r.data.config.groups[0].teams.map((t: any) => t.slug)).toEqual(['core_team', 'ghost']);
     expect(r.data.warnings).toEqual(['"infra": team "ghost" was not found in o.']);
   });
 });

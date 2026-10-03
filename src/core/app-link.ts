@@ -25,7 +25,6 @@ export function appRegistrationUrl(opts: AppLinkOptions = {}): string {
     name: opts.name ?? 'Repository Group for Github',
     description: 'Organizes the repositories of a GitHub organization into groups and subgroups. No server: data stays in GitHub and in your browser.',
     url: opts.homepage ?? 'https://github.com/thekonnen/repo-group-for-github',
-    public: 'true', // lets other accounts and orgs install it
     webhook_active: 'false',
     ...APP_PERMISSIONS,
   });

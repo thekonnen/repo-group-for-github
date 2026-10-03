@@ -6,6 +6,5 @@ const p = new URLSearchParams({
   name: 'Repository Group for Github',
   description: 'Organizes the repositories of a GitHub organization into groups and subgroups. No server: data stays in GitHub and in your browser.',
   url: 'https://github.com/thekonnen/repo-group-for-github',
-  public: 'true', webhook_active: 'false', ...perms,
 });
 console.log(`${base}?${p}`);

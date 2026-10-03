@@ -23,10 +23,12 @@ node scripts/app-link.mjs <org>      # organization
 Open it, then on the form:
 
 1. Check **Enable Device Flow**.
-2. Uncheck **Expire user authorization tokens**.
-3. Click **Create GitHub App**. Do not generate a client secret or private key.
-4. Set the Client ID and slug in `src/config.ts`.
-5. **Install App** on each account or org with **All repositories**.
+2. Uncheck **Expire user authorization tokens** (checked by default).
+3. Under *Where can this GitHub App be installed?* select **Any account** (the link cannot set it; the default is "Only on this account", which blocks installing on an org).
+4. Expand *Repository* and *Organization* permissions and confirm the levels below.
+5. Click **Create GitHub App**. Do not generate a client secret or private key.
+6. Set the Client ID and slug in `src/config.ts`.
+7. **Install App** on each account or org with **All repositories**.
 
 Permissions: Metadata (read), Contents (read & write), Issues (read), Pull requests (read), Administration (read & write), Organization Members (read). Details in [docs/github-app.md](docs/github-app.md).
 

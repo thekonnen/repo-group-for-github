@@ -4,13 +4,13 @@ The extension signs users in with a GitHub App and the **device flow**. Create t
 
 ## 1. Open the pre-filled form
 
-The App is created **public**, so it can be installed on any personal account or organization, whichever account owns it.
+The App can be installed on any personal account or organization once you select **Any account** (step 3).
 
 - Personal account: https://github.com/settings/apps/new?name=Repository+Group+for+Github&description=Organizes+the+repositories+of+a+GitHub+organization+into+groups+and+subgroups.+No+server%3A+data+stays+in+GitHub+and+in+your+browser.&url=https%3A%2F%2Fgithub.com%2Fthekonnen%2Frepo-group-for-github&public=true&webhook_active=false&metadata=read&contents=write&issues=read&pull_requests=read&administration=write&members=read
 - Organization `thekonnen`: https://github.com/organizations/thekonnen/settings/apps/new?name=Repository+Group+for+Github&description=Organizes+the+repositories+of+a+GitHub+organization+into+groups+and+subgroups.+No+server%3A+data+stays+in+GitHub+and+in+your+browser.&url=https%3A%2F%2Fgithub.com%2Fthekonnen%2Frepo-group-for-github&public=true&webhook_active=false&metadata=read&contents=write&issues=read&pull_requests=read&administration=write&members=read
 - Any other org: `node scripts/app-link.mjs <org>`
 
-The links preselect the name, homepage, no webhook, and the permissions below. GitHub lets you edit everything before you click **Create**. The name must be unique across GitHub; if it is taken, change it (and the slug in `src/config.ts` follows it).
+The links preselect the name, homepage, no webhook, and the permissions below. They cannot set the install scope or the two device-flow options. GitHub lets you edit everything before you click **Create**. The name must be unique across GitHub; if it is taken, change it (and the slug in `src/config.ts` follows it).
 
 ## 2. Check the permissions on the form
 
@@ -25,12 +25,13 @@ The links preselect the name, homepage, no webhook, and the permissions below. G
 
 If a permission is not preselected, set it by hand. Administration (write) is the sensitive one (CLAUDE.md §6).
 
-## 3. Two settings the link cannot set
+## 3. Settings the link cannot set
 
-Under **Identifying and authorizing users**, on the same form:
+On the same form:
 
 1. Check **Enable Device Flow**.
-2. Uncheck **Expire user authorization tokens** (no client secret is needed for refresh).
+2. Uncheck **Expire user authorization tokens** (checked by default; no client secret is needed for refresh).
+3. At the bottom, *Where can this GitHub App be installed?* → **Any account**. The default, "Only on this account", prevents installing it on an org.
 
 Leave the callback URL empty and **Webhook → Active** unchecked.
 

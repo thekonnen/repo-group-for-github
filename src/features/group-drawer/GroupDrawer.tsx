@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'preact/hooks';
-import { displayName, finalName, slugify, slugName, splitRules, validateDraft, type Edit } from '../../core/edit';
+import { applyEdit, displayName, finalName, slugify, slugName, splitRules, validateDraft, type Edit } from '../../core/edit';
 import { matches } from '../../core/glob';
 import { byPush, nodeAt, type TreeModel } from '../../core/tree';
+import { writeConfig } from '../../core/yaml-write';
 import { Drawer } from '../../ui/Drawer';
 import { Icon } from '../../ui/Icon';
 import type { Controller, SaveResult } from '../grouped-view/controller';
@@ -91,6 +92,17 @@ function Form({ ctl, mode, path }: { ctl: Controller; mode: 'edit' | 'new'; path
     setSaving(false); // on success the controller closed the drawer
   };
 
+  /** Opens the YAML editor with this draft already applied to the file. */
+  const openInYaml = () => {
+    const cfg = s.config && s.config.exists && s.config.config ? s.config.config : { version: 1, index: 'api' as const, groups: [] };
+    let yaml = ctl.savedText();
+    if (!error) {
+      const r = applyEdit(cfg.groups, edit);
+      if ('groups' in r) yaml = writeConfig({ ...cfg, groups: r.groups }, `${s.org}/.github/repo-groups.yml`);
+    }
+    ctl.openYaml(yaml);
+  };
+
   const fullPath = [s.org, ...(parentKey ? titled(model, parentKey).split(' / ') : []), finalName(slug) || '…'].join(' / ');
   const heading = mode === 'edit' ? `Edit group ${titled(model, path.join('/'))}` : path.length ? 'New subgroup' : 'New group';
 
@@ -172,6 +184,8 @@ function Form({ ctl, mode, path }: { ctl: Controller; mode: 'edit' | 'new'; path
             <span class="rg-hint">{allRules.length ? 'No repository matches these rules yet.' : 'Add a rule to see which repositories it catches.'}</span>
           )}
         </div>
+
+        <div><button type="button" class="rg-linkish" onClick={openInYaml}><Icon name="code" size={14} />Edit .github/repo-groups.yml</button></div>
 
         {problem?.needsRepo ? (
           <div class="rg-callout" role="alert">

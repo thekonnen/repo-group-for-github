@@ -98,7 +98,15 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
         </div>
       )}
       {cfg && !cfg.exists && (
-        <div class="rg-banner" role="status"><span class="rg-grow">No groups yet: <code>{s.org}/.github</code> has no <code>repo-groups.yml</code>, so every repository is shown as ungrouped.</span></div>
+        <div class="rg-banner" role="status">
+          <span class="rg-grow">No groups yet: <code>{s.org}/.github</code> has no <code>repo-groups.yml</code>, so every repository is shown as ungrouped.</span>
+          {s.access?.canWriteOrg && (
+            <>
+              <button type="button" class="rg-btn" onClick={() => ctl.openDrawer('new', [])}><Icon name="folder" />Create groups</button>
+              <button type="button" class="rg-btn" onClick={() => ctl.openYaml()}><Icon name="sparkle" />Start with AI</button>
+            </>
+          )}
+        </div>
       )}
       {cfg && cfg.exists && cfg.error && (
         <div class="rg-banner rg-banner-warn" role="alert"><span class="rg-grow"><b>repo-groups.yml has a problem:</b> {cfg.error}. Showing every repository as ungrouped.</span></div>
@@ -188,6 +196,7 @@ function Header({ ctl, s, node, name, isRoot }: { ctl: Controller; s: State; nod
         <div style="min-width:0"><h1>{name}</h1><p>{node.group.description}</p></div>
       </div>
       <div class="rg-g-actions">
+        {canEdit && <button type="button" class="rg-btn" onClick={() => ctl.openYaml()}><Icon name="code" />Edit YAML</button>}
         {canEdit && !isRoot && <button type="button" class="rg-btn" onClick={() => ctl.openDrawer('edit', node.path)}><Icon name="pencil" />Edit group</button>}
         {canEdit && <button type="button" class="rg-btn" onClick={() => ctl.openDrawer('new', node.path)}><Icon name="folder" />{isRoot ? 'New group' : 'New subgroup'}</button>}
         <a class="rg-btn rg-btn-primary" href={`https://github.com/organizations/${s.org}/repositories/new${q}`}>New repository</a>

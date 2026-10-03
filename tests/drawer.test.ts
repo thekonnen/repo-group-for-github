@@ -226,12 +226,12 @@ describe('New group and subgroup (F6)', () => {
   it('root says New group; a group page says New subgroup', async () => {
     await open('');
     await vi.waitFor(() => expect(btn('New group')).toBeTruthy());
-    expect($$('.rg-g-actions button').map((b) => b.textContent!.trim())).toEqual(['New group']); // no Edit group on the root
+    expect($$('.rg-g-actions button').map((b) => b.textContent!.trim())).toEqual(['Edit YAML', 'New group']); // no Edit group on the root
     mounted!.dispose();
     document.documentElement.innerHTML = body;
     await open('#infra');
     await vi.waitFor(() => expect(btn('New subgroup')).toBeTruthy());
-    expect($$('.rg-g-actions button').map((b) => b.textContent!.trim())).toEqual(['Edit group', 'New subgroup']);
+    expect($$('.rg-g-actions button').map((b) => b.textContent!.trim())).toEqual(['Edit YAML', 'Edit group', 'New subgroup']);
   });
   it('creates a subgroup under the current group and expands its parent', async () => {
     const fc = await open('', {

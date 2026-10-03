@@ -6,10 +6,11 @@ import { call } from '../../github/client';
 import type { Call } from '../../github/client';
 import { waitFor } from '../../github/navigation';
 import { findCreateButton, findOwnerLogin, locateNewRepo, readRepoName } from '../../github/selectors';
-import { filedMessage } from '../../core/newrepo';
+import { collaboratorsUrl, failedTeamsText, filedMessage, teamPhrase } from '../../core/newrepo';
 import type { FiledResult } from '../../background/new-repo';
 import { createNewRepoController } from './controller';
 import { GroupField } from './GroupField';
+import { TeamsBlock } from './TeamsBlock';
 
 export interface Disposable {
   key: string;
@@ -56,7 +57,13 @@ export async function mountNewRepo(urlOrg: string | null, env?: Partial<NewRepoE
   host.dataset.rg = 'new-repo';
   host.hidden = true;
   found.after.after(host);
-  render(<GroupField ctl={ctl} />, host);
+  render(
+    <>
+      <GroupField ctl={ctl} />
+      <TeamsBlock ctl={ctl} />
+    </>,
+    host,
+  );
   const unsub = ctl.store.subscribe(() => (host.hidden = ctl.store.get().phase !== 'ready'));
 
   const resolveOrg = () => urlOrg ?? params.get('owner') ?? findOwnerLogin(doc);
@@ -119,11 +126,18 @@ export async function mountRepoToast(org: string, repo: string, env?: Partial<Ne
   const root = doc.createElement('div');
   root.className = 'rg-root';
   root.dataset.rg = 'repo-toast';
-  const failed = !!res.error;
-  const text = failed ? `Created ${org}/${repo}, but repo-groups.yml was not updated. ${res.error}` : filedMessage({ groupKey: res.groupKey, committed: res.committed, groupLabel: res.groupLabel });
+  const grants = res.grants ?? [];
+  const granted = grants.filter((g) => g.ok);
+  const teamFailures = grants.flatMap((g) => (g.ok ? [] : [{ team: g.team, message: g.message }]));
+  const failed = !!res.error || teamFailures.length > 0;
+  const base = res.error
+    ? `Created ${org}/${repo}, but repo-groups.yml was not updated. ${res.error}${granted.map((g) => ` · ${teamPhrase(g.team, g.permission)}`).join('')}`
+    : filedMessage({ groupKey: res.groupKey, committed: res.committed, groupLabel: res.groupLabel, granted });
+  const text = teamFailures.length ? `${base}. ${failedTeamsText(teamFailures)}` : base;
   render(
     <div class={`rg-toast${failed ? ' rg-err' : ''}`} role="status">
       <span>{text}</span>
+      {teamFailures.length > 0 && <a href={collaboratorsUrl(org, repo)}>Settings → Collaborators and teams</a>}
     </div>,
     root,
   );

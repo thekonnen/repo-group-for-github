@@ -24,7 +24,7 @@ function Sentence({ d, groups }: { d: Destination; groups: Group[] }) {
   }
 }
 
-const ExtTag = () => (
+export const ExtTag = () => (
   <span class="rg-ext-tag">
     <i />
     Repository Group

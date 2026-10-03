@@ -255,7 +255,7 @@ describe('submit (F9)', () => {
     expect(ev.defaultPrevented).toBe(false); // GitHub's form goes on
     const pending = f.log.filter((r) => r.type === 'newrepo:pending') as any[];
     expect(pending).toHaveLength(1);
-    expect(pending[0].entry).toEqual({ org: 'thekonnen', repo: 'konnen-n8n', groupPath: 'infra/dagu', explicit: true, teams: [] });
+    expect(pending[0].entry).toEqual({ org: 'thekonnen', repo: 'konnen-n8n', groupPath: 'infra/dagu', explicit: true, teams: [{ slug: 'konnen_team', permission: 'push' }] });
   });
   it('saves the normalized name, and an Automatic choice as not explicit', async () => {
     const f = await open();

@@ -1,7 +1,9 @@
-import { useMemo, useState } from 'preact/hooks';
-import { applyEdit, displayName, finalName, slugify, slugName, splitRules, validateDraft, type Edit } from '../../core/edit';
+import { useEffect, useMemo, useState } from 'preact/hooks';
+import { applyEdit, cleanTeams, displayName, finalName, slugify, slugName, splitRules, validateDraft, type Edit } from '../../core/edit';
 import { matches } from '../../core/glob';
+import { effectiveTeams } from '../../core/teams';
 import { byPush, nodeAt, type TreeModel } from '../../core/tree';
+import type { TeamTag } from '../../core/types';
 import { writeConfig } from '../../core/yaml-write';
 import { Drawer } from '../../ui/Drawer';
 import { Icon } from '../../ui/Icon';
@@ -9,6 +11,7 @@ import { LogoField, type LogoDraft } from '../logo-cropper/LogoField';
 import { useLogoSrc } from '../logos/logo-store';
 import type { Controller, SaveResult } from '../grouped-view/controller';
 import { useStore } from '../store';
+import { TeamsField } from '../teams/TeamsField';
 
 const MAX_LISTED = 200;
 
@@ -44,6 +47,16 @@ function Form({ ctl, mode, path, focusLogo }: { ctl: Controller; mode: 'edit' | 
   const [slugTouched, setSlugTouched] = useState(mode === 'edit');
   const [description, setDescription] = useState(node?.group.description ?? '');
   const [rules, setRules] = useState<string[]>(node?.group.match ?? []);
+  // Teams (F12): own tags are edited here; tags inherited from ancestors are shown read-only.
+  const [teams, setTeams] = useState<TeamTag[]>(node?.group.teams ?? []);
+  const tv = useStore(ctl.teams.store);
+  useEffect(() => void ctl.teams.ensureList(), []);
+  const teamsDirty = !!node && JSON.stringify(cleanTeams(teams)) !== JSON.stringify(node.group.teams);
+  const parentPath = mode === 'edit' ? path.slice(0, -1) : path;
+  const inherited = Object.entries(effectiveTeams(groups, parentPath))
+    .filter(([slug]) => !teams.some((t) => t.slug === slug))
+    .map(([slug, t]) => ({ slug, permission: t.permission, from: titled(model, t.from) }));
+  const savedSlugs = node ? Object.keys(effectiveTeams(groups, path)) : [];
   const [ruleInput, setRuleInput] = useState('');
   const [logo, setLogo] = useState<LogoDraft>({ kind: 'keep' });
   const currentLogo = useLogoSrc(ctl.logos, node?.group.logo);
@@ -64,6 +77,7 @@ function Form({ ctl, mode, path, focusLogo }: { ctl: Controller; mode: 'edit' | 
     finalName(slug) !== node.group.name ||
     description !== node.group.description ||
     allRules.join('\n') !== node.group.match.join('\n') ||
+    teamsDirty ||
     logo.kind !== 'keep';
 
   const onTitle = (v: string) => {
@@ -85,8 +99,8 @@ function Form({ ctl, mode, path, focusLogo }: { ctl: Controller; mode: 'edit' | 
   const logoChange = logo.kind === 'png' ? { png: logo.png } : logo.kind === 'remove' ? { remove: true as const } : undefined;
   const edit: Edit =
     mode === 'edit'
-      ? { kind: 'edit', path, name: slug, title, description, match: allRules, ...(logoChange && { logo: logoChange }) }
-      : { kind: 'new', parent: path, name: slug, title, description, match: allRules, ...(logoChange && { logo: logoChange }) };
+      ? { kind: 'edit', path, name: slug, title, description, match: allRules, ...(logoChange && { logo: logoChange }), ...(teamsDirty ? { teams } : {}) }
+      : { kind: 'new', parent: path, name: slug, title, description, match: allRules, ...(logoChange && { logo: logoChange }), ...(teams.length ? { teams } : {}) };
 
   const submit = async (create = false) => {
     setTouched(true);
@@ -151,6 +165,18 @@ function Form({ ctl, mode, path, focusLogo }: { ctl: Controller; mode: 'edit' | 
           <label for="rg-f-desc">Description</label>
           <input id="rg-f-desc" class="rg-input" value={description} autocomplete="off" placeholder="One short sentence" onInput={(e) => setDescription((e.target as HTMLInputElement).value)} />
         </div>
+
+        <TeamsField
+          org={s.org}
+          teams={teams}
+          onChange={(t) => (setTeams(t), setProblem(null))}
+          inherited={inherited}
+          list={tv.list}
+          loading={tv.listLoading}
+          customRoles={tv.customRoles ? Object.keys(tv.customRoles) : undefined}
+          onSync={mode === 'edit' && savedSlugs.length ? () => void ctl.teams.openSync({ teams: savedSlugs, groupKey: path.join('/') }) : undefined}
+          syncNote={teamsDirty ? 'Save your team changes first. Sync access uses the saved file.' : null}
+        />
 
         <div class="rg-field">
           <label for="rg-f-rule">Match rules</label>

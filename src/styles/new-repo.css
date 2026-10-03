@@ -17,6 +17,11 @@
 .rg-root .rg-pop li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
 .rg-root .rg-pop li:hover, .rg-root .rg-pop li.rg-active { background: var(--rg-selected); }
 .rg-root .rg-pop li[aria-selected="true"] { font-weight: 600; }
+.rg-root .rg-pop li.rg-auto-pick { background: var(--rg-accent-subtle); font-weight: 600; }
+.rg-root .rg-pop li.rg-auto-pick.rg-active { background: var(--rg-selected); }
+.rg-root .rg-pop li .rg-auto-rule { margin-left: auto; font-size: 12px; font-weight: 400; color: var(--rg-muted); white-space: nowrap; }
+.rg-root .rg-pop li .rg-auto-rule + .rg-count { margin-left: 8px; }
+.rg-root .rg-pop li .rg-auto-rule code { font-family: var(--rg-mono); font-size: 11px; padding: 1px 4px; border-radius: 4px; background: var(--rg-bg-subtle); border: 1px solid var(--rg-border-muted); color: var(--rg-fg); }
 .rg-root .rg-pop li .rg-count { margin-left: auto; color: var(--rg-muted); font-size: 12px; font-weight: 400; font-variant-numeric: tabular-nums; }
 .rg-root .rg-pop li .rg-tick { width: 16px; color: var(--rg-accent); display: inline-flex; }
 .rg-root .rg-pop .rg-sep { height: 1px; background: var(--rg-border); margin: 4px 0; padding: 0; pointer-events: none; }

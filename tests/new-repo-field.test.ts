@@ -180,6 +180,41 @@ describe('picker (F9)', () => {
     expect($$('#rg-nr-pop [role="option"]')[5].getAttribute('aria-selected')).toBe('true');
   });
 
+  it('with a rule hit, opening the list marks and focuses the group the rules chose', async () => {
+    await open();
+    await ready();
+    type('dags-new');
+    await vi.waitFor(() => expect(dest()).toContain('Lands here'));
+    const btn = $('#rg-nr-picker') as HTMLButtonElement;
+    btn.click();
+    await vi.waitFor(() => expect(pop().hidden).toBe(false));
+    expect(active()).toBe('rg-opt-infra_dagu');
+    const row = $('#rg-opt-infra_dagu')!;
+    expect(row.classList.contains('rg-auto-pick')).toBe(true);
+    expect(row.getAttribute('aria-current')).toBe('true');
+    expect(row.textContent).toContain('matched by dags-*');
+    expect(row.querySelector('.rg-tick svg')).toBeTruthy();
+    expect($('#rg-opt-auto')!.getAttribute('aria-selected')).toBe('true'); // single selection: still Automatic
+    expect($$('#rg-nr-pop .rg-auto-pick')).toHaveLength(1);
+    // picking another group removes the marker and selects that group
+    key(pop(), 'ArrowDown');
+    await vi.waitFor(() => expect(active()).toBe('rg-opt-infra_authentik'));
+    key(pop(), 'Enter');
+    await vi.waitFor(() => expect(pop().hidden).toBe(true));
+    expect($$('#rg-nr-pop .rg-auto-pick')).toHaveLength(0);
+    expect($('#rg-opt-infra_authentik')!.getAttribute('aria-selected')).toBe('true');
+  });
+  it('with no rule hit nothing is marked and the cursor starts on Automatic', async () => {
+    await open();
+    await ready();
+    type('brand-new');
+    await vi.waitFor(() => expect(dest()).toContain('Not in any group yet.'));
+    ($('#rg-nr-picker') as HTMLButtonElement).click();
+    await vi.waitFor(() => expect(pop().hidden).toBe(false));
+    expect(active()).toBe('rg-opt-auto');
+    expect($$('#rg-nr-pop .rg-auto-pick')).toHaveLength(0);
+  });
+
   it('Escape closes without changing the pick, Tab closes, a click picks', async () => {
     await open();
     await ready();

@@ -216,6 +216,18 @@ describe('message handler', () => {
     expect(kv.data.get('rg:auth')).toMatchObject({ token: 'gho_secret' });
     expect(await h({ type: 'auth:signout' })).toMatchObject({ ok: true, data: { signedIn: false } });
   });
+  it('keeps the pending device flow so a reopened popup can resume polling', async () => {
+    const f = fakeFetch(
+      (u) => (u.pathname === '/login/device/code' ? { json: { device_code: 'dc', user_code: 'AB-CD', verification_uri: 'https://github.com/login/device', expires_in: 900, interval: 5 } } : undefined),
+      (u) => (u.pathname === '/login/oauth/access_token' ? { json: { access_token: 'gho_x' } } : undefined),
+      (u) => (u.pathname === '/user' ? { json: { login: 'alysson', avatar_url: '' } } : undefined),
+    );
+    const h = createHandler({ fetch: f.fetch, kv: memoryKV(), index: memoryIndexStore(), clientId: 'c' });
+    await h({ type: 'auth:start' });
+    expect(await h({ type: 'auth:status' })).toMatchObject({ ok: true, data: { signedIn: false, flow: { deviceCode: 'dc', userCode: 'AB-CD' } } });
+    await h({ type: 'auth:poll', deviceCode: 'dc', interval: 5 });
+    expect(await h({ type: 'auth:status' })).toMatchObject({ ok: true, data: { signedIn: true, flow: undefined } });
+  });
   it('validates a pasted token and returns errors with a hint', async () => {
     const f = fakeFetch((u) => (u.pathname === '/user' ? { status: 401, json: {} } : undefined));
     const h = createHandler({ fetch: f.fetch, kv: memoryKV(), index: memoryIndexStore(), clientId: 'c' });

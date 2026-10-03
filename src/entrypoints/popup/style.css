@@ -6,9 +6,9 @@ h1 { font-size: 14px; margin: 0; display: flex; gap: 8px; align-items: center; }
 h1 img { width: 20px; height: 20px; }
 .row { display: flex; gap: 8px; align-items: center; }
 .row img.av { width: 24px; height: 24px; border-radius: 50%; }
-.muted { color: var(--muted); font-size: 12px; }
+.muted { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .err { color: var(--err); font-size: 12px; }
 .code { font: 600 22px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 2px; text-align: center; padding: 8px; border: 1px solid var(--bd); border-radius: 6px; }
-button { height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--bd); background: transparent; color: var(--fg); font: inherit; cursor: pointer; }
+button { height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--bd); background: transparent; color: var(--fg); font: inherit; cursor: pointer; white-space: nowrap; flex: none; }
 button.primary { background: #1f883d; border-color: #1f883d; color: #fff; }
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

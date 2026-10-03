@@ -5,7 +5,7 @@ import type { Request, Response } from '../../github/messages';
 
 const send = <T,>(req: Request): Promise<Response<T>> => browser.runtime.sendMessage(req);
 
-interface Status { signedIn: boolean; login?: string; avatarUrl?: string; kind?: string }
+interface Status { signedIn: boolean; login?: string; avatarUrl?: string; kind?: string; flow?: Flow }
 interface Flow { deviceCode: string; userCode: string; verificationUri: string; interval: number }
 
 function App() {
@@ -15,11 +15,19 @@ function App() {
   const timer = useRef<number | undefined>(undefined);
 
   useEffect(() => {
-    send<Status>({ type: 'auth:status' }).then((r) => r.ok && setStatus(r.data));
+    send<Status>({ type: 'auth:status' }).then((r) => {
+      if (!r.ok) return;
+      setStatus(r.data);
+      // The popup closes when the GitHub tab opens: pick the pending sign-in up again.
+      if (!r.data.signedIn && r.data.flow) {
+        setFlow(r.data.flow);
+        poll(r.data.flow, 0);
+      }
+    });
     return () => clearTimeout(timer.current);
   }, []);
 
-  const poll = (f: Flow) => {
+  const poll = (f: Flow, delay = f.interval * 1000) => {
     timer.current = window.setTimeout(async () => {
       const r = await send<any>({ type: 'auth:poll', deviceCode: f.deviceCode, interval: f.interval });
       if (!r.ok) return setError(r.error.message), setFlow(null);
@@ -27,7 +35,7 @@ function App() {
       if (r.data.state === 'error') return setError(r.data.message), setFlow(null);
       setFlow(null);
       setStatus(r.data);
-    }, f.interval * 1000);
+    }, delay);
   };
 
   const start = async () => {

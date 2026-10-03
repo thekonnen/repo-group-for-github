@@ -24,19 +24,31 @@ export function toErrorInfo(e: unknown): ErrorInfo {
 export function createHandler(deps: Deps) {
   const clientId = deps.clientId ?? GITHUB_CLIENT_ID;
   const client = createClient({ fetch: deps.fetch, getToken: async () => (await loadAuth(deps.kv))?.token ?? null });
+  const FLOW_KEY = 'rg:device-flow';
+  // The popup closes as soon as the user opens github.com/login/device, so the pending code lives here
+  // and the popup resumes polling with it when it is opened again.
+  const pendingFlow = async () => {
+    const f = await deps.kv.get<{ deviceCode: string; userCode: string; verificationUri: string; interval: number; expiresAt: number }>(FLOW_KEY);
+    if (f && f.expiresAt > Date.now()) return f;
+    if (f) await deps.kv.remove(FLOW_KEY);
+    return undefined;
+  };
   const tokenKind = async () => (await loadAuth(deps.kv))?.kind ?? 'oauth';
 
   async function handle(req: Request): Promise<unknown> {
     switch (req.type) {
       case 'auth:status':
-        return { ...publicAuth(await loadAuth(deps.kv)), appSlug: APP_SLUG };
+        return { ...publicAuth(await loadAuth(deps.kv)), appSlug: APP_SLUG, flow: await pendingFlow() };
       case 'auth:start': {
         const d = await startDeviceFlow(deps.fetch, clientId);
+        await deps.kv.set(FLOW_KEY, { deviceCode: d.deviceCode, userCode: d.userCode, verificationUri: d.verificationUri, interval: d.interval, expiresAt: Date.now() + d.expiresIn * 1000 });
         return { deviceCode: d.deviceCode, userCode: d.userCode, verificationUri: d.verificationUri, expiresIn: d.expiresIn, interval: d.interval };
       }
       case 'auth:poll': {
         const r = await pollDeviceFlow(deps.fetch, clientId, req.deviceCode, req.interval);
+        if (r.state === 'error') await deps.kv.remove(FLOW_KEY);
         if (r.state !== 'done') return r;
+        await deps.kv.remove(FLOW_KEY);
         const who = await describeToken(deps.fetch, r.token);
         await saveAuth(deps.kv, { token: r.token, kind: 'oauth', ...who });
         return { state: 'done', ...publicAuth(await loadAuth(deps.kv)) };

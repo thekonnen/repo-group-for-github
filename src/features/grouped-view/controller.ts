@@ -156,7 +156,11 @@ export function createController(org: string, env: Env) {
   async function init() {
     const prefs = await env.call<Partial<OrgPrefs>>({ type: 'prefs:get', org }).catch(() => ({}) as Partial<OrgPrefs>);
     if (prefs.expanded) store.set({ expanded: new Set(prefs.expanded), expandedTouched: true });
-    if (!hasGithubFilter(env.location.search) && prefs.view) store.set({ view: prefs.view });
+    if (!hasGithubFilter(env.location.search)) {
+      // A saved view wins; otherwise Options > "Show grouped view by default" (default on) decides.
+      const view = prefs.view ?? (prefs.groupedByDefault === false ? 'list' : undefined);
+      if (view) store.set({ view });
+    }
     const auth = await env.call<{ signedIn: boolean }>({ type: 'auth:status' }).catch(() => ({ signedIn: false }));
     if (disposed) return;
     if (!auth.signedIn) return void store.set({ phase: 'signed-out' });

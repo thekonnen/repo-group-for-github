@@ -25,12 +25,18 @@ export type Request =
   | { type: 'yaml:validate'; org: string; text: string }
   | { type: 'org:apply-yaml'; org: string; text: string; baseSha: string | null; changes: number }
   | { type: 'prefs:get'; org: string }
-  | { type: 'prefs:set'; org: string; prefs: Partial<OrgPrefs> };
+  | { type: 'prefs:set'; org: string; prefs: Partial<OrgPrefs> }
+  | { type: 'orgs:list'; force?: boolean }
+  | { type: 'cache:clear' }
+  | { type: 'settings:get' }
+  | { type: 'settings:set'; settings: Partial<{ refreshMinutes: number }> };
 
 /** Per-org view preferences. The content script never touches storage; it asks the background. */
 export interface OrgPrefs {
   view: 'grouped' | 'list';
   expanded: string[];
+  /** Options > "Show grouped view by default". Used when the org has no saved view. Default true. */
+  groupedByDefault?: boolean;
 }
 
 /** The org's repo-groups.yml, parsed in the background so the page script stays small. */

@@ -1,4 +1,4 @@
-import type { FetchLike } from './api';
+import { explainTokenRejection, GitHubError, type FetchLike } from './api';
 import type { KV } from './kv';
 
 const TOKEN_KEY = 'rg:auth';
@@ -73,7 +73,15 @@ export const signOut = (kv: KV): Promise<void> => kv.remove(TOKEN_KEY);
 /** Fills login and avatar for a token (also validates a pasted personal access token). */
 export async function describeToken(fetch: FetchLike, token: string): Promise<{ login: string; avatarUrl: string }> {
   const res = await fetch('https://api.github.com/user', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' } });
-  if (!res.ok) throw new Error(res.status === 401 ? 'GitHub rejected this token.' : `GitHub answered ${res.status}.`);
+  if (!res.ok) {
+    // Org policy errors (SAML SSO, blocked token types) carry a message the UI turns into advice (F15).
+    let msg = '';
+    try {
+      msg = String((await res.json())?.message ?? '');
+    } catch {}
+    if (explainTokenRejection(msg)) throw new GitHubError(res.status, res.status === 403 ? 'forbidden' : 'auth', msg);
+    throw new Error(res.status === 401 ? 'GitHub rejected this token.' : `GitHub answered ${res.status}.`);
+  }
   const u = await res.json();
   return { login: u.login, avatarUrl: u.avatar_url };
 }

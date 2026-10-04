@@ -70,6 +70,10 @@ The extension then downloads that one file instead of paginating, and confirms e
 
 **Privacy warning:** everyone who can read `<org>/.github` can read the names and descriptions of **all** repositories listed in `repo-index.json`, including private ones they cannot open. Only enable this in organizations where members already see every repository.
 
+## Context for AI agents
+
+On any group page, the **Context for agents** menu in the header copies a Markdown "context pack" of the group (path, description, match rules, team names, every repository in the group and its subgroups with URL and clone URL, and a short "how these repositories relate" section built only from the data we have; anything unknown is marked unknown). **Download .md** saves it as `<org>-<group-path>-context.md`; **Copy AGENTS.md snippet** copies a short block to paste into a repository's `AGENTS.md` or `CLAUDE.md`. The pack is capped at 8,000 characters, with a note and a count of omitted repositories. It uses only repositories in your own index, makes no network calls and commits nothing. The generator is `src/core/agent-context.ts`.
+
 ## Repositories that are not in any group
 
 When some repositories match no group, the top-level page shows a callout ("12 repositories are not in any group yet") with **Review ungrouped** (opens the Ungrouped tab) and **Start with AI** (opens the YAML editor scoped to "Ungrouped only"), and the sidebar shows a count badge. Ungrouped repositories that appeared since your last visit get a **New** label; the set already seen is kept per org in `storage.local` (`rg:prefs:<org>`, key `unassignedSeen`). It is all derived from the local index and placement, with no extra API calls; archived repositories are never counted. Dismissing the callout hides it for the browser session. Nothing is shown when every repository is grouped.

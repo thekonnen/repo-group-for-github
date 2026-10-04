@@ -5,11 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mountOrgRepos } from '../src/features/mount';
 import type { Request } from '../src/github/messages';
 import type { RepoWork, WorkItem } from '../src/core/work-items';
+import { clearWorkCache } from '../src/features/grouped-view/WorkPanel';
 import { fakeCall } from './page-helpers';
 
 const html = readFileSync(join(process.cwd(), 'tests/fixtures/org-repos.html'), 'utf8').replace(/<!--[\s\S]*?-->/, '');
 
 beforeEach(() => {
+  clearWorkCache();
   document.documentElement.innerHTML = html;
   window.history.replaceState(null, '', '/orgs/thekonnen/repositories#infra/dagsrv');
 });

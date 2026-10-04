@@ -1,5 +1,6 @@
+import { isPropRule, parsePropRule } from './glob';
 import { logoPath } from './logo';
-import { findGroup, placement } from './placement';
+import { findGroup, keyOf, pickIn, placement, postOrder, ruleFor } from './placement';
 import type { Group, TeamTag } from './types';
 
 /** The single change behind Edit group / New group. Re-applied to a fresh file when a commit conflicts (§7). */
@@ -10,7 +11,9 @@ export type Edit =
   /** F9: adds the exact repo name to the match list of an existing group. */
   | { kind: 'file'; path: string[]; repo: string }
   /** Removes a group and all its subgroups from the file. No repository is touched: they fall back to the other rules. */
-  | { kind: 'delete'; path: string[] };
+  | { kind: 'delete'; path: string[] }
+  /** A4: moves repositories to a group ([] = Ungrouped), in one commit. Exact names only: it never edits patterns. */
+  | { kind: 'move'; repos: string[]; to: string[] };
 
 /** A logo change (F7): a new 192x192 PNG (base64, committed with the YAML in one commit) or "use the letter". */
 export type LogoChange = { png: string } | { remove: true };
@@ -65,7 +68,9 @@ export const slugName = (v: string): string => v.toLowerCase().replace(/[^a-z0-9
 export const finalName = (v: string): string => slugName(v.trim()).replace(/^-+|-+$/g, '');
 
 /** Error text for the drawer, or null when the draft is valid. */
-export function validateDraft(groups: Group[], d: { mode: 'edit' | 'new'; path: string[]; name: string; title?: string }): string | null {
+export function validateDraft(groups: Group[], d: { mode: 'edit' | 'new'; path: string[]; name: string; title?: string; match?: string[] }): string | null {
+  const bad = d.match?.find((r) => isPropRule(r) && !parsePropRule(r));
+  if (bad) return `The rule "${bad}" needs a property and a value, like prop:client=Acme.`;
   const name = finalName(d.name);
   if (!name) return (d.title ?? '').trim() ? 'Could not make a slug from this name. Type one in the Slug field.' : 'Name is required.';
   const parent = d.mode === 'edit' ? d.path.slice(0, -1) : d.path;
@@ -82,6 +87,81 @@ const any = (g: Group, test: (x: Group) => boolean): boolean => test(g) || g.gro
 
 /** The rules of a group and of all its subgroups, the group's own first. */
 const allRules = (g: Group): string[] => [...g.match, ...g.groups.flatMap(allRules)];
+
+const sameName = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
+
+export interface MoveResult {
+  groups: Group[];
+  /** False when the tree already says it: nothing to commit. */
+  changed: boolean;
+  /** Groups the exact name was removed from (keys). */
+  removedFrom: string[];
+  /** After the move a pattern still places the repo somewhere other than `to` (only possible for Ungrouped). */
+  stillCaught?: { key: string; rule: string };
+}
+
+/**
+ * A4: puts the exact repo name in the `match` of `to` and takes that exact name out of every other group
+ * (§5.3: exact names win, so the name at the destination is enough even when a pattern caught it before).
+ * `to` = [] means Ungrouped: only the exact names are removed, and `stillCaught` says when a pattern keeps it in a group.
+ * Never mutates the input.
+ */
+export function moveRepo(groups: Group[], repo: string, to: string[]): MoveResult | { error: string } {
+  const next = clone(groups);
+  const dest = to.length ? findGroup(next, to) : null;
+  if (to.length && !dest) return { error: `The group "${to.join('/')}" no longer exists. Reload the page and try again.` };
+  const isExactRule = (r: string) => !r.includes('*') && sameName(r, repo);
+  const removedFrom: string[] = [];
+  let changed = false;
+  for (const n of postOrder(next)) {
+    if (n.group === dest || !n.group.match.some(isExactRule)) continue;
+    n.group.match = n.group.match.filter((r) => !isExactRule(r));
+    removedFrom.push(n.key);
+    changed = true;
+  }
+  if (dest && !dest.match.some(isExactRule)) (dest.match.push(repo), (changed = true));
+  const out: MoveResult = { groups: next, changed, removedFrom };
+  if (!dest) {
+    const hit = pickIn(postOrder(next), repo);
+    const rule = hit && ruleFor(hit.group, repo);
+    if (hit && rule) out.stillCaught = { key: hit.key, rule };
+  }
+  return out;
+}
+
+export interface MovePlan {
+  groups: Group[];
+  /** True when at least one repository needs a change in the file. */
+  changed: boolean;
+  /** Repositories that change (these go into the commit). */
+  moved: string[];
+  /** Repositories already placed at the destination: skipped. */
+  already: string[];
+  /** Repositories moved to Ungrouped that a pattern still places in a group. */
+  stillCaught: { repo: string; key: string; rule: string }[];
+}
+
+/** A4: `moveRepo` for several repositories, folded into one tree (one commit). Never mutates the input. */
+export function moveRepos(groups: Group[], repos: string[], to: string[]): MovePlan | { error: string } {
+  const dest = to.join('/');
+  const names = [...new Set(repos)];
+  const now = placement(groups, names.map((name) => ({ name })));
+  const out: MovePlan = { groups: clone(groups), changed: false, moved: [], already: [], stillCaught: [] };
+  if (to.length && !findGroup(groups, to)) return { error: `The group "${dest}" no longer exists. Reload the page and try again.` };
+  for (const repo of names) {
+    if (now[repo] === dest) {
+      out.already.push(repo);
+      continue;
+    }
+    const r = moveRepo(out.groups, repo, to);
+    if ('error' in r) return r;
+    out.groups = r.groups;
+    if (r.changed) out.moved.push(repo);
+    if (r.stillCaught) out.stillCaught.push({ repo, ...r.stillCaught });
+  }
+  out.changed = out.moved.length > 0;
+  return out;
+}
 
 /** Applies an edit to a tree (never mutates the input). Logo, teams and subgroups of an edited group are kept. */
 export function applyEdit(groups: Group[], edit: Edit): { groups: Group[] } | { error: string } {
@@ -100,6 +180,10 @@ export function applyEdit(groups: Group[], edit: Edit): { groups: Group[] } | { 
       for (const rule of allRules(gone)) if (!have.has(rule.toLowerCase())) (parent.match.push(rule), have.add(rule.toLowerCase()));
     }
     return { groups: next };
+  }
+  if (edit.kind === 'move') {
+    const r = moveRepos(groups, edit.repos, edit.to);
+    return 'error' in r ? r : { groups: r.groups };
   }
   if (edit.kind === 'file') {
     const t = findGroup(next, edit.path);
@@ -138,11 +222,12 @@ export function applyEdit(groups: Group[], edit: Edit): { groups: Group[] } | { 
 }
 
 export const editPath = (e: Edit): string =>
-  e.kind === 'file' || e.kind === 'delete' ? e.path.join('/') : (e.kind === 'new' ? [...e.parent, finalName(e.name)] : [...e.path.slice(0, -1), finalName(e.name)]).join('/');
+  e.kind === 'move' ? keyOf(e.to) : e.kind === 'file' || e.kind === 'delete' ? e.path.join('/') : (e.kind === 'new' ? [...e.parent, finalName(e.name)] : [...e.path.slice(0, -1), finalName(e.name)]).join('/');
 
 /** `chore(repo-groups): edit group infra/dagsrv` (§7). */
 export function commitMessage(e: Edit): string {
   if (e.kind === 'file') return `chore(repo-groups): file ${e.repo} in ${e.path.join('/')}`;
+  if (e.kind === 'move') return `chore(repo-groups): move ${e.repos.length === 1 ? e.repos[0] : `${e.repos.length} repositories`} to ${e.to.length ? e.to.join('/') : 'ungrouped'}`;
   if (e.kind === 'delete') return `chore(repo-groups): delete ${e.path.length > 1 ? 'subgroup' : 'group'} ${e.path.join('/')}${e.path.length > 1 ? ' (rules moved to the parent group)' : ''}`;
   if (e.kind === 'new') return `chore(repo-groups): add ${e.parent.length ? 'subgroup' : 'group'} ${editPath(e)}${hasPng(e) ? ' with logo' : ''}`;
   const from = e.path.join('/');

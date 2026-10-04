@@ -147,3 +147,26 @@ describe('fork parents in the index', () => {
     expect(reconcile(snap.repos, [{ name: 'f1', fork: true }])[0].parent).toBe('up/f1');
   });
 });
+
+describe('fork-of: with topic: and prop: rules', () => {
+  const cfg = read('groups:\n  - name: upstream\n    match: ["fork-of:macfuse"]\n  - name: backend\n    match: ["topic:backend"]\n  - name: acme\n    match: ["prop:client=Acme"]\n').config!;
+  const order = postOrder(cfg.groups);
+  it('each kind places a repo, whether it gets the repo object or name, topics, props', () => {
+    expect(pickIn(order, { name: 'osxfuse', fork: true, parent: 'macfuse/osxfuse' })?.key).toBe('upstream');
+    expect(pickIn(order, { name: 'x', topics: ['backend'] })?.key).toBe('backend');
+    expect(pickIn(order, { name: 'x', props: { client: 'Acme' } })?.key).toBe('acme');
+    expect(pickIn(order, 'x', ['backend'])?.key).toBe('backend');
+    expect(pickIn(order, 'x', undefined, { client: 'Acme' })?.key).toBe('acme');
+    expect(pickIn(order, 'osxfuse')).toBeNull(); // a name alone cannot know the upstream
+    expect(ruleFor(cfg.groups[1], { name: 'x', topics: ['backend'] })).toBe('topic:backend');
+  });
+  it('placement reads fork, parent, topics and props from the repo', () => {
+    const p = placement(cfg.groups, [
+      { name: 'a', fork: true, parent: 'macfuse/a' },
+      { name: 'b', topics: ['backend'] },
+      { name: 'c', props: { client: 'acme' } },
+      { name: 'd' },
+    ]);
+    expect(p).toEqual({ a: 'upstream', b: 'backend', c: 'acme', d: '' });
+  });
+});

@@ -44,7 +44,7 @@ export type TeamAccess = Record<string, Record<string, Permission>>; // slug -> 
  */
 export function syncPlan(
   groups: Group[],
-  repos: Pick<RepoInfo, 'name' | 'archived' | 'fork' | 'parent'>[],
+  repos: Pick<RepoInfo, 'name' | 'archived' | 'fork' | 'parent' | 'topics' | 'props'>[],
   access: TeamAccess,
   teamSlug?: string,
   customBase?: Record<string, string>,
@@ -71,7 +71,7 @@ export function syncPlan(
 /** Repos a team can access that sit in groups not tagged for it (informational banner). */
 export function untaggedAccess(
   groups: Group[],
-  repos: Pick<RepoInfo, 'name' | 'fork' | 'parent'>[],
+  repos: Pick<RepoInfo, 'name' | 'fork' | 'parent' | 'topics' | 'props'>[],
   access: TeamAccess,
   teamSlug: string,
 ): string[] {

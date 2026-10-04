@@ -2,7 +2,7 @@ import { ago } from '../../core/time';
 import { buildHash, parseHash } from '../../core/layers';
 import type { IndexMeta } from '../../core/index-sync';
 import type { Access } from '../../core/access';
-import { editLogoPath, finalName, pngOf, type Edit } from '../../core/edit';
+import { editLogoPath, finalName, moveRepos as planMoves, type MovePlan, pngOf, type Edit } from '../../core/edit';
 import type { Group } from '../../core/types';
 import { writeConfig } from '../../core/yaml-write';
 import { proposeForkGroups, withForkGroups, type ForkProposal } from '../../core/fork-groups';
@@ -15,6 +15,7 @@ import { DETAILS_MAX_REPOS, type DetailsMap } from '../../core/details';
 import { createLogoStore } from '../logos/logo-store';
 import { createStore, type Store } from '../store';
 import { createTeamsController } from '../teams/teams-controller';
+import { createMembersController } from '../members/members-controller';
 
 export interface SignIn {
   deviceCode: string;
@@ -38,7 +39,7 @@ export interface State {
   view: 'grouped' | 'list';
   expanded: Set<string>;
   expandedTouched: boolean;
-  tab: 'items' | 'ungrouped' | 'rules' | 'all';
+  tab: 'items' | 'ungrouped' | 'rules' | 'all' | 'members';
   sort: SortKey;
   query: string;
   access: Access | null;
@@ -47,6 +48,18 @@ export interface State {
   drawer: { mode: 'edit' | 'new'; path: string[]; focus?: 'logo' } | null;
   yaml: { text: string } | null;
   toast: { text: string; kind: 'ok' | 'error' } | null;
+  /** A4: repositories ticked in the list. Cleared after a commit and when the group, tab or search changes. */
+  selected: string[];
+  /** A4: a move waiting for the person's OK. Nothing is committed until `confirmMove`. */
+  pendingMove: PendingMove | null;
+}
+
+export interface PendingMove {
+  /** The repositories that were asked for (including the ones already there). */
+  repos: string[];
+  to: string[];
+  /** What the commit would do; `error` when the destination is gone. */
+  plan: Pick<MovePlan, 'moved' | 'already' | 'stillCaught'> & { error?: string };
 }
 
 export type SaveResult = { ok: true } | { ok: false; message: string };
@@ -107,8 +120,11 @@ export function createController(org: string, env: Env) {
     drawer: null,
     yaml: null,
     toast: null,
+    selected: [],
+    pendingMove: null,
   });
   const teams = createTeamsController({ org, team: env.team, teamName: env.teamName, call: env.call, store, afterAccess: () => applyDefaults() });
+  const members = createMembersController({ org, call: env.call });
   // Logos load through the background; every config change asks for the references it has not seen yet (F7).
   const logos = createLogoStore(env.call, org);
   let logoCfg: unknown;
@@ -221,14 +237,14 @@ export function createController(org: string, env: Env) {
     toastTimer = setTimeout(() => store.set({ toast: null }), 6000);
   }
 
-  async function save(edit: Edit, created = false): Promise<SaveResult> {
+  async function save(edit: Edit, created = false, toast?: string): Promise<SaveResult> {
     try {
       const r = await env.call<any>({ type: 'org:edit', org, edit });
       if (r.status === 'needs-repo') {
         // <owner>/.github does not exist yet: create it (private) and save again, in the same click.
         if (created) return { ok: false, message: `Could not create ${org}/.github.` };
         await env.call({ type: 'org:create-dotgithub', org });
-        return save(edit, true);
+        return save(edit, true, toast);
       }
       const before = store.get();
       const logoFile = editLogoPath(edit);
@@ -264,11 +280,45 @@ export function createController(org: string, env: Env) {
       next.expandedTouched = true;
       store.set(next);
       savePrefs({ expanded: [...expanded] });
-      showToast(edit.kind === 'delete' ? `Deleted ${edit.path.join('/')} · committed to ${org}/.github/repo-groups.yml` : `Committed to ${org}/.github/repo-groups.yml`);
+      showToast(toast ?? (edit.kind === 'delete' ? `Deleted ${edit.path.join('/')} · committed to ${org}/.github/repo-groups.yml` : `Committed to ${org}/.github/repo-groups.yml`));
       return { ok: true };
     } catch (e) {
       return { ok: false, message: infoOf(e).message };
     }
+  }
+
+  const destLabel = (to: string[]) => (to.length ? to.join(' / ') : 'Ungrouped');
+
+  /**
+   * A4: stages a move of one or more repositories to a group ([] = Ungrouped) and opens the confirmation. Nothing is
+   * committed here.
+   */
+  function stageMove(repos: string[], to: string[]) {
+    const s = store.get();
+    const groups = s.config && s.config.exists && s.config.config ? s.config.config.groups : null;
+    if (!groups || !repos.length) return;
+    const plan = planMoves(groups, repos, to);
+    store.set({
+      pendingMove: { repos: [...new Set(repos)], to, plan: 'error' in plan ? { moved: [], already: [], stillCaught: [], error: plan.error } : { moved: plan.moved, already: plan.already, stillCaught: plan.stillCaught } },
+    });
+  }
+
+  /**
+   * A4: the OK of the confirmation: one commit for every repository that changes. The toast only appears after the commit
+   * succeeded; on failure the message goes back to the dialog, which stays open. A conflict is re-applied once by the
+   * background (§7).
+   */
+  async function confirmMove(): Promise<SaveResult> {
+    const p = store.get().pendingMove;
+    if (!p) return { ok: true };
+    if (p.plan.error) return { ok: false, message: p.plan.error };
+    if (!p.plan.moved.length) return { ok: false, message: 'Nothing to commit.' };
+    const n = p.plan.moved.length;
+    const what = n === 1 ? p.plan.moved[0] : `${n} repositories`;
+    const warn = p.plan.stillCaught.length ? ` · ${p.plan.stillCaught.map((c) => `${c.repo} is still matched by ${c.rule} in ${c.key}`).join('; ')}` : '';
+    const r = await save({ kind: 'move', repos: p.plan.moved, to: p.to }, false, `Moved ${what} to ${destLabel(p.to)} · committed to ${org}/.github/repo-groups.yml${warn}`);
+    if (r.ok) store.set({ pendingMove: null, selected: [] });
+    return r;
   }
 
   let detailsKey = '';
@@ -355,6 +405,7 @@ export function createController(org: string, env: Env) {
   return {
     store,
     teams,
+    members,
     logos,
     /** Loads an image from a link in the background (CORS-free, asks for the site's permission). Resolves to a data URL. */
     fetchLogoLink: async (url: string) => (await env.call<{ dataUrl: string }>({ type: 'logo:fetch-link', url })).dataUrl,
@@ -381,10 +432,25 @@ export function createController(org: string, env: Env) {
     dispose() {
       disposed = true;
       teams.dispose();
+      members.dispose();
       clearTimeout(prefsTimer);
       clearTimeout(toastTimer);
     },
     save,
+    stageMove,
+    confirmMove,
+    cancelMove: () => store.set({ pendingMove: null }),
+    toggleSelect(name: string) {
+      const cur = store.get().selected;
+      store.set({ selected: cur.includes(name) ? cur.filter((n) => n !== name) : [...cur, name] });
+    },
+    selectAll: (names: string[]) => store.set({ selected: [...new Set(names)] }),
+    clearSelection: () => store.set({ selected: [] }),
+    /** A4: moving needs write access to the org file; the team page is a read-only view. */
+    canMove(): boolean {
+      const s = store.get();
+      return !!s.access?.canWriteOrg && !env.team && !!s.config && s.config.exists && !!s.config.config;
+    },
     savedText,
     openYaml(text?: string) {
       store.set({ drawer: null, yaml: { text: text ?? savedText() } });
@@ -435,13 +501,13 @@ export function createController(org: string, env: Env) {
       const path = r.layer === 'org' ? r.path : [];
       const m = model();
       const known = !m || !path.length || m.byKey.has(path.join('/'));
-      store.set({ path: known ? path : [], tab: 'items', query: '' });
+      store.set({ path: known ? path : [], tab: 'items', query: '', selected: [] });
     },
     go(path: string[]) {
       const hash = buildHash({ layer: 'org', path });
       env.history.pushState(null, '', env.location.pathname + env.location.search + hash);
       const wasList = store.get().view !== 'grouped';
-      store.set({ path, tab: 'items', query: '', view: 'grouped' });
+      store.set({ path, tab: 'items', query: '', view: 'grouped', selected: [] });
       if (wasList) savePrefs({ view: 'grouped' });
     },
     setView(view: 'grouped' | 'list') {
@@ -456,12 +522,12 @@ export function createController(org: string, env: Env) {
       clearTimeout(prefsTimer);
       prefsTimer = setTimeout(() => savePrefs({ expanded: [...expanded] }), 300);
     },
-    setTab: (tab: State['tab']) => store.set({ tab, query: '' }),
+    setTab: (tab: State['tab']) => store.set({ tab, query: '', selected: [] }),
     setSort(sort: SortKey) {
       store.set({ sort });
       savePrefs({ sort });
     },
-    setQuery: (query: string) => store.set({ query }),
+    setQuery: (query: string) => store.set(query === store.get().query ? { query } : { query, selected: [] }),
     updatedText: (meta: IndexMeta | null) => (meta?.lastIncrementalSync ? ago(meta.lastIncrementalSync) : ''),
   };
 }

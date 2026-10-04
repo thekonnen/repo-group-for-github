@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyEdit, commitMessage, editPath, moveRepo, type Edit } from '../src/core/edit';
+import { applyEdit, commitMessage, editPath, moveRepo, moveRepos, type Edit } from '../src/core/edit';
 import { findGroup, placement } from '../src/core/placement';
 import { example } from './fixtures';
 
@@ -91,12 +91,55 @@ describe('moveRepo (A4)', () => {
   });
 
   it('works as an Edit (re-applied to a fresh tree on conflict), with its commit message', () => {
-    const edit: Edit = { kind: 'move', repo: 'kite-dagsrv', to: ['ai'] };
+    const edit: Edit = { kind: 'move', repos: ['kite-dagsrv'], to: ['ai'] };
     const r = applyEdit(base(), edit);
     expect('groups' in r && where(r.groups, 'kite-dagsrv')).toBe('ai');
     expect(commitMessage(edit)).toBe('chore(repo-groups): move kite-dagsrv to ai');
-    expect(commitMessage({ kind: 'move', repo: 'x', to: ['infra', 'authn'] })).toBe('chore(repo-groups): move x to infra/authn');
-    expect(commitMessage({ kind: 'move', repo: 'x', to: [] })).toBe('chore(repo-groups): move x to ungrouped');
+    expect(commitMessage({ kind: 'move', repos: ['x'], to: ['infra', 'authn'] })).toBe('chore(repo-groups): move x to infra/authn');
+    expect(commitMessage({ kind: 'move', repos: ['x'], to: [] })).toBe('chore(repo-groups): move x to ungrouped');
+    expect(commitMessage({ kind: 'move', repos: ['a', 'b', 'c'], to: ['ai'] })).toBe('chore(repo-groups): move 3 repositories to ai');
     expect(editPath(edit)).toBe('ai');
+  });
+});
+
+describe('moveRepos (A4, several repositories in one edit)', () => {
+  const plan = (r: ReturnType<typeof moveRepos>) => {
+    if ('error' in r) throw new Error(r.error);
+    return r;
+  };
+
+  it('folds every move into one tree and lists what changes', () => {
+    const r = plan(moveRepos(base(), ['kite-dagsrv', 'kite-authn', 'oroute'], ['infra', 'cmonitor']));
+    expect(r.moved).toEqual(['kite-dagsrv', 'kite-authn', 'oroute']);
+    expect(r.already).toEqual([]);
+    expect(r.changed).toBe(true);
+    for (const n of r.moved) expect(where(r.groups, n)).toBe('infra/cmonitor');
+    expect(findGroup(r.groups, ['infra', 'dagsrv'])!.match).toEqual(['dagsrv', 'dags-*']);
+    expect(findGroup(r.groups, ['ai'])!.match).toEqual([]);
+  });
+
+  it('skips repositories already at the destination and says so', () => {
+    const r = plan(moveRepos(base(), ['dagsrv', 'dags-repo', 'oroute'], ['infra', 'dagsrv']));
+    expect(r.already).toEqual(['dagsrv', 'dags-repo']); // dags-repo is placed there by its pattern
+    expect(r.moved).toEqual(['oroute']);
+    const none = plan(moveRepos(base(), ['dagsrv', 'dags-repo'], ['infra', 'dagsrv']));
+    expect(none.changed).toBe(false);
+    expect(none.groups).toEqual(base());
+  });
+
+  it('collects the repos a pattern still catches when sending to Ungrouped', () => {
+    const r = plan(moveRepos(base(), ['kite-dagsrv', 'dags-repo', 'keep_alive_job'], []));
+    expect(r.moved).toEqual(['kite-dagsrv']);
+    expect(r.already).toEqual(['keep_alive_job']);
+    expect(r.stillCaught).toEqual([{ repo: 'dags-repo', key: 'infra/dagsrv', rule: 'dags-*' }]);
+  });
+
+  it('ignores duplicate names, reports a missing destination, and never mutates the input', () => {
+    const groups = base();
+    const before = JSON.stringify(groups);
+    const r = plan(moveRepos(groups, ['oroute', 'oroute'], ['infra']));
+    expect(r.moved).toEqual(['oroute']);
+    expect(moveRepos(groups, ['oroute'], ['nope'])).toEqual({ error: 'The group "nope" no longer exists. Reload the page and try again.' });
+    expect(JSON.stringify(groups)).toBe(before);
   });
 });

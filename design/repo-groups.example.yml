@@ -7,6 +7,10 @@
 #   2. Otherwise patterns with `*` are tried; the deepest matching group wins.
 #   3. Repositories that match nothing are shown as "Ungrouped".
 #
+# Pinned repos and order (C5), optional on any group:
+#   pinned: ["dagsrv"]   exact repo names shown first, in this order (only repos placed in the group count)
+#   sort: name          pushed (default) | name | stars | issues
+#
 # Teams (CLAUDE.md → F12):
 #   - A plain slug means that team gets "push" (Write).
 #   - Use { slug, permission } for pull | triage | push | maintain | admin.

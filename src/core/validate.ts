@@ -1,5 +1,6 @@
 import { splitRules } from './edit';
 import { PERMISSIONS } from './permissions';
+import { isSortKey, SORT_KEYS } from './sort';
 import type { Config, Group, TeamTag } from './types';
 
 export interface ValidationResult {
@@ -102,6 +103,15 @@ export function configFromObject(obj: unknown, opts: ValidateOptions = {}): Vali
       const words = (keywords as string[]).map((k) => k.trim()).filter(Boolean);
       const teams = parseTeams(name, raw.teams);
       if (!teams) return;
+      if (raw.pinned != null && (!Array.isArray(raw.pinned) || raw.pinned.some((m) => typeof m !== 'string'))) {
+        err = `"${name}": pinned must be a list of repository names.`;
+        return;
+      }
+      const pinned = [...new Set(((raw.pinned ?? []) as string[]).map((m) => m.trim()).filter(Boolean))];
+      if (raw.sort != null && !isSortKey(raw.sort)) {
+        err = `"${name}": sort must be one of ${SORT_KEYS.join(', ')}.`;
+        return;
+      }
       let groups: Group[] = [];
       if (raw.groups != null) {
         if (!Array.isArray(raw.groups)) {
@@ -119,6 +129,8 @@ export function configFromObject(obj: unknown, opts: ValidateOptions = {}): Vali
         logo: typeof raw.logo === 'string' && raw.logo.trim() ? raw.logo.trim() : null,
         teams,
         match: (match as string[]).flatMap(splitRules),
+        ...(pinned.length ? { pinned } : {}),
+        ...(isSortKey(raw.sort) ? { sort: raw.sort } : {}),
         groups,
       });
     });

@@ -258,6 +258,11 @@ export function createHandler(deps: Deps) {
         return { exists: true, sha: file.sha, config: r.config, error: r.error, line: r.line, warnings: r.warnings } satisfies ConfigResult;
       }
       case 'org:edit': {
+        if (req.edit.kind === 'pin' || req.edit.kind === 'sort') {
+          // The index lets the write check the placement and drop stale pins (C5).
+          const snap = await deps.index.load(req.org).catch(() => null);
+          return commitEdit(client, deps.kv, req.org, req.edit, snap?.repos);
+        }
         if (!hasPng(req.edit)) return commitEdit(client, deps.kv, req.org, req.edit);
         const r = await commitEditWithLogo(client, deps.kv, req.org, req.edit);
         const png = pngOf(req.edit);

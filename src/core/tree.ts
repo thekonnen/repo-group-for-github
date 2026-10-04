@@ -1,5 +1,6 @@
 import { displayName } from './edit';
 import { pickIn, postOrder } from './placement';
+import { byPush, orderRepos, SORT_KEYS, SORT_LABEL, sortRepos, type SortKey } from './sort';
 import type { Group, RepoInfo } from './types';
 
 /** A group with the repos placed directly in it and recursive totals. */
@@ -7,7 +8,8 @@ export interface GroupNode {
   group: Group;
   path: string[];
   key: string; // 'infra/dagsrv'; '' for the virtual root
-  repos: RepoInfo[]; // placed here (root: the ungrouped ones), newest push first
+  repos: RepoInfo[]; // placed here (root: the ungrouped ones): pinned first, then the group's sort (default newest push)
+  pins: string[]; // names of the repos actually pinned here (stale pins are ignored), in pin order
   children: GroupNode[];
   total: number; // recursive repo count (root: every visible repo)
   subgroups: number; // recursive group count
@@ -23,8 +25,8 @@ export interface TreeModel {
   visible: number;
 }
 
-const pushMs = (r: Pick<RepoInfo, 'pushedAt'>) => Date.parse(r.pushedAt ?? '') || 0;
-export const byPush = (a: RepoInfo, b: RepoInfo): number => pushMs(b) - pushMs(a);
+export { byPush, SORT_KEYS, SORT_LABEL, sortRepos };
+export type { SortKey };
 
 /** Builds the group tree for an index. Archived repos are hidden, as GitHub does under "All". */
 export function buildTree(groups: Group[], repos: RepoInfo[]): TreeModel {
@@ -32,7 +34,7 @@ export function buildTree(groups: Group[], repos: RepoInfo[]): TreeModel {
   const order = postOrder(groups);
   const byKey = new Map<string, GroupNode>();
   const mk = (group: Group, path: string[]): GroupNode => {
-    const node: GroupNode = { group, path, key: path.join('/'), repos: [], children: [], total: 0, subgroups: 0, issues: 0, latest: null };
+    const node: GroupNode = { group, path, key: path.join('/'), repos: [], pins: [], children: [], total: 0, subgroups: 0, issues: 0, latest: null };
     node.children = group.groups.map((c) => mk(c, [...path, c.name]));
     byKey.set(node.key, node);
     return node;
@@ -48,9 +50,12 @@ export function buildTree(groups: Group[], repos: RepoInfo[]): TreeModel {
   }
   const fold = (n: GroupNode) => {
     n.repos.sort(byPush);
+    let latest = n.repos[0]?.pushedAt ?? null; // before the group's own order is applied
+    const ordered = orderRepos(n.repos, n.group.sort ?? 'pushed', n.group.pinned);
+    n.repos = ordered.list;
+    n.pins = ordered.pins;
     n.total = n.repos.length;
     n.issues = n.repos.reduce((s, r) => s + (r.openIssuesAndPrs ?? 0), 0);
-    let latest = n.repos[0]?.pushedAt ?? null;
     for (const c of n.children) {
       fold(c);
       n.total += c.total;
@@ -83,14 +88,14 @@ export type Row =
   | { kind: 'repo'; repo: RepoInfo; depth: number; prefix?: string };
 
 /** Visible rows of a group: its subgroups (expandable inline) first, then the repos placed directly in it. */
-export function treeRows(node: GroupNode, expanded: ReadonlySet<string>, depth = 0): Row[] {
+export function treeRows(node: GroupNode, expanded: ReadonlySet<string>, depth = 0, order: (n: GroupNode) => RepoInfo[] = (n) => n.repos): Row[] {
   const out: Row[] = [];
   for (const c of node.children) {
     const open = expanded.has(c.key);
     out.push({ kind: 'group', node: c, depth, open });
-    if (open) out.push(...treeRows(c, expanded, depth + 1));
+    if (open) out.push(...treeRows(c, expanded, depth + 1, order));
   }
-  for (const r of node.repos) out.push({ kind: 'repo', repo: r, depth });
+  for (const r of order(node)) out.push({ kind: 'repo', repo: r, depth });
   return out;
 }
 
@@ -110,22 +115,6 @@ export function searchRows(model: TreeModel, node: GroupNode, query: string): Ro
     });
     return { kind: 'repo' as const, repo, depth: 0, prefix: rel.length ? rel.join(' / ') + ' / ' : undefined };
   });
-}
-
-export type SortKey = 'pushed' | 'name' | 'stars' | 'issues';
-export const SORT_KEYS: SortKey[] = ['pushed', 'name', 'stars', 'issues'];
-export const SORT_LABEL: Record<SortKey, string> = { pushed: 'Last pushed', name: 'Name', stars: 'Stars', issues: 'Open issues & PRs' };
-
-/** The orders GitHub's own list offers. Ties fall back to the newest push, then the name. */
-export function sortRepos(list: RepoInfo[], key: SortKey): RepoInfo[] {
-  const byName = (a: RepoInfo, b: RepoInfo) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
-  const cmp: Record<SortKey, (a: RepoInfo, b: RepoInfo) => number> = {
-    pushed: (a, b) => byPush(a, b) || byName(a, b),
-    name: byName,
-    stars: (a, b) => (b.stars ?? 0) - (a.stars ?? 0) || byPush(a, b) || byName(a, b),
-    issues: (a, b) => (b.openIssuesAndPrs ?? 0) - (a.openIssuesAndPrs ?? 0) || byPush(a, b) || byName(a, b),
-  };
-  return list.slice().sort(cmp[key]);
 }
 
 /** "All repositories" tab: every repository of the group (subgroups included) as one flat list, like GitHub's own. */

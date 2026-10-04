@@ -95,7 +95,7 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
     rows = ungrouped.map((repo) => ({ kind: 'repo' as const, repo, depth: 0 }));
     head = <>{plural(ungrouped.length, 'ungrouped repository', 'ungrouped repositories')} <span class="rg-muted">· no group rule matches these yet</span></>;
   } else {
-    rows = treeRows(node, s.expanded);
+    rows = treeRows(node, s.expanded, 0, ctl.orderOf);
     const kids = node.children.length;
     head = isRoot ? (
       <>{plural(kids, 'group', 'groups')} <span class="rg-muted">· {ungrouped.length} ungrouped</span></>
@@ -153,7 +153,7 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
         <>
           <Toolbar ctl={ctl} s={s} placeholder={`Search in ${name}`} />
           <div class="rg-box">
-            <div class="rg-box-head"><span>{head}</span>{tab === 'all' ? <SortSelect ctl={ctl} value={s.sort} /> : <span class="rg-muted">Sort: Last pushed</span>}</div>
+            <div class="rg-box-head"><span>{head}</span>{tab === 'all' ? <SortSelect value={s.sort} label="Sort repositories" onChange={(k) => ctl.setSort(k)} /> : tab === 'items' && !isRoot && !s.query.trim() ? <SortSelect group value={ctl.sortOf(node)} label={`Sort the repositories of ${name}`} onChange={(k) => void ctl.setGroupSort(node, k)} /> : <span class="rg-muted">Sort: Last pushed</span>}</div>
             {rows.length ? <Rows ctl={ctl} s={s} rows={rows} /> : <Empty tab={tab} query={s.query} isRoot={isRoot} team={team} />}
           </div>
         </>
@@ -243,11 +243,11 @@ function Header({ ctl, s, node, name, isRoot }: { ctl: Controller; s: State; nod
 
 const Stat = ({ label, value }: { label: string; value: string }) => <div class="rg-stat"><span>{label}</span><b>{value}</b></div>;
 
-function SortSelect({ ctl, value }: { ctl: Controller; value: SortKey }) {
+function SortSelect({ value, label, onChange, group }: { value: SortKey; label: string; onChange: (k: SortKey) => void; group?: boolean }) {
   return (
     <label class="rg-muted rg-sort">
       Sort:{' '}
-      <select class="rg-y-scope" aria-label="Sort repositories" value={value} onChange={(e) => ctl.setSort((e.target as HTMLSelectElement).value as SortKey)}>
+      <select class={group ? "rg-sort-select" : "rg-y-scope"} aria-label={label} value={value} onChange={(e) => onChange((e.target as HTMLSelectElement).value as SortKey)}>
         {SORT_KEYS.map((k) => <option value={k} selected={k === value}>{SORT_LABEL[k]}</option>)}
       </select>
     </label>
@@ -327,9 +327,18 @@ function Rows({ ctl, s, rows }: { ctl: Controller; s: State; rows: Row[] }) {
     };
   }, [virtual, rows.length]);
   const slice = virtual ? rows.slice(range.start, range.end) : rows;
+  const model = ctl.model();
+  const canPin = ctl.canEditOrder() && !ctl.teams.team;
+  /** Pin state of a repo in the group that holds it (primary placement). Ungrouped repos have no group to pin in. */
+  const pinOf = (name: string): PinInfo | undefined => {
+    const key = model?.placed.get(name);
+    const g = key ? model?.byKey.get(key) : undefined;
+    if (!g || !key) return undefined;
+    return { key, group: displayName(g.group), pinned: g.pins.some((p) => p.toLowerCase() === name.toLowerCase()), can: canPin };
+  };
   return (
     <div class="rg-rows" ref={ref} style={virtual ? { paddingTop: range.start * ROW_H, paddingBottom: Math.max(0, rows.length - range.end) * ROW_H } : undefined}>
-      {slice.map((r) => (r.kind === 'group' ? <GroupRow key={`g:${r.node.key}`} ctl={ctl} row={r} fixed={virtual} /> : <RepoRow key={`r:${r.repo.name}`} org={s.org} row={r} fixed={virtual} label={ctl.teams.repoLabel(r.repo.name)} />))}
+      {slice.map((r) => (r.kind === 'group' ? <GroupRow key={`g:${r.node.key}`} ctl={ctl} row={r} fixed={virtual} /> : <RepoRow key={`r:${r.repo.name}`} ctl={ctl} org={s.org} row={r} fixed={virtual} label={ctl.teams.repoLabel(r.repo.name)} pin={pinOf(r.repo.name)} />))}
     </div>
   );
 }
@@ -363,7 +372,42 @@ function GroupRow({ ctl, row, fixed }: { ctl: Controller; row: Extract<Row, { ki
 }
 
 /** `label` is the team's permission on the team page; otherwise the label shows Public or Private. */
-function RepoRow({ org, row, fixed, label }: { org: string; row: Extract<Row, { kind: 'repo' }>; fixed: boolean; label?: string }) {
+interface PinInfo {
+  key: string;
+  group: string;
+  pinned: boolean;
+  can: boolean;
+}
+
+/** "⋯" menu of a repo row: Pin to top of <group> / Unpin (C5). Only shown to people who can write the org file. */
+function RepoMenu({ ctl, name, pin }: { ctl: Controller; name: string; pin: PinInfo }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: Event) => !box.current?.contains((e.composedPath?.()[0] ?? e.target) as Node) && setOpen(false);
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && (setOpen(false), box.current?.querySelector('button')?.focus());
+    document.addEventListener('mousedown', away, true);
+    document.addEventListener('keydown', esc, true);
+    return () => (document.removeEventListener('mousedown', away, true), document.removeEventListener('keydown', esc, true));
+  }, [open]);
+  return (
+    <div class="rg-menu" ref={box}>
+      <button type="button" class="rg-btn rg-icon-btn" aria-haspopup="menu" aria-expanded={open} aria-label={`More actions for ${name}`} onClick={() => setOpen(!open)}>
+        <Icon name="kebab" />
+      </button>
+      {open && (
+        <div class="rg-menu-list" role="menu">
+          <button type="button" role="menuitem" autofocus onClick={() => (setOpen(false), void ctl.setPin(pin.key, name, !pin.pinned))}>
+            <Icon name="pin" size={14} />{pin.pinned ? 'Unpin' : `Pin to top of ${pin.group}`}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RepoRow({ ctl, org, row, fixed, label, pin }: { ctl: Controller; org: string; row: Extract<Row, { kind: 'repo' }>; fixed: boolean; label?: string; pin?: PinInfo }) {
   const r: RepoInfo = row.repo;
   return (
     <div class={`rg-row${fixed ? ' rg-fixed' : ''}`} style={{ '--rg-depth': row.depth } as any}>
@@ -371,6 +415,7 @@ function RepoRow({ org, row, fixed, label }: { org: string; row: Extract<Row, { 
       <span class="rg-av rg-av-repo"><Icon name="repo" /></span>
       <div class="rg-row-main">
         <div class="rg-row-title">
+          {pin?.pinned && <span class="rg-pin" title={`Pinned in ${pin.group}`} role="img" aria-label={`Pinned in ${pin.group}`}><Icon name="pin" size={14} /></span>}
           <a href={repoUrl(org, r.name)}>{row.prefix && <span class="rg-path-pre">{row.prefix}</span>}{r.name}</a>
           <span class="rg-label">{label ?? (r.private ? 'Private' : 'Public')}</span>
           {r.fork && <span class="rg-label">Fork</span>}
@@ -384,6 +429,7 @@ function RepoRow({ org, row, fixed, label }: { org: string; row: Extract<Row, { 
           <span>Updated {ago(r.pushedAt)}</span>
         </div>
       </div>
+      {pin?.can && <RepoMenu ctl={ctl} name={r.name} pin={pin} />}
     </div>
   );
 }

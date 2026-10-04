@@ -1,5 +1,6 @@
 import { flatList, placement } from './placement';
 import { labelOf } from './permissions';
+import { SORT_LABEL } from './sort';
 import type { Group, RepoInfo } from './types';
 
 export interface DiffItem {
@@ -37,6 +38,10 @@ export function diffTrees(a: Group[], b: Group[], repos: Pick<RepoInfo, 'name'>[
       items.push({ k: '~', cls: 'chg', text: `Logo of ${k}`, to: nb.logo || 'letter' });
     if (na.match.join('|') !== nb.match.join('|'))
       items.push({ k: '~', cls: 'chg', text: `Rules of ${k}`, to: nb.match.join(', ') || '(none)' });
+    if ((na.pinned ?? []).join('|') !== (nb.pinned ?? []).join('|'))
+      items.push({ k: '~', cls: 'chg', text: `Pinned of ${k}`, to: (nb.pinned ?? []).join(', ') || '(none)' });
+    if ((na.sort ?? '') !== (nb.sort ?? ''))
+      items.push({ k: '~', cls: 'chg', text: `Sort of ${k}`, to: nb.sort ? SORT_LABEL[nb.sort] : 'default (Last pushed)' });
     if (teamsStr(na) !== teamsStr(nb))
       items.push({
         k: '~',

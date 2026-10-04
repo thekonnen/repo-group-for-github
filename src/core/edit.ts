@@ -1,6 +1,7 @@
 import { logoPath } from './logo';
 import { findGroup, placement } from './placement';
-import type { Group, TeamTag } from './types';
+import { prunePins, type SortKey } from './sort';
+import type { Group, RepoInfo, TeamTag } from './types';
 
 /** The single change behind Edit group / New group. Re-applied to a fresh file when a commit conflicts (§7). */
 export type Edit =
@@ -10,7 +11,11 @@ export type Edit =
   /** F9: adds the exact repo name to the match list of an existing group. */
   | { kind: 'file'; path: string[]; repo: string }
   /** Removes a group and all its subgroups from the file. No repository is touched: they fall back to the other rules. */
-  | { kind: 'delete'; path: string[] };
+  | { kind: 'delete'; path: string[] }
+  /** C5: pins (appends to the end of `pinned`) or unpins a repo in a group. The repo must be placed in that group. */
+  | { kind: 'pin'; path: string[]; repo: string; pinned: boolean }
+  /** C5: sets the default order of a group's repos; `null` removes `sort:` (back to Last pushed). */
+  | { kind: 'sort'; path: string[]; sort: SortKey | null };
 
 /** A logo change (F7): a new 192x192 PNG (base64, committed with the YAML in one commit) or "use the letter". */
 export type LogoChange = { png: string } | { remove: true };
@@ -84,8 +89,30 @@ const any = (g: Group, test: (x: Group) => boolean): boolean => test(g) || g.gro
 const allRules = (g: Group): string[] => [...g.match, ...g.groups.flatMap(allRules)];
 
 /** Applies an edit to a tree (never mutates the input). Logo, teams and subgroups of an edited group are kept. */
-export function applyEdit(groups: Group[], edit: Edit): { groups: Group[] } | { error: string } {
+export function applyEdit(groups: Group[], edit: Edit, repos?: Pick<RepoInfo, 'name' | 'archived'>[]): { groups: Group[] } | { error: string } {
   const next = clone(groups);
+  if (edit.kind === 'pin' || edit.kind === 'sort') {
+    const t = findGroup(next, edit.path);
+    if (!t) return { error: `The group "${edit.path.join('/')}" no longer exists. Reload the page and try again.` };
+    const visible = repos?.filter((r) => !r.archived);
+    if (edit.kind === 'sort') {
+      if (edit.sort && edit.sort !== 'pushed') t.sort = edit.sort;
+      else delete t.sort;
+    } else {
+      const lower = edit.repo.toLowerCase();
+      const rest = (t.pinned ?? []).filter((p) => p.toLowerCase() !== lower);
+      if (edit.pinned) {
+        // Pins only apply to the repo's primary placement: refuse to pin one that another group holds.
+        if (visible && placement(next, visible)[visible.find((r) => r.name.toLowerCase() === lower)?.name ?? ''] !== edit.path.join('/'))
+          return { error: `"${edit.repo}" is not in ${edit.path.join('/')} (another group or rule places it). Reload the page and try again.` };
+        rest.push(edit.repo);
+      }
+      if (rest.length) t.pinned = rest;
+      else delete t.pinned;
+    }
+    // Stale pins (repo renamed, deleted, archived or moved to another group) go away with this write.
+    return { groups: visible?.length ? prunePins(next, visible) : next };
+  }
   if (edit.kind === 'delete') {
     const parentPath = edit.path.slice(0, -1);
     const parent = parentPath.length ? findGroup(next, parentPath) : null;
@@ -138,10 +165,12 @@ export function applyEdit(groups: Group[], edit: Edit): { groups: Group[] } | { 
 }
 
 export const editPath = (e: Edit): string =>
-  e.kind === 'file' || e.kind === 'delete' ? e.path.join('/') : (e.kind === 'new' ? [...e.parent, finalName(e.name)] : [...e.path.slice(0, -1), finalName(e.name)]).join('/');
+  e.kind === 'file' || e.kind === 'delete' || e.kind === 'pin' || e.kind === 'sort' ? e.path.join('/') : (e.kind === 'new' ? [...e.parent, finalName(e.name)] : [...e.path.slice(0, -1), finalName(e.name)]).join('/');
 
 /** `chore(repo-groups): edit group infra/dagsrv` (§7). */
 export function commitMessage(e: Edit): string {
+  if (e.kind === 'pin') return `chore(repo-groups): ${e.pinned ? 'pin' : 'unpin'} ${e.repo} in ${e.path.join('/')}`;
+  if (e.kind === 'sort') return `chore(repo-groups): ${e.sort && e.sort !== 'pushed' ? `sort ${e.path.join('/')} by ${e.sort}` : `reset sort of ${e.path.join('/')}`}`;
   if (e.kind === 'file') return `chore(repo-groups): file ${e.repo} in ${e.path.join('/')}`;
   if (e.kind === 'delete') return `chore(repo-groups): delete ${e.path.length > 1 ? 'subgroup' : 'group'} ${e.path.join('/')}${e.path.length > 1 ? ' (rules moved to the parent group)' : ''}`;
   if (e.kind === 'new') return `chore(repo-groups): add ${e.parent.length ? 'subgroup' : 'group'} ${editPath(e)}${hasPng(e) ? ' with logo' : ''}`;

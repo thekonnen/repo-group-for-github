@@ -16,7 +16,7 @@ Task:
 
 Output rules:
 - Answer with ONLY the complete YAML inside one ```yaml block. No explanations before or after.
-- Keep the format: version, then groups -> name, title, description, logo, teams, match, groups (nested subgroups).
+- Keep the format: version, then groups -> name, title, description, logo, teams, match, pinned, sort, groups (nested subgroups).
 - name: the slug. Short and lowercase; letters, numbers, "-", "_" or "."; unique among siblings.
 - title: optional display name for people (capitals, spaces and accents allowed, for example "Grupo: Competição"). Keep every "title" exactly as it is, on the same group. Add one only when the slug alone reads badly.
 - Use at most 3 levels. Prefer 3 to 9 groups per level. Avoid a group with a single repository unless it clearly stands alone.
@@ -24,4 +24,5 @@ Output rules:
 - description: one short sentence, up to about 80 characters, saying what the group holds.
 - Keep every "logo" value exactly as it is, on the same group.
 - Keep every "teams" value exactly as it is. If you merge or rename a group, carry its teams to the group that replaces it. Never invent team names.
+- Keep every "pinned" and "sort" value exactly as it is, on the same group. If you merge or rename a group, carry them to the group that replaces it. Never invent pinned names.
 - Do not include the "repositories" list in your answer.

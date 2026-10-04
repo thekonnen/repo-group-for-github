@@ -7,7 +7,7 @@ export const teamToYaml = (t: TeamTag): string =>
   t.permission === 'push' ? q(t.slug) : `{ slug: ${q(t.slug)}, permission: ${q(t.permission)} }`;
 
 /**
- * Canonical writer: order name, title, description, keywords, logo, teams, match, groups; 2-space indent;
+ * Canonical writer: order name, title, description, keywords, logo, teams, match, pinned, sort, groups; 2-space indent;
  * flow-style lists; leading comment. `personal` omits index and teams (My groups).
  */
 export function writeConfig(cfg: Config, header: string, opts: { personal?: boolean } = {}): string {
@@ -23,6 +23,8 @@ export function writeConfig(cfg: Config, header: string, opts: { personal?: bool
     if (g.logo) lines.push(`${ind}  logo: ${q(g.logo)}`);
     if (!opts.personal && g.teams.length) lines.push(`${ind}  teams: [${g.teams.map(teamToYaml).join(', ')}]`);
     if (g.match.length) lines.push(`${ind}  match: [${g.match.map(q).join(', ')}]`);
+    if (g.pinned?.length) lines.push(`${ind}  pinned: [${g.pinned.map(q).join(', ')}]`);
+    if (g.sort) lines.push(`${ind}  sort: ${g.sort}`);
     if (g.groups.length) {
       lines.push(`${ind}  groups:`);
       g.groups.forEach((c) => emit(c, ind + '    '));

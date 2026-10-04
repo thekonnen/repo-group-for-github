@@ -5,6 +5,9 @@ export interface TeamTag {
   permission: Permission;
 }
 
+/** Order of a group's repositories (C5). Absent = Last pushed. */
+export type GroupSort = 'pushed' | 'name' | 'stars' | 'issues';
+
 export interface Group {
   /** The slug: URL, rules, paths. Lowercase letters, numbers, - _ . */
   name: string;
@@ -16,6 +19,10 @@ export interface Group {
   logo: string | null;
   teams: TeamTag[];
   match: string[];
+  /** Exact repo names shown first, in this order, in the group's repo list (C5). Only repos placed in the group count. */
+  pinned?: string[];
+  /** Default order of the group's repos (C5). Absent = Last pushed. */
+  sort?: GroupSort;
   groups: Group[];
 }
 

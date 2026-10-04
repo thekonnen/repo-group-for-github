@@ -48,6 +48,10 @@ The extension then downloads that one file instead of paginating, and confirms e
 
 **Privacy warning:** everyone who can read `<org>/.github` can read the names and descriptions of **all** repositories listed in `repo-index.json`, including private ones they cannot open. Only enable this in organizations where members already see every repository.
 
+## Group summary
+
+Under the stats row, each group page (org groups, My groups and team pages) shows stars, forks, repos pushed in the last 30 days, a language bar (top 5 + Other, by repository count) and a 12-week sparkline. The sparkline counts **repositories by the week of their last push**, taken from the local index; it is not commit activity. Archived repositories are excluded, subgroups are included, and no extra requests are made.
+
 ## Status
 
 Milestones 1–6 done: scaffold, tested `core/`, background worker (device flow, token fallback, parallel repo index with cache, `repo-groups.yml` reader, access detection), and the read-only grouped view on `github.com/orgs/<org>/repositories` (groups and subgroups, sidebar tree, group pages at `#infra/dagsrv`, search, GitHub-list toggle), plus Edit group / New group. Org owners and members with write access to `<org>/.github` can edit groups and create groups and subgroups from the page (each save is a commit to `repo-groups.yml`). The YAML editor (Edit YAML) has the AI round-trip: copy the prompt with the file and repositories, paste the answer back, review the diff, commit. Groups have a display name (any characters) and a slug (`grupo-competicao`). Next: logos, new-repository field, teams (in progress).

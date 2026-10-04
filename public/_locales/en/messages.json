@@ -283,5 +283,60 @@
         "content": "$1"
       }
     }
+  },
+  "summaryStars": {
+    "message": "Stars"
+  },
+  "summaryForks": {
+    "message": "Forks"
+  },
+  "summaryLanguages": {
+    "message": "Languages"
+  },
+  "summaryLanguagesNote": {
+    "message": "By repository count"
+  },
+  "summaryNoLanguage": {
+    "message": "$N$ without a language",
+    "placeholders": {
+      "n": {
+        "content": "$1"
+      }
+    }
+  },
+  "summaryPushed30d": {
+    "message": "Pushed in 30 days"
+  },
+  "summarySparkTitle": {
+    "message": "Repos last pushed per week"
+  },
+  "summarySparkNote": {
+    "message": "Last 12 weeks, from each repository's latest push. Not commit activity."
+  },
+  "summaryAltText": {
+    "message": "$REPOS$ repositories, $STARS$ stars, $FORKS$ forks. Languages by repository count: $LANGS$. $RECENT$ pushed in the last 30 days. Repositories last pushed per week over the last 12 weeks, oldest first: $WEEKS$.",
+    "placeholders": {
+      "repos": {
+        "content": "$1"
+      },
+      "stars": {
+        "content": "$2"
+      },
+      "forks": {
+        "content": "$3"
+      },
+      "langs": {
+        "content": "$4"
+      },
+      "recent": {
+        "content": "$5"
+      },
+      "weeks": {
+        "content": "$6"
+      }
+    }
+  },
+  "summaryNoLanguages": {
+    "message": "no languages"
   }
 }

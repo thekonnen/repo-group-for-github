@@ -12,6 +12,7 @@ import { chipTeams } from '../../core/teams';
 import { TeamBanners } from '../teams/TeamBanners';
 import { TeamChips } from '../teams/TeamChips';
 import type { Controller, State } from './controller';
+import { GroupSummary } from './GroupSummary';
 
 const ROW_H = 76;
 const plural = (n: number, one: string, many: string) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
@@ -142,6 +143,7 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
         )}
         <Stat label="Last push" value={ago(node.latest)} />
       </div>
+      <GroupSummary node={node} />
       <div class="rg-tabs" role="tablist">
         <Tab ctl={ctl} id="items" current={tab} label="Groups and repositories" />
         {isRoot ? <Tab ctl={ctl} id="ungrouped" current={tab} label="Ungrouped" count={ungrouped.length} /> : <Tab ctl={ctl} id="rules" current={tab} label="Match rules" count={node.group.match.length} />}

@@ -7,6 +7,7 @@ import { effectiveTeams } from '../../core/teams';
 import { buildTree } from '../../core/tree';
 import type { Group, RepoInfo, TeamTag } from '../../core/types';
 import type { Call } from '../../github/client';
+import type { Provider } from '../../background/llm';
 import type { EditResult } from '../../background/commit';
 import type { ConfigResult, GroupSuggestion, OrgSnapshot, OrgTeam, SuggestMethod, TeamsResult } from '../../github/messages';
 import { createStore, type Store } from '../store';
@@ -20,6 +21,8 @@ export interface NrState {
   canWrite: boolean;
   /** Name as typed in GitHub's input. */
   rawName: string;
+  /** Description as typed in GitHub's input (sent with the name when classifying). */
+  rawDescription: string;
   /** Explicit pick ('' = Automatic). */
   pickedKey: string;
   /** Teams that get access right after creation (F12). Pre-filled from the destination group until edited by hand. */
@@ -56,8 +59,12 @@ export interface Suggestion {
   /** How many levels of `newGroup.path` were taken (1 = only the top group). */
   chosenDepth?: number;
   /** Which AI provider answered, and whether it was the fallback. */
-  provider?: 'gemini' | 'custom';
+  provider?: Provider;
   fallback?: boolean;
+  /** One-line why from the AI. */
+  reason?: string;
+  /** The AI failed or timed out: the closest keyword match, offered with Accept but not applied. */
+  fallbackKey?: string;
   /** Ran by itself (AI by default) rather than from a click. */
   auto?: boolean;
 }
@@ -76,7 +83,7 @@ export type NrController = ReturnType<typeof createNewRepoController>;
 
 /** State of the Group field on "Create a new repository" (F9). The page glue feeds it the name and the owner. */
 export function createNewRepoController(env: NrEnv) {
-  const store: Store<NrState> = createStore<NrState>({ org: null, phase: 'loading', groups: [], repos: [], canWrite: true, rawName: '', pickedKey: '', teams: [], teamsTouched: false, isOwner: false, personal: false, teamList: null, customRoles: [], llmReady: false, llmAuto: true, suggestion: null });
+  const store: Store<NrState> = createStore<NrState>({ org: null, phase: 'loading', groups: [], repos: [], canWrite: true, rawName: '', rawDescription: '', pickedKey: '', teams: [], teamsTouched: false, isOwner: false, personal: false, teamList: null, customRoles: [], llmReady: false, llmAuto: true, suggestion: null });
   let seq = 0;
   let autoTimer: ReturnType<typeof setTimeout> | undefined;
   let sseq = 0; // guards a slow answer against a newer name or request
@@ -174,6 +181,10 @@ export function createNewRepoController(env: NrEnv) {
     syncTeams();
     scheduleAuto();
   };
+  /** The description is context for the classifiers; it never clears or restarts a suggestion by itself. */
+  const setDescription = (rawDescription: string) => {
+    if (store.get().rawDescription !== rawDescription) store.set({ rawDescription });
+  };
   const pick = (pickedKey: string) => {
     store.set({ pickedKey: store.get().canWrite ? pickedKey : '' });
     syncTeams();
@@ -192,15 +203,15 @@ export function createNewRepoController(env: NrEnv) {
     const mine = ++sseq;
     store.set({ suggestion: { method, status: 'loading', key: null, auto } });
     try {
-      const r = await env.call<GroupSuggestion>({ type: 'suggest:group', org: s.org, repo: { name }, method, ...(auto ? { auto: true } : {}) });
+      const r = await env.call<GroupSuggestion>({ type: 'suggest:group', org: s.org, repo: { name, description: s.rawDescription.trim() || undefined }, method, ...(auto ? { auto: true } : {}) });
       if (mine !== sseq) return;
       if (r.key && findGroup(store.get().groups, r.key.split('/'))) {
         pick(r.key);
-        store.set({ suggestion: { method, status: 'found', key: r.key, model: r.model, provider: r.provider, fallback: r.fallback, auto } });
+        store.set({ suggestion: { method, status: 'found', key: r.key, reason: r.reason, model: r.model, provider: r.provider, fallback: r.fallback, auto } });
       } else if (r.newGroup) {
         store.set({ suggestion: { method, status: 'new', key: null, model: r.model, provider: r.provider, fallback: r.fallback, newGroup: r.newGroup, auto } });
       } else if (r.llmError) {
-        store.set({ suggestion: { method, status: 'error', key: null, message: r.llmError, model: r.model, auto } });
+        store.set({ suggestion: { method, status: 'error', key: null, message: r.llmError, model: r.model, auto, ...(r.fallbackKey && findGroup(store.get().groups, r.fallbackKey.split('/')) ? { fallbackKey: r.fallbackKey } : {}) } });
       } else {
         store.set({ suggestion: { method, status: 'none', key: null, auto } });
       }
@@ -244,6 +255,13 @@ export function createNewRepoController(env: NrEnv) {
     }
   }
 
+  /** Accept the suggestion chip: files the repo in the suggested group like any other pick. */
+  const acceptSuggestion = () => {
+    const sg = store.get().suggestion;
+    const key = sg?.status === 'found' ? sg.key : sg?.fallbackKey;
+    if (key && findGroup(store.get().groups, key.split('/'))) pick(key);
+  };
+
   /** A manual edit: from now on the teams stay as the person set them. */
   const setTeams = (teams: TeamTag[]) => store.set({ teams, teamsTouched: true });
 
@@ -267,5 +285,5 @@ export function createNewRepoController(env: NrEnv) {
     return { org: s.org, repo: name, groupPath: s.canWrite ? s.pickedKey : '', explicit: s.canWrite && !!s.pickedKey, teams: cleanTeams(s.teams).map((t) => ({ slug: t.slug, permission: t.permission })) };
   }
 
-  return { store, setOrg, setName, nameCommitted, pick, classify, createSuggestedGroup, setTeams, destination, options, pendingEntry, finalName };
+  return { store, setOrg, setName, setDescription, acceptSuggestion, nameCommitted, pick, classify, createSuggestedGroup, setTeams, destination, options, pendingEntry, finalName };
 }

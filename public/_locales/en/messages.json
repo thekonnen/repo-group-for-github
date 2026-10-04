@@ -147,13 +147,16 @@
     "message": "AI assistant"
   },
   "optionsAiIntro": {
-    "message": "When the rules and the local score cannot place a new repository, an AI can suggest the group. It is optional and only runs on those cases."
+    "message": "Optional and off until you add a key. When you create a repository, an AI can suggest the best group and say why. If it is not set up, offline, slow (4 seconds) or fails, the keyword suggestion is used and GitHub's form is never held back."
   },
   "optionsAiPrivacy": {
-    "message": "Only the repository name, its description and the list of group names and descriptions are sent to the provider. On free plans the provider may use what you send to improve its products."
+    "message": "Privacy: when it runs, the new repository's name and description, plus your groups (names, descriptions, keywords, match rules and a few repository names per group), are sent to the provider you choose. Nothing is sent unless you add a key here. The key stays in this browser (extension storage), is used only by the extension's background worker and is never logged. On free plans the provider may use what you send to improve its products."
   },
   "optionsAiModeGemini": {
     "message": "Google Gemini (AI Studio)"
+  },
+  "optionsAiModeAnthropic": {
+    "message": "Anthropic (API key)"
   },
   "optionsAiModeCustom": {
     "message": "Another provider (OpenAI-compatible endpoint)"

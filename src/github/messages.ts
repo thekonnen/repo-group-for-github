@@ -63,6 +63,10 @@ export interface GroupSuggestion {
   margin: number;
   /** Best three local candidates. */
   ranking: { key: string; score: number }[];
+  /** One-line why from the AI (source 'llm'). */
+  reason?: string;
+  /** The AI failed, timed out or was not valid: the best keyword candidate, to offer (never applied on its own). */
+  fallbackKey?: string;
   model?: string;
   /** Which provider answered. */
   provider?: Provider;

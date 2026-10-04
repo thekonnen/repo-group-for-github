@@ -221,5 +221,67 @@
   },
   "optionsAiAutoSaved": {
     "message": "Preference saved."
+  },
+  "optionsAiFallback": {
+    "message": "Use the other provider as a fallback when the first one fails"
+  },
+  "optionsAiFallbackHint": {
+    "message": "With Gemini and your own endpoint both saved, the one selected above is tried first and the other answers if it fails. Save and test each one on its own."
+  },
+  "optionsAiFallbackNeedsBoth": {
+    "message": "Save both providers to enable the fallback."
+  },
+  "optionsAiTagPrimary": {
+    "message": "tried first"
+  },
+  "optionsAiTagSaved": {
+    "message": "saved"
+  },
+  "optionsAiTagNone": {
+    "message": "not set"
+  },
+  "optionsAiKeySavedFor": {
+    "message": "A key is saved for this provider. Leave this empty to keep it."
+  },
+  "optionsAiKeyMissingCustom": {
+    "message": "Paste the API key of your endpoint."
+  },
+  "optionsAiOrder": {
+    "message": "Order: $FIRST$, then $SECOND$.",
+    "placeholders": {
+      "first": {
+        "content": "$1"
+      },
+      "second": {
+        "content": "$2"
+      }
+    }
+  },
+  "optionsAiOnly": {
+    "message": "Only $FIRST$ is used.",
+    "placeholders": {
+      "first": {
+        "content": "$1"
+      }
+    }
+  },
+  "optionsAiTestOkFor": {
+    "message": "$PROVIDER$ works. Model: $MODEL$.",
+    "placeholders": {
+      "provider": {
+        "content": "$1"
+      },
+      "model": {
+        "content": "$2"
+      }
+    }
+  },
+  "optionsAiRemovedFor": {
+    "message": "$PROVIDER$ removed.",
+    "placeholders": {
+      "provider": {
+        "content": "$1"
+      }
+    }
   }
 }

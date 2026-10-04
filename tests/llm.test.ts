@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createHandler } from '../src/background/handlers';
 import { memoryKV } from '../src/background/kv';
-import { askLlm, classifyPrompt, llmOrigin, llmStatus, modelRank, orderModels, parseChoice, parseNewGroup, saveLlmConfig, setLlmAuto } from '../src/background/llm';
+import { askLlm, classifyPrompt, clearLlmConfig, llmOrigin, llmStatus, loadLlmConfig, modelRank, orderModels, parseChoice, parseNewGroup, saveLlmConfig, setLlmAuto, setLlmFallback } from '../src/background/llm';
 import { memoryIndexStore } from '../src/background/repo-index';
 import { fakeFetch, type Route } from './fake-github';
 
@@ -70,7 +70,7 @@ describe('askLlm with Gemini', () => {
     const f = fakeFetch(gemini());
     const kv = await ready();
     const r = await askLlm({ fetch: f.fetch, kv }, 'hi');
-    expect(r).toEqual({ text: 'OK', model: 'gemini-2.5-flash-lite' });
+    expect(r).toEqual({ text: 'OK', model: 'gemini-2.5-flash-lite', provider: 'gemini', fallback: false });
     expect((await llmStatus(kv)).activeModel).toBe('gemini-2.5-flash-lite');
     expect(f.calls[0].headers['x-goog-api-key']).toBe('AIza-test');
     expect(f.calls[0].url).not.toContain('AIza-test');
@@ -123,7 +123,7 @@ describe('askLlm with a custom endpoint', () => {
     const f = fakeFetch((u, c) => (u.hostname === 'llm.example.com' ? { json: { choices: [{ message: { content: 'hello' } }] } } : undefined));
     const kv = memoryKV();
     await saveLlmConfig(kv, { mode: 'custom', apiKey: 'k', baseUrl: 'https://llm.example.com/v1/', model: 'my-model' });
-    expect(await askLlm({ fetch: f.fetch, kv }, 'hi')).toEqual({ text: 'hello', model: 'my-model' });
+    expect(await askLlm({ fetch: f.fetch, kv }, 'hi')).toEqual({ text: 'hello', model: 'my-model', provider: 'custom', fallback: false });
     expect(f.calls).toHaveLength(1);
     expect(f.calls[0].url).toBe('https://llm.example.com/v1/chat/completions');
     expect(JSON.parse(f.calls[0].body!).model).toBe('my-model');
@@ -378,3 +378,212 @@ describe('keeping the number of AI requests low', () => {
     expect(body.messages[0].content).toContain('Keywords: s3, backup.');
   });
 });
+
+const CUSTOM = { mode: 'custom' as const, apiKey: 'ck', baseUrl: 'https://llm.example.com/v1', model: 'my-model' };
+const customRoute = (status = 200, content = 'infra'): Route => (u) =>
+  u.hostname === 'llm.example.com' ? { status, json: status === 200 ? { choices: [{ message: { content } }] } : { error: { message: 'custom down' } } } : undefined;
+const GEMINI_DOWN = { 'gemini-2.5-flash-lite': 429, 'gemini-2.5-flash': 429, 'gemini-2.5-pro': 429, 'gemini-3-flash-preview': 429 };
+
+describe('two providers', () => {
+  it('keeps a saved custom endpoint when Gemini is saved, and the other way round', async () => {
+    const kv = memoryKV();
+    await saveLlmConfig(kv, CUSTOM);
+    await saveLlmConfig(kv, { mode: 'gemini', apiKey: 'gk' });
+    let s = await llmStatus(kv);
+    expect(s).toMatchObject({ mode: 'gemini', gemini: { configured: true }, custom: { configured: true, baseUrl: 'https://llm.example.com/v1', model: 'my-model' } });
+    await saveLlmConfig(kv, { mode: 'custom' }); // nothing typed: the saved URL, model and key stay
+    s = await llmStatus(kv);
+    expect(s.mode).toBe('custom');
+    expect(s.gemini.configured).toBe(true);
+    expect((await loadLlmConfig(kv))?.custom).toEqual({ apiKey: 'ck', baseUrl: 'https://llm.example.com/v1', model: 'my-model' });
+    expect((await loadLlmConfig(kv))?.gemini).toEqual({ apiKey: 'gk' });
+  });
+
+  it('never uses one provider\'s key for the other', async () => {
+    const kv = memoryKV();
+    await saveLlmConfig(kv, CUSTOM);
+    await expect(saveLlmConfig(kv, { mode: 'gemini', apiKey: '' })).rejects.toThrow(/Gemini API key/);
+    expect((await loadLlmConfig(kv))?.gemini).toBeUndefined();
+    const other = memoryKV();
+    await saveLlmConfig(other, { mode: 'gemini', apiKey: 'gk' });
+    await expect(saveLlmConfig(other, { mode: 'custom', baseUrl: 'https://x.example/v1', model: 'm' })).rejects.toThrow(/key of your endpoint/);
+  });
+
+  it('changes only the fields typed for the custom endpoint', async () => {
+    const kv = memoryKV();
+    await saveLlmConfig(kv, CUSTOM);
+    await saveLlmConfig(kv, { mode: 'custom', model: 'other-model' });
+    expect((await loadLlmConfig(kv))?.custom).toEqual({ apiKey: 'ck', baseUrl: 'https://llm.example.com/v1', model: 'other-model' });
+  });
+
+  it('never exposes a key, and the fallback is on by default', async () => {
+    const kv = memoryKV();
+    await saveLlmConfig(kv, CUSTOM);
+    await saveLlmConfig(kv, { mode: 'gemini', apiKey: 'secret-g' });
+    const s = await llmStatus(kv);
+    expect(JSON.stringify(s)).not.toMatch(/secret-g|"ck"/);
+    expect(s.fallback).toBe(true);
+    expect((await setLlmFallback(kv, false)).fallback).toBe(false);
+    expect((await saveLlmConfig(kv, { mode: 'gemini' })).fallback).toBe(false); // saving does not reset it
+    await expect(setLlmFallback(memoryKV(), true)).rejects.toThrow(/key/);
+  });
+
+  it('removes one provider, the other becomes the primary; removing the last clears everything', async () => {
+    const kv = memoryKV();
+    await saveLlmConfig(kv, CUSTOM);
+    await saveLlmConfig(kv, { mode: 'gemini', apiKey: 'gk' });
+    let s = await clearLlmConfig(kv, 'gemini');
+    expect(s).toMatchObject({ configured: true, mode: 'custom', gemini: { configured: false } });
+    s = await clearLlmConfig(kv, 'custom');
+    expect(s.configured).toBe(false);
+    expect(await kv.get('rg:llm')).toBeUndefined();
+  });
+
+  it('converts the first stored format', async () => {
+    const kv = memoryKV();
+    await kv.set('rg:llm', { mode: 'custom', apiKey: 'ck', baseUrl: 'https://llm.example.com/v1', model: 'my-model', auto: false });
+    expect(await llmStatus(kv)).toMatchObject({ configured: true, mode: 'custom', auto: false, custom: { configured: true, model: 'my-model' }, gemini: { configured: false } });
+    await kv.set('rg:llm', { mode: 'gemini', apiKey: 'gk' });
+    expect(await llmStatus(kv)).toMatchObject({ mode: 'gemini', gemini: { configured: true } });
+  });
+});
+
+describe('fallback between providers', () => {
+  const both = async (primary: 'gemini' | 'custom') => {
+    const kv = memoryKV();
+    await saveLlmConfig(kv, CUSTOM);
+    await saveLlmConfig(kv, { mode: 'gemini', apiKey: 'gk' });
+    if (primary === 'custom') await saveLlmConfig(kv, { mode: 'custom' });
+    return kv;
+  };
+
+  it('uses the primary when it works and never touches the other', async () => {
+    const f = fakeFetch(gemini({}, 'from-gemini'), customRoute(200, 'from-custom'));
+    const r = await askLlm({ fetch: f.fetch, kv: await both('gemini') }, 'hi');
+    expect(r).toMatchObject({ text: 'from-gemini', provider: 'gemini', fallback: false });
+    expect(f.calls.some((c) => c.url.includes('llm.example.com'))).toBe(false);
+  });
+
+  it('falls back to the custom endpoint when Gemini fails', async () => {
+    const f = fakeFetch(gemini(GEMINI_DOWN), customRoute(200, 'from-custom'));
+    const r = await askLlm({ fetch: f.fetch, kv: await both('gemini') }, 'hi');
+    expect(r).toMatchObject({ text: 'from-custom', model: 'my-model', provider: 'custom', fallback: true });
+  });
+
+  it('falls back to Gemini when the custom primary fails', async () => {
+    const f = fakeFetch(gemini({}, 'from-gemini'), customRoute(503));
+    const r = await askLlm({ fetch: f.fetch, kv: await both('custom') }, 'hi');
+    expect(r).toMatchObject({ text: 'from-gemini', provider: 'gemini', fallback: true });
+  });
+
+  it('does not fall back when turned off', async () => {
+    const kv = await both('gemini');
+    await setLlmFallback(kv, false);
+    const f = fakeFetch(gemini(GEMINI_DOWN), customRoute(200));
+    await expect(askLlm({ fetch: f.fetch, kv }, 'hi')).rejects.toThrow(/No Gemini model answered/);
+    expect(f.calls.some((c) => c.url.includes('llm.example.com'))).toBe(false);
+  });
+
+  it('lists both errors when neither answers', async () => {
+    const f = fakeFetch(gemini(GEMINI_DOWN), customRoute(503));
+    await expect(askLlm({ fetch: f.fetch, kv: await both('gemini') }, 'hi')).rejects.toThrow(/Gemini: No Gemini model answered.* \| Custom endpoint: .*custom down/);
+  });
+
+  it('asks a single provider on its own with "only" (the Test button)', async () => {
+    const f = fakeFetch(gemini(GEMINI_DOWN), customRoute(200));
+    const kv = await both('gemini');
+    await expect(askLlm({ fetch: f.fetch, kv, only: 'gemini' }, 'hi')).rejects.toThrow(/No Gemini model answered/);
+    expect((await askLlm({ fetch: f.fetch, kv, only: 'custom' }, 'hi')).provider).toBe('custom');
+    await expect(askLlm({ fetch: f.fetch, kv: await ready(), only: 'custom' }, 'hi')).rejects.toThrow(/not set up/);
+  });
+
+  it('skips a provider the browser has not allowed and uses the other', async () => {
+    const f = fakeFetch(gemini({}, 'from-gemini'), customRoute(200, 'from-custom'));
+    const kv = await both('custom');
+    const r = await askLlm({ fetch: f.fetch, kv, canUse: async (origin) => !origin.includes('llm.example.com') }, 'hi');
+    expect(r).toMatchObject({ provider: 'gemini', fallback: true });
+    expect(f.calls.some((c) => c.url.includes('llm.example.com'))).toBe(false);
+  });
+
+  it('tells the page the fallback answered, through the handler (and caches that answer)', async () => {
+    const yml = 'groups:\n  - name: infra\n    description: "Servers."\n';
+    const file: Route = (u) => (u.pathname === '/repos/o/.github/contents/repo-groups.yml' ? { json: { content: btoa(yml), sha: 'a' } } : undefined);
+    const f = fakeFetch(file, gemini(GEMINI_DOWN), customRoute(200, 'infra'));
+    const kv = await both('gemini');
+    const handle = createHandler({ fetch: f.fetch, kv, index: memoryIndexStore() });
+    const r: any = await handle({ type: 'suggest:group', org: 'o', repo: { name: 'zzz' }, method: 'llm' });
+    expect(r.data).toMatchObject({ source: 'llm', key: 'infra', model: 'my-model', fallback: true });
+    const aiCalls = () => f.calls.filter((c) => /generativelanguage|llm\.example\.com/.test(c.url)).length;
+    const before = aiCalls();
+    const again: any = await handle({ type: 'suggest:group', org: 'o', repo: { name: 'zzz' }, method: 'llm' });
+    expect(again.data).toMatchObject({ key: 'infra', fallback: true });
+    expect(aiCalls()).toBe(before); // answered from the cache
+  });
+
+  it('tests one provider through the handler, and reports which one worked', async () => {
+    const f = fakeFetch(gemini(GEMINI_DOWN), customRoute(200));
+    const handle = createHandler({ fetch: f.fetch, kv: await both('gemini'), index: memoryIndexStore() });
+    const bad: any = await handle({ type: 'llm:test', mode: 'gemini' });
+    expect(bad.ok).toBe(false);
+    const good: any = await handle({ type: 'llm:test', mode: 'custom' });
+    expect(good).toMatchObject({ ok: true, data: { provider: 'custom', model: 'my-model' } });
+  });
+});
+
+describe('changing the AI setup does not serve answers from the old one', () => {
+  const yml = 'groups:\n  - name: infra\n    description: "Servers."\n';
+  const file: Route = (u) => (u.pathname === '/repos/o/.github/contents/repo-groups.yml' ? { json: { content: btoa(yml), sha: 'a' } } : undefined);
+  const setup = async () => {
+    const f = fakeFetch(file, gemini({}, 'infra'), customRoute(200, 'infra'));
+    const kv = memoryKV();
+    await saveLlmConfig(kv, CUSTOM);
+    await saveLlmConfig(kv, { mode: 'gemini', apiKey: 'gk' });
+    await saveLlmConfig(kv, { mode: 'custom' }); // custom first, as in the report
+    const handle = createHandler({ fetch: f.fetch, kv, index: memoryIndexStore() });
+    const ask = async () => ((await handle({ type: 'suggest:group', org: 'o', repo: { name: 'seaweedfs' }, method: 'llm' })) as any).data;
+    const ai = (host: RegExp) => f.calls.filter((c) => host.test(c.url)).length;
+    return { f, kv, handle, ask, ai };
+  };
+
+  it('after making Gemini the primary, the next answer comes from Gemini, not from the cache', async () => {
+    const { handle, ask, ai } = await setup();
+    expect(await ask()).toMatchObject({ provider: 'custom', model: 'my-model', fallback: false });
+    expect(await ask()).toMatchObject({ provider: 'custom' }); // cached while nothing changed
+    expect(ai(/generativelanguage/)).toBe(0);
+
+    await handle({ type: 'llm:save', config: { mode: 'gemini' } });
+    const r = await ask();
+    expect(r).toMatchObject({ provider: 'gemini', fallback: false });
+    expect(r.model).toMatch(/gemini/);
+    expect(ai(/generativelanguage/)).toBeGreaterThan(0);
+  });
+
+  it('even if the settings were changed some other way, the cache key follows the setup', async () => {
+    const { kv, ask, ai } = await setup();
+    await ask();
+    // primary switched directly in storage (no llm:save): the old answer must not be served
+    const c: any = await kv.get('rg:llm');
+    await kv.set('rg:llm', { ...c, primary: 'gemini' });
+    expect(await ask()).toMatchObject({ provider: 'gemini' });
+    expect(ai(/generativelanguage/)).toBeGreaterThan(0);
+  });
+
+  it('turning the fallback off or removing a provider also starts clean', async () => {
+    const { handle, ask, ai } = await setup();
+    await ask();
+    await handle({ type: 'llm:fallback', fallback: false });
+    const before = ai(/llm\.example\.com/);
+    await ask();
+    expect(ai(/llm\.example\.com/)).toBe(before + 1);
+    await handle({ type: 'llm:clear', mode: 'custom' });
+    expect(await ask()).toMatchObject({ provider: 'gemini' });
+  });
+
+  it('a new save also lifts the automatic pause', async () => {
+    const { kv, handle } = await setup();
+    await kv.set('rg:llm:pause', Date.now() + 10 * 60_000);
+    await handle({ type: 'llm:save', config: { mode: 'gemini' } });
+    expect(await kv.get('rg:llm:pause')).toBeUndefined();
+  });
+});
+

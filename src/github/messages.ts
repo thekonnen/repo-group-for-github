@@ -5,7 +5,7 @@ import type { GrantResult } from '../core/grant';
 import type { PendingRepo } from '../core/newrepo';
 import type { TeamAccess } from '../core/teams';
 import type { Config, Permission, RepoInfo } from '../core/types';
-import type { LlmConfig } from '../background/llm';
+import type { Provider } from '../background/llm';
 
 /** Content script / popup / options -> background. The token never leaves the background. */
 export type Request =
@@ -40,10 +40,11 @@ export type Request =
   | { type: 'settings:get' }
   | { type: 'settings:set'; settings: Partial<{ refreshMinutes: number }> }
   | { type: 'llm:status' }
-  | { type: 'llm:save'; config: Partial<LlmConfig> }
+  | { type: 'llm:save'; config: { mode?: Provider; apiKey?: string; baseUrl?: string; model?: string } }
   | { type: 'llm:auto'; auto: boolean }
-  | { type: 'llm:clear' }
-  | { type: 'llm:test' }
+  | { type: 'llm:fallback'; fallback: boolean }
+  | { type: 'llm:clear'; mode?: Provider }
+  | { type: 'llm:test'; mode?: Provider }
   | { type: 'suggest:group'; org: string; repo: { name: string; description?: string | null }; method?: SuggestMethod; /** Started by the page on its own (AI by default), not by a click: cheaper and rate limited. */ auto?: boolean };
 
 /** Which classifier to run. Left out, the background tries rules, then the local score, then the AI only if the score is unsure. */
@@ -60,6 +61,10 @@ export interface GroupSuggestion {
   /** Best three local candidates. */
   ranking: { key: string; score: number }[];
   model?: string;
+  /** Which provider answered. */
+  provider?: Provider;
+  /** The first provider failed and the other one answered. */
+  fallback?: boolean;
   /** No group fits: the AI proposes creating this one (the page asks before creating it). */
   newGroup?: { path: string[]; titles: string[]; descriptions: string[] };
   /** Why the AI was not used or failed, when it was needed. */

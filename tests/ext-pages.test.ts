@@ -7,9 +7,10 @@ const mock = vi.hoisted(() => ({
   query: vi.fn(),
   create: vi.fn(async () => ({})),
   openOptionsPage: vi.fn(),
+  permRequest: vi.fn(async () => true),
 }));
 vi.mock('wxt/browser', () => ({
-  browser: { runtime: { sendMessage: mock.send, openOptionsPage: mock.openOptionsPage }, tabs: { query: mock.query, create: mock.create }, i18n: { getMessage: () => '' } },
+  browser: { permissions: { request: mock.permRequest }, runtime: { sendMessage: mock.send, openOptionsPage: mock.openOptionsPage }, tabs: { query: mock.query, create: mock.create }, i18n: { getMessage: () => '' } },
 }));
 
 import { App as Popup } from '../src/entrypoints/popup/App';
@@ -187,5 +188,79 @@ describe('options page', () => {
     render(h(Options, {}), root());
     await vi.waitFor(() => expect(text()).toContain('Could not load organizations: Resource protected'));
     expect(text()).toContain('Authorize the token for SSO.');
+  });
+});
+
+describe('options page: AI providers', () => {
+  const find = (sel: string) => root().querySelector(sel) as HTMLElement;
+  const radio = (i: number) => root().querySelectorAll('input[name="mode"]')[i] as HTMLInputElement;
+  const STATUS = { configured: true, mode: 'gemini', gemini: { configured: true }, custom: { configured: true, baseUrl: 'https://llm.example.com/v1', model: 'my-model' }, fallback: true, auto: true, keysUrl: 'https://aistudio.google.com/api-keys' };
+  const open = async (status: any = STATUS, extra: Record<string, (req: any) => unknown> = {}) => {
+    backend({ 'llm:status': () => ok(status), ...extra });
+    render(h(Options, {}), root());
+    await vi.waitFor(() => expect(find('#rg-ai-order')).toBeTruthy()); // the status has arrived
+  };
+  const pickRadio = (i: number) => {
+    radio(i).checked = true;
+    radio(i).dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  const toggle = (el: HTMLInputElement) => {
+    el.checked = !el.checked;
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  const aiForm = () => find('#rg-ai-key').closest('form')!;
+
+  it('keeps the saved endpoint and model when switching to Gemini and back', async () => {
+    await open();
+    pickRadio(1);
+    await vi.waitFor(() => expect((find('#rg-ai-endpoint') as HTMLInputElement).value).toBe('https://llm.example.com/v1'));
+    expect((find('#rg-ai-model') as HTMLInputElement).value).toBe('my-model');
+    pickRadio(0);
+    await vi.waitFor(() => expect(find('#rg-ai-endpoint')).toBeNull());
+    pickRadio(1);
+    await vi.waitFor(() => expect((find('#rg-ai-endpoint') as HTMLInputElement).value).toBe('https://llm.example.com/v1'));
+  });
+
+  it('saving Gemini sends only Gemini: nothing of the custom endpoint', async () => {
+    await open(STATUS, { 'llm:save': () => ok({ ...STATUS, mode: 'gemini' }) });
+    (aiForm().querySelector('button[type="submit"]') as HTMLElement).click();
+    await vi.waitFor(() => expect(log.some((r) => r.type === 'llm:save')).toBe(true));
+    const save = log.find((r) => r.type === 'llm:save');
+    expect(save.config.mode).toBe('gemini');
+    expect(save.config.apiKey).toBe('');
+  });
+
+  it('shows which provider is saved and which is tried first', async () => {
+    await open();
+    expect(text()).toContain('Google Gemini (AI Studio) · saved, tried first');
+    expect(text()).toContain('Another provider (OpenAI-compatible endpoint) · saved');
+    expect(find('#rg-ai-order').textContent).toContain('Order: Google Gemini (AI Studio), then Another provider');
+  });
+
+  it('enables the fallback only when both providers are saved, on by default, and saves the choice', async () => {
+    await open(STATUS, { 'llm:fallback': (r) => ok({ ...STATUS, fallback: r.fallback }) });
+    const box = find('#rg-ai-fallback') as HTMLInputElement;
+    expect(box.disabled).toBe(false);
+    expect(box.checked).toBe(true);
+    toggle(box);
+    await vi.waitFor(() => expect(log.find((r) => r.type === 'llm:fallback')).toMatchObject({ fallback: false }));
+  });
+
+  it('keeps the fallback off and explains why when only one provider is saved', async () => {
+    await open({ ...STATUS, custom: { configured: false } });
+    expect((find('#rg-ai-fallback') as HTMLInputElement).disabled).toBe(true);
+    expect(text()).toContain('Save both providers to enable the fallback.');
+    expect(find('#rg-ai-order').textContent).toContain('Only Google Gemini');
+  });
+
+  it('tests and removes only the selected provider', async () => {
+    await open(STATUS, { 'llm:test': () => ok({ model: 'm1', provider: 'gemini' }), 'llm:clear': () => ok({ ...STATUS, custom: { configured: false } }) });
+    const [save, test, remove] = [...aiForm().querySelectorAll('.inline button')] as HTMLButtonElement[];
+    test.click();
+    await vi.waitFor(() => expect(log.find((r) => r.type === 'llm:test')).toMatchObject({ mode: 'gemini' }));
+    await vi.waitFor(() => expect(text()).toContain('works. Model: m1.'));
+    remove.click();
+    await vi.waitFor(() => expect(log.find((r) => r.type === 'llm:clear')).toMatchObject({ mode: 'gemini' }));
+    expect(save).toBeTruthy();
   });
 });

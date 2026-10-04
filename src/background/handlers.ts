@@ -20,7 +20,7 @@ import { cachedTeamSlugs, grantTeam, loadTeamAccess, loadTeams } from './teams-d
 import { teamSlugs } from '../core/teams';
 import { postOrder } from '../core/placement';
 import { suggest } from '../core/suggest';
-import { askLlm, classifyPrompt, clearLlmConfig, llmOrigin, llmStatus, LlmError, loadLlmConfig, parseChoice, parseNewGroup, saveLlmConfig, setLlmAuto } from './llm';
+import { askLlm, classifyPrompt, clearLlmConfig, configuredProviders, llmConfigured, llmOrigin, llmStatus, LlmError, loadLlmConfig, parseChoice, parseNewGroup, saveLlmConfig, setLlmAuto, setLlmFallback, type Provider } from './llm';
 
 export interface Deps {
   fetch: FetchLike;
@@ -81,14 +81,14 @@ export function createHandler(deps: Deps) {
   /** The signed-in user's own account (github.com/<login>), as opposed to an organization. */
   const isSelf = async (owner: string) => (await loadAuth(deps.kv))?.login?.toLowerCase() === owner.toLowerCase();
 
-  /** The provider's origin is an optional host permission the Options page asks for on save (needs a click). */
-  async function requireLlmOrigin(): Promise<void> {
-    const c = await loadLlmConfig(deps.kv);
-    const origin = c && llmOrigin(c);
-    if (c && origin && deps.origins && !(await deps.origins.has(origin))) {
-      throw new LlmError(`The browser has not allowed requests to ${origin.replace('/*', '')}. Save the key again and accept the prompt.`);
-    }
-  }
+  /** Whether the browser has allowed requests to a provider's origin (an optional host permission asked in Options). */
+  const canUseOrigin = async (origin: string) => !deps.origins || (await deps.origins.has(origin));
+  /** New AI settings (provider, key, order, fallback): old answers and a pause no longer apply. */
+  const resetAiState = async () => {
+    await deps.kv.remove('rg:llm:cache');
+    await deps.kv.remove('rg:llm:pause');
+  };
+  const llmDeps = () => ({ fetch: deps.fetch, kv: deps.kv, now: deps.now, canUse: canUseOrigin });
 
   // AI calls started by the page on its own are cheap on purpose: cached, shared, capped and paused on failure.
   const AUTO_PER_MINUTE = 6;
@@ -105,18 +105,22 @@ export function createHandler(deps: Deps) {
     for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0;
     return (h >>> 0).toString(36);
   };
-  type CachedAnswer = { key?: string | null; newGroup?: GroupSuggestion['newGroup']; model?: string; none?: string };
+  type CachedAnswer = { key?: string | null; newGroup?: GroupSuggestion['newGroup']; model?: string; provider?: Provider; fallback?: boolean; none?: string };
   const loadCache = async () => (await deps.kv.get<{ k: string; at: number; v: CachedAnswer }[]>(CACHE_KEY)) ?? [];
 
   /** Asks the AI (cached by name + description + groups, one call at a time per question) and fills `out`. */
   async function askGroups(cfg: Config, org: string, repo: { name: string; description?: string | null }, out: GroupSuggestion, auto: boolean): Promise<GroupSuggestion> {
     const choices = postOrder(cfg.groups).map((n) => ({ key: n.key, title: n.group.title, description: n.group.description, keywords: n.group.keywords }));
     const prompt = classifyPrompt(choices, repo);
-    const cacheKey = [org, repo.name.toLowerCase(), repo.description ?? '', hash(JSON.stringify(choices))].join('|');
+    // The cache is per question AND per way of answering: another primary provider, the fallback switched, or another
+    // model must not be served an answer from a different setup.
+    const cfgNow = await loadLlmConfig(deps.kv);
+    const setup = [cfgNow?.primary, cfgNow?.fallback !== false, configuredProviders(cfgNow).join('+'), cfgNow?.custom?.model, cfgNow?.custom?.baseUrl].join('/');
+    const cacheKey = [org, repo.name.toLowerCase(), repo.description ?? '', hash(JSON.stringify(choices)), hash(setup)].join('|');
     const answer = (a: CachedAnswer): GroupSuggestion => {
-      if (a.key) return { ...out, source: 'llm', key: a.key, model: a.model };
-      if (a.newGroup) return { ...out, source: 'uncertain', key: null, model: a.model, newGroup: a.newGroup };
-      return { ...out, source: 'uncertain', key: null, model: a.model, llmError: `The AI found no fitting group (it answered: "${a.none ?? ''}").` };
+      if (a.key) return { ...out, source: 'llm', key: a.key, model: a.model, provider: a.provider, fallback: a.fallback };
+      if (a.newGroup) return { ...out, source: 'uncertain', key: null, model: a.model, provider: a.provider, fallback: a.fallback, newGroup: a.newGroup };
+      return { ...out, source: 'uncertain', key: null, model: a.model, provider: a.provider, fallback: a.fallback, llmError: `The AI found no fitting group (it answered: "${a.none ?? ''}").` };
     };
 
     const cached = (await loadCache()).find((e) => e.k === cacheKey && clock() - e.at < CACHE_TTL_MS);
@@ -135,11 +139,10 @@ export function createHandler(deps: Deps) {
 
     const run = (async (): Promise<GroupSuggestion> => {
       try {
-        await requireLlmOrigin();
         if (auto) autoRuns.push(clock());
-        const { text, model } = await askLlm({ fetch: deps.fetch, kv: deps.kv, now: deps.now, maxTries: auto ? 2 : undefined }, prompt);
+        const { text, model, provider, fallback } = await askLlm({ ...llmDeps(), maxTries: auto ? 2 : undefined }, prompt);
         const key = parseChoice(text, choices.map((c) => c.key));
-        const a: CachedAnswer = key ? { key, model } : { model, newGroup: parseNewGroup(text) ?? undefined, none: parseNewGroup(text) ? undefined : text.replace(/\s+/g, ' ').slice(0, 80) };
+        const a: CachedAnswer = key ? { key, model, provider, fallback } : { model, provider, fallback, newGroup: parseNewGroup(text) ?? undefined, none: parseNewGroup(text) ? undefined : text.replace(/\s+/g, ' ').slice(0, 80) };
         const list = (await loadCache()).filter((e) => e.k !== cacheKey && clock() - e.at < CACHE_TTL_MS);
         await deps.kv.set(CACHE_KEY, [...list, { k: cacheKey, at: clock(), v: a }].slice(-CACHE_MAX));
         await deps.kv.remove(PAUSE_KEY); // it worked: automatic runs may resume
@@ -168,7 +171,7 @@ export function createHandler(deps: Deps) {
     const s = suggest(cfg.groups, repo);
     const out: GroupSuggestion = { source: s.source, key: s.key, rule: s.rule, score: s.score, margin: s.margin, ranking: s.ranking.slice(0, 3) };
     if (method === 'keywords') return out;
-    if (method !== 'llm' && (s.source !== 'uncertain' || !(await loadLlmConfig(deps.kv))?.apiKey)) return out;
+    if (method !== 'llm' && (s.source !== 'uncertain' || !llmConfigured(await loadLlmConfig(deps.kv)))) return out;
     return askGroups(cfg, org, repo, out, auto);
   }
 
@@ -312,17 +315,28 @@ export function createHandler(deps: Deps) {
         return llmStatus(deps.kv);
       case 'llm:save': {
         const status = await saveLlmConfig(deps.kv, req.config);
-        await requireLlmOrigin();
+        await resetAiState();
+        // the Options page asks for the browser permission right before saving; check it took
+        const origin = llmOrigin({ mode: req.config.mode === 'custom' ? 'custom' : 'gemini', baseUrl: (await loadLlmConfig(deps.kv))?.custom?.baseUrl });
+        if (origin && !(await canUseOrigin(origin))) throw new LlmError(`The browser has not allowed requests to ${origin.replace('/*', '')}. Save again and accept the prompt.`);
         return status;
       }
       case 'llm:auto':
         return setLlmAuto(deps.kv, req.auto);
-      case 'llm:clear':
-        return clearLlmConfig(deps.kv);
+      case 'llm:fallback': {
+        const status = await setLlmFallback(deps.kv, req.fallback);
+        await resetAiState();
+        return status;
+      }
+      case 'llm:clear': {
+        const status = await clearLlmConfig(deps.kv, req.mode);
+        await resetAiState();
+        return status;
+      }
       case 'llm:test': {
-        await requireLlmOrigin();
-        const { model } = await askLlm({ fetch: deps.fetch, kv: deps.kv, now: deps.now }, 'Reply with the single word OK.');
-        return { model };
+        // one provider on its own (no fallback), so a failure says which one is wrong
+        const { model, provider } = await askLlm({ ...llmDeps(), only: req.mode }, 'Reply with the single word OK.');
+        return { model, provider };
       }
       case 'suggest:group':
         return suggestGroup(req.org, req.repo, req.method, req.auto);

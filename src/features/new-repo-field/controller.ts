@@ -55,6 +55,9 @@ export interface Suggestion {
   created?: boolean;
   /** How many levels of `newGroup.path` were taken (1 = only the top group). */
   chosenDepth?: number;
+  /** Which AI provider answered, and whether it was the fallback. */
+  provider?: 'gemini' | 'custom';
+  fallback?: boolean;
   /** Ran by itself (AI by default) rather than from a click. */
   auto?: boolean;
 }
@@ -193,9 +196,9 @@ export function createNewRepoController(env: NrEnv) {
       if (mine !== sseq) return;
       if (r.key && findGroup(store.get().groups, r.key.split('/'))) {
         pick(r.key);
-        store.set({ suggestion: { method, status: 'found', key: r.key, model: r.model, auto } });
+        store.set({ suggestion: { method, status: 'found', key: r.key, model: r.model, provider: r.provider, fallback: r.fallback, auto } });
       } else if (r.newGroup) {
-        store.set({ suggestion: { method, status: 'new', key: null, model: r.model, newGroup: r.newGroup, auto } });
+        store.set({ suggestion: { method, status: 'new', key: null, model: r.model, provider: r.provider, fallback: r.fallback, newGroup: r.newGroup, auto } });
       } else if (r.llmError) {
         store.set({ suggestion: { method, status: 'error', key: null, message: r.llmError, model: r.model, auto } });
       } else {

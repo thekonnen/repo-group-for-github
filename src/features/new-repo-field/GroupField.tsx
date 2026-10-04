@@ -26,6 +26,10 @@ function Sentence({ d, groups }: { d: Destination; groups: Group[] }) {
 }
 
 const METHOD_LABEL = { keywords: 'Keywords', llm: 'AI' } as const;
+const PROVIDER_SHORT = { gemini: 'Gemini', custom: 'custom endpoint' } as const;
+
+/** "model · Gemini", plus ", fallback" when the first provider failed. */
+const answeredBy = (sg: Suggestion): string => [sg.model, sg.provider ? PROVIDER_SHORT[sg.provider] : ''].filter(Boolean).join(' · ') + (sg.fallback ? ', fallback' : '');
 
 /** One line about the last Keywords/AI request. */
 function methodNote(sg: Suggestion, groups: Group[]): string {
@@ -34,7 +38,7 @@ function methodNote(sg: Suggestion, groups: Group[]): string {
     case 'loading':
       return sg.method === 'llm' ? 'Asking the AI…' : 'Scoring the name…';
     case 'found':
-      return `${sg.created ? 'Created and filed' : `${who}${sg.auto ? ' (by default)' : ''} filed it`} in ${pathLabel(sg.key!, groups)}${sg.model ? ` (${sg.model})` : ''}. Pick another group to override.`;
+      return `${sg.created ? 'Created and filed' : `${who}${sg.auto ? ' (by default)' : ''} filed it`} in ${pathLabel(sg.key!, groups)}${sg.model ? ` (${answeredBy(sg)})` : ''}. Pick another group to override.`;
     case 'none':
       return `${who} is not sure about this name.${sg.method === 'keywords' ? ' Try AI, or pick a group.' : ' Pick a group.'}`;
     case 'error':
@@ -59,7 +63,7 @@ function Proposal({ ctl, sg, groups }: { ctl: NrController; sg: Suggestion; grou
       <div class="rg-prop-head">
         <Icon name="sparkle" size={14} />
         <b>AI suggests a new group</b>
-        {sg.model && <span class="rg-muted">({sg.model})</span>}
+        {sg.model && <span class="rg-muted">({answeredBy(sg)})</span>}
       </div>
       <div class="rg-prop-path">
         {ng.titles.map((t, i) => (

@@ -44,6 +44,7 @@
 .rg-root .rg-proposal { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 2px solid var(--rg-accent); border-radius: 8px; background: var(--rg-accent-subtle); }
 .rg-root .rg-prop-head { display: flex; align-items: center; gap: 6px; color: var(--rg-accent); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
 .rg-root .rg-prop-head svg { fill: currentColor; }
+.rg-root .rg-prop-head .rg-muted { text-transform: none; letter-spacing: 0; }
 .rg-root .rg-prop-path { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 18px; line-height: 1.3; color: var(--rg-fg); }
 .rg-root .rg-prop-seg { display: inline-flex; align-items: center; gap: 8px; }
 .rg-root .rg-prop-seg.rg-last { font-weight: 700; font-size: 20px; }

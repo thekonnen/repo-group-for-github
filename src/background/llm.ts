@@ -12,23 +12,34 @@ export const GEMINI_NATIVE = 'https://generativelanguage.googleapis.com/v1beta';
 export const GEMINI_OPENAI = `${GEMINI_NATIVE}/openai`;
 export const GEMINI_KEYS_URL = 'https://aistudio.google.com/api-keys';
 
+export type Provider = 'gemini' | 'custom';
+export const PROVIDER_LABEL: Record<Provider, string> = { gemini: 'Gemini', custom: 'Custom endpoint' };
+
+/**
+ * Both providers can be stored at once. `primary` is tried first; with `fallback` on (the default) and both set,
+ * the other one answers when the first fails. Saving one never touches the other.
+ */
 export interface LlmConfig {
-  mode: 'gemini' | 'custom';
-  apiKey: string;
-  /** custom only: OpenAI-compatible base URL (".../v1", the worker appends /chat/completions). */
-  baseUrl?: string;
-  /** custom only. */
-  model?: string;
+  primary: Provider;
+  gemini?: { apiKey: string };
+  /** OpenAI-compatible: `baseUrl` is ".../v1", the worker appends /chat/completions. */
+  custom?: { apiKey: string; baseUrl: string; model: string };
+  /** Use the other provider when the first fails. On unless turned off. */
+  fallback?: boolean;
   /** Ask the AI on its own when no rule matches a new repository name. On unless turned off. */
   auto?: boolean;
 }
 
-/** What a page may see: never the key. */
+/** What a page may see: never a key. */
 export interface LlmStatus {
+  /** At least one provider has a key. */
   configured: boolean;
-  mode?: 'gemini' | 'custom';
-  baseUrl?: string;
-  model?: string;
+  /** The provider tried first. */
+  mode?: Provider;
+  gemini: { configured: boolean };
+  custom: { configured: boolean; baseUrl?: string; model?: string };
+  /** Use the other provider when the first fails (only effective when both are set). */
+  fallback: boolean;
   /** Gemini: the model that answered last. */
   activeModel?: string;
   /** Classify with the AI by default (see LlmConfig.auto). */
@@ -45,57 +56,102 @@ const MODELS_TTL_MS = 60 * 60_000;
 
 export class LlmError extends Error {}
 
-export const loadLlmConfig = (kv: KV) => kv.get<LlmConfig>(CONFIG_KEY);
+/** Providers that have what they need to be called. */
+export const configuredProviders = (c: LlmConfig | undefined): Provider[] => (['gemini', 'custom'] as const).filter((p) => !!c?.[p]?.apiKey);
+export const llmConfigured = (c: LlmConfig | undefined): boolean => configuredProviders(c).length > 0;
+
+/** Reads the stored config; the first version stored one provider as { mode, apiKey, baseUrl, model } and is converted. */
+export async function loadLlmConfig(kv: KV): Promise<LlmConfig | undefined> {
+  const raw = await kv.get<any>(CONFIG_KEY);
+  if (!raw) return undefined;
+  if (raw.primary) return raw as LlmConfig;
+  if (!raw.apiKey) return undefined;
+  const base = { ...(raw.auto === false ? { auto: false } : {}) };
+  return raw.mode === 'custom'
+    ? { primary: 'custom', custom: { apiKey: raw.apiKey, baseUrl: raw.baseUrl ?? '', model: raw.model ?? '' }, ...base }
+    : { primary: 'gemini', gemini: { apiKey: raw.apiKey }, ...base };
+}
 
 export async function llmStatus(kv: KV): Promise<LlmStatus> {
   const c = await loadLlmConfig(kv);
-  if (!c?.apiKey) return { configured: false, auto: true, keysUrl: GEMINI_KEYS_URL };
+  const have = configuredProviders(c);
   return {
-    configured: true,
-    mode: c.mode,
-    baseUrl: c.mode === 'custom' ? c.baseUrl : undefined,
-    model: c.mode === 'custom' ? c.model : undefined,
-    activeModel: c.mode === 'gemini' ? await kv.get<string>(ACTIVE_KEY) : undefined,
-    auto: c.auto !== false,
+    configured: have.length > 0,
+    mode: have.length ? (c!.primary && have.includes(c!.primary) ? c!.primary : have[0]) : undefined,
+    gemini: { configured: have.includes('gemini') },
+    custom: { configured: have.includes('custom'), baseUrl: c?.custom?.baseUrl, model: c?.custom?.model },
+    fallback: c?.fallback !== false,
+    activeModel: have.includes('gemini') ? await kv.get<string>(ACTIVE_KEY) : undefined,
+    auto: c?.auto !== false,
     keysUrl: GEMINI_KEYS_URL,
   };
 }
 
-/** An empty `apiKey` keeps the stored one, so the form never has to hold the secret. */
-export async function saveLlmConfig(kv: KV, input: Partial<LlmConfig>): Promise<LlmStatus> {
+/**
+ * Saves ONE provider (the one selected in Options) and makes it the primary. The other provider is left exactly as it
+ * was, so a custom endpoint stays saved while Gemini is selected. An empty key keeps that provider's own stored key.
+ */
+export async function saveLlmConfig(kv: KV, input: { mode?: Provider; apiKey?: string; baseUrl?: string; model?: string }): Promise<LlmStatus> {
   const old = await loadLlmConfig(kv);
-  const mode = input.mode === 'custom' ? 'custom' : 'gemini';
-  const apiKey = (input.apiKey ?? '').trim() || old?.apiKey || '';
-  if (!apiKey) throw new LlmError('Paste an API key first.');
-  const next: LlmConfig = { mode, apiKey, ...(old?.auto === false ? { auto: false } : {}) };
-  if (mode === 'custom') {
-    const baseUrl = (input.baseUrl ?? '').trim().replace(/\/+$/, '');
-    const model = (input.model ?? '').trim();
+  const mode: Provider = input.mode === 'custom' ? 'custom' : 'gemini';
+  const key = (input.apiKey ?? '').trim();
+  const next: LlmConfig = { ...old, primary: mode };
+  if (mode === 'gemini') {
+    const apiKey = key || old?.gemini?.apiKey || '';
+    if (!apiKey) throw new LlmError('Paste a Gemini API key first.');
+    next.gemini = { apiKey };
+    if (key) {
+      await kv.remove(ACTIVE_KEY); // a new key: models and cooldowns may differ
+      await kv.remove(COOL_KEY);
+      await kv.remove('rg:llm:models');
+    }
+  } else {
+    const baseUrl = ((input.baseUrl ?? '').trim() || old?.custom?.baseUrl || '').replace(/\/+$/, '');
+    const model = (input.model ?? '').trim() || old?.custom?.model || '';
+    const apiKey = key || old?.custom?.apiKey || '';
     if (!/^https:\/\/[^\s/]+/i.test(baseUrl)) throw new LlmError('The endpoint must be an https:// URL.');
     if (!model) throw new LlmError('Enter the model name for your endpoint.');
-    next.baseUrl = baseUrl;
-    next.model = model;
+    if (!apiKey) throw new LlmError('Paste the API key of your endpoint first.');
+    next.custom = { apiKey, baseUrl, model };
   }
   await kv.set(CONFIG_KEY, next);
-  await kv.remove(ACTIVE_KEY);
-  await kv.remove(COOL_KEY);
   return llmStatus(kv);
 }
+
+const needKey = (c: LlmConfig | undefined): LlmConfig => {
+  if (!llmConfigured(c)) throw new LlmError('Paste an API key first.');
+  return c!;
+};
 
 export async function setLlmAuto(kv: KV, auto: boolean): Promise<LlmStatus> {
-  const c = await loadLlmConfig(kv);
-  if (!c?.apiKey) throw new LlmError('Paste an API key first.');
-  await kv.set(CONFIG_KEY, { ...c, auto });
+  await kv.set(CONFIG_KEY, { ...needKey(await loadLlmConfig(kv)), auto });
   return llmStatus(kv);
 }
 
-export async function clearLlmConfig(kv: KV): Promise<LlmStatus> {
-  for (const k of [CONFIG_KEY, ACTIVE_KEY, COOL_KEY]) await kv.remove(k);
+export async function setLlmFallback(kv: KV, fallback: boolean): Promise<LlmStatus> {
+  await kv.set(CONFIG_KEY, { ...needKey(await loadLlmConfig(kv)), fallback });
+  return llmStatus(kv);
+}
+
+/** Removes one provider (the other stays and becomes the primary), or everything when no provider is given. */
+export async function clearLlmConfig(kv: KV, mode?: Provider): Promise<LlmStatus> {
+  const c = await loadLlmConfig(kv);
+  if (mode && c) {
+    const rest: LlmConfig = { ...c };
+    delete rest[mode];
+    const left = configuredProviders(rest);
+    if (left.length) {
+      await kv.set(CONFIG_KEY, { ...rest, primary: left[0] });
+      if (mode === 'gemini') for (const k of [ACTIVE_KEY, COOL_KEY, 'rg:llm:models']) await kv.remove(k);
+      return llmStatus(kv);
+    }
+  }
+  for (const k of [CONFIG_KEY, ACTIVE_KEY, COOL_KEY, 'rg:llm:models']) await kv.remove(k);
   return llmStatus(kv);
 }
 
 /** Origin the browser must grant (optional host permission) before the worker may call the provider. */
-export function llmOrigin(c: Pick<LlmConfig, 'mode' | 'baseUrl'>): string | null {
+export function llmOrigin(c: { mode: Provider; baseUrl?: string }): string | null {
   try {
     return new URL(c.mode === 'gemini' ? GEMINI_NATIVE : c.baseUrl ?? '').origin + '/*';
   } catch {
@@ -155,19 +211,12 @@ async function chat(fetch: FetchLike, base: string, apiKey: string, model: strin
 }
 
 /**
- * Sends a prompt and returns { text, model }. Gemini: tries the model that answered last, then the others in
- * `modelRank` order, putting a model that failed on a 10-minute cooldown. The first one that answers becomes the default.
+ * Gemini: tries the model that answered last, then the others in `modelRank` order, putting a model that failed on a
+ * 10-minute cooldown. The first one that answers becomes the default.
  */
-export async function askLlm(deps: { fetch: FetchLike; kv: KV; now?: () => number; /** Models to try before giving up (default 5). */ maxTries?: number }, prompt: string): Promise<{ text: string; model: string }> {
-  const c = await loadLlmConfig(deps.kv);
-  if (!c?.apiKey) throw new LlmError('No AI key set. Add one in Options > AI assistant.');
-  const now = (deps.now ?? Date.now)();
-
-  if (c.mode === 'custom') {
-    return { text: await chat(deps.fetch, c.baseUrl!, c.apiKey, c.model!, prompt), model: c.model! };
-  }
-
-  const models = await listGeminiModels(deps.fetch, deps.kv, c.apiKey, now);
+async function askGemini(deps: { fetch: FetchLike; kv: KV; now: number; maxTries?: number }, apiKey: string, prompt: string): Promise<{ text: string; model: string }> {
+  const { now } = deps;
+  const models = await listGeminiModels(deps.fetch, deps.kv, apiKey, now);
   const cool = (await deps.kv.get<Record<string, number>>(COOL_KEY)) ?? {};
   const active = await deps.kv.get<string>(ACTIVE_KEY);
   const order = [...(active && models.includes(active) ? [active] : []), ...models.filter((m) => m !== active)];
@@ -177,7 +226,7 @@ export async function askLlm(deps: { fetch: FetchLike; kv: KV; now?: () => numbe
   let last = 'No model answered.';
   for (const model of pool.slice(0, deps.maxTries ?? MAX_TRIES)) {
     try {
-      const text = await chat(deps.fetch, GEMINI_OPENAI, c.apiKey, model, prompt);
+      const text = await chat(deps.fetch, GEMINI_OPENAI, apiKey, model, prompt);
       await deps.kv.set(ACTIVE_KEY, model);
       if (cool[model]) {
         delete cool[model];
@@ -193,6 +242,50 @@ export async function askLlm(deps: { fetch: FetchLike; kv: KV; now?: () => numbe
   // The cached list may be stale (a model was retired): drop it so the next call lists again.
   await deps.kv.remove('rg:llm:models');
   throw new LlmError(`No Gemini model answered. Last error: ${last}`);
+}
+
+export interface LlmAnswer {
+  text: string;
+  model: string;
+  provider: Provider;
+  /** The primary failed and the other provider answered. */
+  fallback: boolean;
+}
+
+/**
+ * Sends a prompt. Providers are tried in order (primary first, then the other one when `fallback` is on); the first
+ * that answers wins. `only` asks a single provider with no fallback (the Test button). `canUse` lets the caller skip a
+ * provider the browser has not allowed yet. With one provider tried, its own error is thrown; with two, both are listed.
+ */
+export async function askLlm(
+  deps: { fetch: FetchLike; kv: KV; now?: () => number; /** Models to try per Gemini call (default 5). */ maxTries?: number; only?: Provider; canUse?: (origin: string) => Promise<boolean> },
+  prompt: string,
+): Promise<LlmAnswer> {
+  const c = await loadLlmConfig(deps.kv);
+  const have = configuredProviders(c);
+  if (!c || !have.length) throw new LlmError('No AI key set. Add one in Options > AI assistant.');
+  const first = have.includes(c.primary) ? c.primary : have[0];
+  const order: Provider[] = deps.only
+    ? have.includes(deps.only) ? [deps.only] : []
+    : c.fallback === false ? [first] : [first, ...have.filter((p) => p !== first)];
+  if (!order.length) throw new LlmError(`${PROVIDER_LABEL[deps.only!]} is not set up. Save its settings first.`);
+  const now = (deps.now ?? Date.now)();
+
+  const errors: string[] = [];
+  for (const [i, p] of order.entries()) {
+    try {
+      const origin = llmOrigin({ mode: p, baseUrl: c.custom?.baseUrl });
+      if (deps.canUse && origin && !(await deps.canUse(origin))) {
+        throw new LlmError(`The browser has not allowed requests to ${origin.replace('/*', '')}. Save the ${PROVIDER_LABEL[p]} settings again and accept the prompt.`);
+      }
+      const r = p === 'gemini' ? await askGemini({ fetch: deps.fetch, kv: deps.kv, now, maxTries: deps.maxTries }, c.gemini!.apiKey, prompt) : { text: await chat(deps.fetch, c.custom!.baseUrl, c.custom!.apiKey, c.custom!.model, prompt), model: c.custom!.model };
+      return { ...r, provider: p, fallback: i > 0 };
+    } catch (e) {
+      errors.push(e instanceof Error ? e.message : String(e));
+    }
+  }
+  if (order.length === 1) throw new LlmError(errors[0]);
+  throw new LlmError(order.map((p, i) => `${PROVIDER_LABEL[p]}: ${errors[i]}`).join(' | '));
 }
 
 // ---- classification prompt ----

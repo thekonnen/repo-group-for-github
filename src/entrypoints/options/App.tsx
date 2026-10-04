@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { browser } from 'wxt/browser';
 import { t } from '../../i18n';
-import { GEMINI_KEYS_URL, llmOrigin, type LlmStatus } from '../../background/llm';
+import { GEMINI_KEYS_URL, llmOrigin, type LlmStatus, type Provider } from '../../background/llm';
 import { call } from '../../github/client';
 import { toInfo, useAuth } from '../../ext-pages/use-auth';
 import type { OrgEntry, OrgList } from '../../background/orgs';
@@ -77,18 +77,27 @@ function Token({ auth }: { auth: ReturnType<typeof useAuth> }) {
   );
 }
 
+const PROVIDERS = ['gemini', 'custom'] as const;
+const providerName = (p: Provider) => (p === 'gemini' ? t('optionsAiModeGemini') : t('optionsAiModeCustom'));
+
 function Ai() {
   const [status, setStatus] = useState<LlmStatus | null>(null);
-  const [mode, setMode] = useState<'gemini' | 'custom'>('gemini');
+  // `mode` is the provider the form edits and, once saved, the one tried first.
+  const [mode, setMode] = useState<Provider>('gemini');
+  // Kept in state, not in the DOM, so switching the radio never loses what was typed or saved for the other provider.
+  const [endpoint, setEndpoint] = useState('');
+  const [model, setModel] = useState('');
+  const [key, setKey] = useState('');
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
+  const load = (s: LlmStatus, first = false) => {
+    setStatus(s);
+    if (first && s.mode) setMode(s.mode);
+    setEndpoint((v) => (first || !v ? s.custom?.baseUrl ?? '' : v));
+    setModel((v) => (first || !v ? s.custom?.model ?? '' : v));
+  };
   useEffect(() => {
-    call<LlmStatus>({ type: 'llm:status' })
-      .then((s) => {
-        setStatus(s);
-        if (s.mode) setMode(s.mode);
-      })
-      .catch((e) => setError(toInfo(e).message));
+    call<LlmStatus>({ type: 'llm:status' }).then((s) => load(s, true)).catch((e) => setError(toInfo(e).message));
   }, []);
   const run = async (fn: () => Promise<string>) => {
     setMsg('');
@@ -99,19 +108,21 @@ function Ai() {
       setError(toInfo(e).message);
     }
   };
-  const submit = (form: HTMLFormElement) => {
-    const field = (n: string) => ((form.elements.namedItem(n) as HTMLInputElement | null)?.value ?? '').trim();
-    const config = { mode, apiKey: field('key'), baseUrl: field('endpoint'), model: field('model') };
-    void run(async () => {
+  const save = () =>
+    run(async () => {
       // The provider's origin is an optional host permission; the browser only asks inside a click.
-      const origin = llmOrigin({ mode, baseUrl: config.baseUrl });
+      const origin = llmOrigin({ mode, baseUrl: endpoint.trim() || status?.custom?.baseUrl });
       if (origin && !(await browser.permissions.request({ origins: [origin] }))) throw new Error(t('optionsAiDenied'));
-      setStatus(await call<LlmStatus>({ type: 'llm:save', config }));
-      (form.elements.namedItem('key') as HTMLInputElement).value = '';
+      load(await call<LlmStatus>({ type: 'llm:save', config: { mode, apiKey: key, baseUrl: endpoint, model } }));
+      setKey('');
       return t('optionsAiSaved');
     });
-  };
+  const saved = (p: Provider) => !!status?.[p]?.configured;
+  const both = saved('gemini') && saved('custom');
   const configured = !!status?.configured;
+  const keyHint = saved(mode) ? t('optionsAiKeySavedFor') : mode === 'gemini' ? t('optionsAiKeyHint') : t('optionsAiKeyMissingCustom');
+  const first = status?.mode;
+  const second = first ? PROVIDERS.find((p) => p !== first && saved(p)) : undefined;
   return (
     <section aria-labelledby="h-ai">
       <h2 id="h-ai">{t('optionsAiHeading')}</h2>
@@ -121,28 +132,30 @@ function Ai() {
         class="field"
         onSubmit={(e) => {
           e.preventDefault();
-          submit(e.currentTarget as HTMLFormElement);
+          void save();
         }}
       >
-        <label class="rg-ext-check">
-          <input type="radio" name="mode" checked={mode === 'gemini'} onChange={() => setMode('gemini')} />
-          {t('optionsAiModeGemini')}
-        </label>
-        <label class="rg-ext-check">
-          <input type="radio" name="mode" checked={mode === 'custom'} onChange={() => setMode('custom')} />
-          {t('optionsAiModeCustom')}
-        </label>
+        {PROVIDERS.map((p) => (
+          <label class="rg-ext-check" key={p}>
+            <input type="radio" name="mode" checked={mode === p} onChange={() => setMode(p)} />
+            {providerName(p)}
+            <span class="rg-ext-muted">
+              {' '}
+              · {saved(p) ? (first === p ? `${t('optionsAiTagSaved')}, ${t('optionsAiTagPrimary')}` : t('optionsAiTagSaved')) : t('optionsAiTagNone')}
+            </span>
+          </label>
+        ))}
         {mode === 'custom' && (
           <>
             <label for="rg-ai-endpoint">{t('optionsAiEndpoint')}</label>
-            <input id="rg-ai-endpoint" name="endpoint" class="rg-ext-input" type="url" placeholder="https://…/v1" defaultValue={status?.baseUrl ?? ''} spellcheck={false} />
+            <input id="rg-ai-endpoint" name="endpoint" class="rg-ext-input" type="url" placeholder="https://…/v1" value={endpoint} onInput={(e) => setEndpoint((e.currentTarget as HTMLInputElement).value)} spellcheck={false} />
             <label for="rg-ai-model">{t('optionsAiModel')}</label>
-            <input id="rg-ai-model" name="model" class="rg-ext-input" type="text" defaultValue={status?.model ?? ''} spellcheck={false} />
+            <input id="rg-ai-model" name="model" class="rg-ext-input" type="text" value={model} onInput={(e) => setModel((e.currentTarget as HTMLInputElement).value)} spellcheck={false} />
           </>
         )}
         <label for="rg-ai-key">{t('optionsAiKeyLabel')}</label>
-        <input id="rg-ai-key" name="key" class="rg-ext-input" type="password" autocomplete="off" spellcheck={false} placeholder={configured ? '••••••••' : ''} />
-        <span class="rg-ext-muted">{configured ? t('optionsAiKeySaved') : mode === 'gemini' ? t('optionsAiKeyHint') : ''}</span>
+        <input id="rg-ai-key" name="key" class="rg-ext-input" type="password" autocomplete="off" spellcheck={false} placeholder={saved(mode) ? '••••••••' : ''} value={key} onInput={(e) => setKey((e.currentTarget as HTMLInputElement).value)} />
+        <span class="rg-ext-muted">{keyHint}</span>
         {mode === 'gemini' && (
           <a class="rg-ext-link" href={status?.keysUrl ?? GEMINI_KEYS_URL} target="_blank" rel="noreferrer noopener">{t('optionsAiGetKey')}</a>
         )}
@@ -151,12 +164,12 @@ function Ai() {
           <button
             class="rg-ext-btn"
             type="button"
-            disabled={!configured}
+            disabled={!saved(mode)}
             onClick={() =>
               run(async () => {
-                const r = await call<{ model: string }>({ type: 'llm:test' });
-                setStatus(await call<LlmStatus>({ type: 'llm:status' }));
-                return t('optionsAiTestOk', r.model);
+                const r = await call<{ model: string }>({ type: 'llm:test', mode });
+                load(await call<LlmStatus>({ type: 'llm:status' }));
+                return t('optionsAiTestOkFor', providerName(mode), r.model);
               })
             }
           >
@@ -165,8 +178,8 @@ function Ai() {
           <button
             class="rg-ext-btn"
             type="button"
-            disabled={!configured}
-            onClick={() => run(async () => (setStatus(await call<LlmStatus>({ type: 'llm:clear' })), t('optionsAiRemoved')))}
+            disabled={!saved(mode)}
+            onClick={() => run(async () => (load(await call<LlmStatus>({ type: 'llm:clear', mode })), t('optionsAiRemovedFor', providerName(mode))))}
           >
             {t('optionsAiRemove')}
           </button>
@@ -179,14 +192,33 @@ function Ai() {
             disabled={!configured}
             onChange={(e) => {
               const auto = (e.currentTarget as HTMLInputElement).checked;
-              void run(async () => (setStatus(await call<LlmStatus>({ type: 'llm:auto', auto })), t('optionsAiAutoSaved')));
+              void run(async () => (load(await call<LlmStatus>({ type: 'llm:auto', auto })), t('optionsAiAutoSaved')));
             }}
           />
           {t('optionsAiAuto')}
         </label>
         <span class="rg-ext-muted">{t('optionsAiAutoHint')}</span>
+        <label class="rg-ext-check" for="rg-ai-fallback">
+          <input
+            id="rg-ai-fallback"
+            type="checkbox"
+            checked={status?.fallback !== false}
+            disabled={!both}
+            onChange={(e) => {
+              const fallback = (e.currentTarget as HTMLInputElement).checked;
+              void run(async () => (load(await call<LlmStatus>({ type: 'llm:fallback', fallback })), t('optionsAiAutoSaved')));
+            }}
+          />
+          {t('optionsAiFallback')}
+        </label>
+        <span class="rg-ext-muted">{both ? t('optionsAiFallbackHint') : t('optionsAiFallbackNeedsBoth')}</span>
       </form>
-      {configured && status?.mode === 'gemini' && <p class="rg-ext-muted">{status.activeModel ? t('optionsAiStatus', status.activeModel) : t('optionsAiStatusPending')}</p>}
+      {first && (
+        <p class="rg-ext-muted" id="rg-ai-order">
+          {both && status?.fallback !== false && second ? t('optionsAiOrder', providerName(first), providerName(second)) : t('optionsAiOnly', providerName(first))}
+          {status?.activeModel && saved('gemini') ? ` ${t('optionsAiStatus', status.activeModel)}` : ''}
+        </p>
+      )}
       {msg && <p class="rg-ext-ok" role="status">{msg}</p>}
       {error && <p class="rg-ext-err" role="alert">{error}</p>}
     </section>

@@ -9,6 +9,7 @@ import { GroupAvatar } from '../logos/GroupAvatar';
 import { Icon } from '../../ui/Icon';
 import { useStore } from '../store';
 import { chipTeams } from '../../core/teams';
+import { MembersPanel } from '../members/MembersPanel';
 import { TeamBanners } from '../teams/TeamBanners';
 import { TeamChips } from '../teams/TeamChips';
 import type { Controller, State } from './controller';
@@ -81,7 +82,8 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
   }, [scopeKey, s.phase]);
   const split = detailTotals(scope, s.details);
 
-  const tab = s.tab === 'rules' && isRoot ? 'items' : s.tab === 'ungrouped' && !isRoot ? 'items' : s.tab;
+  const hasMembers = !isRoot && !team; // C3: the Members tab is for group pages of the org page
+  const tab = s.tab === 'rules' && isRoot ? 'items' : s.tab === 'ungrouped' && !isRoot ? 'items' : s.tab === 'members' && !hasMembers ? 'items' : s.tab;
   let rows: Row[];
   let head: preact.ComponentChild;
   if (s.query.trim()) {
@@ -146,8 +148,11 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
         <Tab ctl={ctl} id="items" current={tab} label="Groups and repositories" />
         {isRoot ? <Tab ctl={ctl} id="ungrouped" current={tab} label="Ungrouped" count={ungrouped.length} /> : <Tab ctl={ctl} id="rules" current={tab} label="Match rules" count={node.group.match.length} />}
         <Tab ctl={ctl} id="all" current={tab} label="All repositories" count={node.total} />
+        {hasMembers && <Tab ctl={ctl} id="members" current={tab} label="Members" />}
       </div>
-      {tab === 'rules' && !s.query ? (
+      {tab === 'members' ? (
+        <MembersPanel ctl={ctl} org={s.org} groups={cfg && cfg.exists && cfg.config ? cfg.config.groups : []} path={node.path} />
+      ) : tab === 'rules' && !s.query ? (
         <RulesPanel node={node} />
       ) : (
         <>

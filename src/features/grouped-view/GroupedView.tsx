@@ -10,6 +10,7 @@ import { Icon } from '../../ui/Icon';
 import { useStore } from '../store';
 import { chipTeams } from '../../core/teams';
 import { TeamBanners } from '../teams/TeamBanners';
+import { AboutPanel } from '../readme/AboutPanel';
 import { TeamChips } from '../teams/TeamChips';
 import type { Controller, State } from './controller';
 
@@ -81,7 +82,10 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
   }, [scopeKey, s.phase]);
   const split = detailTotals(scope, s.details);
 
-  const tab = s.tab === 'rules' && isRoot ? 'items' : s.tab === 'ungrouped' && !isRoot ? 'items' : s.tab;
+  // A group with a README opens on About (C4); everything else opens on the list.
+  const readme = !isRoot && !team ? node.group.readme : undefined;
+  const asked = s.tab === 'auto' ? (readme ? 'about' : 'items') : s.tab;
+  const tab = asked === 'about' && !readme ? 'items' : asked === 'rules' && isRoot ? 'items' : asked === 'ungrouped' && !isRoot ? 'items' : asked;
   let rows: Row[];
   let head: preact.ComponentChild;
   if (s.query.trim()) {
@@ -143,11 +147,14 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
         <Stat label="Last push" value={ago(node.latest)} />
       </div>
       <div class="rg-tabs" role="tablist">
+        {readme && <Tab ctl={ctl} id="about" current={tab} label="About" />}
         <Tab ctl={ctl} id="items" current={tab} label="Groups and repositories" />
         {isRoot ? <Tab ctl={ctl} id="ungrouped" current={tab} label="Ungrouped" count={ungrouped.length} /> : <Tab ctl={ctl} id="rules" current={tab} label="Match rules" count={node.group.match.length} />}
         <Tab ctl={ctl} id="all" current={tab} label="All repositories" count={node.total} />
       </div>
-      {tab === 'rules' && !s.query ? (
+      {tab === 'about' && readme && !s.query ? (
+        <AboutPanel org={s.org} readmes={ctl.readmes} readme={readme} />
+      ) : tab === 'rules' && !s.query ? (
         <RulesPanel node={node} />
       ) : (
         <>

@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
+import { isReadmePath, readmeFilePath } from '../../core/readme';
+import { initialReadme, ReadmeField, readmeChange, readmeProblem } from '../readme/ReadmeField';
+import { useReadmeText } from '../readme/readme-store';
 import { applyEdit, cleanTeams, displayName, finalName, slugify, slugName, splitRules, validateDraft, type Edit } from '../../core/edit';
 import { matches } from '../../core/glob';
 import { effectiveTeams } from '../../core/teams';
@@ -59,6 +62,18 @@ function Form({ ctl, mode, path, focusLogo }: { ctl: Controller; mode: 'edit' | 
     .map(([slug, t]) => ({ slug, permission: t.permission, from: titled(model, t.from) }));
   const savedSlugs = node ? Object.keys(effectiveTeams(groups, path)) : [];
   const [ruleInput, setRuleInput] = useState('');
+  // README (C4): inline text, a file committed with this save, or the path of an existing file.
+  const savedReadme = node?.group.readme;
+  const loadedReadme = useReadmeText(ctl.readmes, savedReadme && isReadmePath(savedReadme) ? savedReadme : '');
+  const [readme, setReadme] = useState(() => initialReadme(savedReadme, path, loadedReadme));
+  const [readmeTouched, setReadmeTouched] = useState(false);
+  useEffect(() => {
+    // The saved file arrives after the drawer opened: show it unless the person already typed.
+    if (!readmeTouched && readme.mode === 'file' && loadedReadme != null && !readme.text) setReadme({ ...readme, text: loadedReadme });
+  }, [loadedReadme]);
+  const readmeLoading = readme.mode === 'file' && !readmeTouched && !!savedReadme && savedReadme === readmeFilePath(path) && loadedReadme === undefined;
+  const readmeChg = readmeLoading ? undefined : readmeChange(readme, savedReadme, path, loadedReadme);
+  const readmeError = readmeProblem(readme);
   const [logo, setLogo] = useState<LogoDraft>({ kind: 'keep' });
   const currentLogo = useLogoSrc(ctl.logos, node?.group.logo);
   const [touched, setTouched] = useState(false);
@@ -80,6 +95,7 @@ function Form({ ctl, mode, path, focusLogo }: { ctl: Controller; mode: 'edit' | 
     description !== node.group.description ||
     allRules.join('\n') !== node.group.match.join('\n') ||
     teamsDirty ||
+    readmeChg !== undefined ||
     logo.kind !== 'keep';
 
   const onTitle = (v: string) => {
@@ -101,12 +117,12 @@ function Form({ ctl, mode, path, focusLogo }: { ctl: Controller; mode: 'edit' | 
   const logoChange = logo.kind === 'png' ? { png: logo.png } : logo.kind === 'remove' ? { remove: true as const } : undefined;
   const edit: Edit =
     mode === 'edit'
-      ? { kind: 'edit', path, name: slug, title, description, match: allRules, ...(logoChange && { logo: logoChange }), ...(teamsDirty ? { teams } : {}) }
-      : { kind: 'new', parent: path, name: slug, title, description, match: allRules, ...(logoChange && { logo: logoChange }), ...(teams.length ? { teams } : {}) };
+      ? { kind: 'edit', path, name: slug, title, description, match: allRules, ...(logoChange && { logo: logoChange }), ...(readmeChg && { readme: readmeChg }), ...(teamsDirty ? { teams } : {}) }
+      : { kind: 'new', parent: path, name: slug, title, description, match: allRules, ...(logoChange && { logo: logoChange }), ...(readmeChg && { readme: readmeChg }), ...(teams.length ? { teams } : {}) };
 
   const submit = async () => {
     setTouched(true);
-    if (error || saving) return;
+    if (error || readmeError || saving) return;
     setSaving(true);
     setProblem(null);
     const r: SaveResult = await ctl.save(edit);
@@ -120,7 +136,9 @@ function Form({ ctl, mode, path, focusLogo }: { ctl: Controller; mode: 'edit' | 
     let yaml = ctl.savedText();
     if (!error) {
       // A cropped PNG is committed together with this form's Save, not by the YAML editor: leave it out of the preview.
-      const forYaml: Edit = logoChange && 'png' in logoChange ? { ...edit, logo: undefined } : edit;
+      // The same goes for a README saved as a file.
+      let forYaml: Edit = logoChange && 'png' in logoChange ? { ...edit, logo: undefined } : edit;
+      if (readmeChg && 'file' in readmeChg && (forYaml.kind === 'edit' || forYaml.kind === 'new')) forYaml = { ...forYaml, readme: undefined };
       const r = applyEdit(cfg.groups, forYaml);
       if ('groups' in r) yaml = writeConfig({ ...cfg, groups: r.groups }, `${s.org}/.github/repo-groups.yml`);
     }
@@ -141,7 +159,7 @@ function Form({ ctl, mode, path, focusLogo }: { ctl: Controller; mode: 'edit' | 
         <>
           <span class="rg-grow">Saved as a commit to <code>{s.org}/.github</code>, created as private if it does not exist. Everyone in the organization sees the change.</span>
           <button type="button" class="rg-btn" onClick={() => ctl.closeDrawer()}>Cancel</button>
-          <button type="button" class="rg-btn rg-btn-primary" disabled={saving || !!error || !dirty} onClick={() => submit()}>
+          <button type="button" class="rg-btn rg-btn-primary" disabled={saving || !!error || !!readmeError || !dirty} onClick={() => submit()}>
             {saving ? 'Saving…' : 'Save changes'}
           </button>
         </>
@@ -168,6 +186,9 @@ function Form({ ctl, mode, path, focusLogo }: { ctl: Controller; mode: 'edit' | 
           <label for="rg-f-desc">Description</label>
           <input id="rg-f-desc" class="rg-input" value={description} autocomplete="off" placeholder="One short sentence" onInput={(e) => setDescription((e.target as HTMLInputElement).value)} />
         </div>
+
+        <ReadmeField org={s.org} groupPath={mode === 'edit' ? [...path.slice(0, -1), finalName(slug) || path[path.length - 1]] : [...path, finalName(slug) || 'group']} draft={readme} loading={readmeLoading} problem={readmeError}
+          onChange={(d) => (setReadme(d), setReadmeTouched(true), setProblem(null))} />
 
         {!s.access?.personal && <TeamsField
           org={s.org}

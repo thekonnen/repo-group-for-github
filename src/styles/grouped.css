@@ -311,3 +311,26 @@
 .rg-root .rg-del-label { font-weight: 600; }
 .rg-root .rg-dialog-foot { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--rg-border); }
 .rg-root .rg-dialog-foot .rg-btn:not(.rg-btn-danger-solid) { width: 100%; justify-content: center; }
+
+/* Group README (C4) */
+.rg-root .rg-about { padding: 16px; }
+.rg-root .rg-md { font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.rg-root .rg-md > :first-child { margin-top: 0; }
+.rg-root .rg-md > :last-child { margin-bottom: 0; }
+.rg-root .rg-md h2, .rg-root .rg-md h3, .rg-root .rg-md h4, .rg-root .rg-md h5, .rg-root .rg-md h6 { margin: 20px 0 8px; font-weight: 600; line-height: 1.25; }
+.rg-root .rg-md h2 { font-size: 20px; padding-bottom: 6px; border-bottom: 1px solid var(--rg-border-muted); }
+.rg-root .rg-md h3 { font-size: 16px; }
+.rg-root .rg-md p, .rg-root .rg-md ul, .rg-root .rg-md ol, .rg-root .rg-md pre, .rg-root .rg-md blockquote, .rg-root .rg-md .rg-md-table { margin: 0 0 12px; }
+.rg-root .rg-md ul, .rg-root .rg-md ol { padding-left: 24px; }
+.rg-root .rg-md code { font-family: var(--rg-mono, ui-monospace, monospace); font-size: 85%; padding: 2px 5px; border-radius: 6px; background: var(--rg-bg-subtle); }
+.rg-root .rg-md pre { padding: 12px; overflow: auto; border-radius: 6px; background: var(--rg-bg-subtle); }
+.rg-root .rg-md pre code { padding: 0; background: transparent; font-size: 12px; }
+.rg-root .rg-md blockquote { padding: 0 12px; color: var(--rg-muted); border-left: 4px solid var(--rg-border); }
+.rg-root .rg-md hr { border: 0; border-top: 1px solid var(--rg-border); margin: 16px 0; }
+.rg-root .rg-md a { color: var(--rg-accent); }
+.rg-root .rg-md .rg-md-table { overflow-x: auto; }
+.rg-root .rg-md table { border-collapse: collapse; }
+.rg-root .rg-md th, .rg-root .rg-md td { padding: 6px 12px; border: 1px solid var(--rg-border); }
+.rg-root .rg-md-tabs { margin-top: 4px; }
+.rg-root .rg-md-text { width: 100%; min-height: 160px; resize: vertical; font-family: var(--rg-mono, ui-monospace, monospace); font-size: 12px; box-sizing: border-box; }
+.rg-root .rg-md-preview { min-height: 160px; padding: 12px; border: 1px solid var(--rg-border); border-radius: 6px; max-height: 360px; overflow: auto; }

@@ -1,12 +1,13 @@
 import { logoPath } from './logo';
 import { findGroup, placement } from './placement';
+import { cleanReadme, isSafeReadmePath, readmeFilePath, type ReadmeChange } from './readme';
 import type { Group, TeamTag } from './types';
 
 /** The single change behind Edit group / New group. Re-applied to a fresh file when a commit conflicts (§7). */
 export type Edit =
   /** `teams` (F12): when given it replaces the group's own team tags; when absent they are kept. */
-  | { kind: 'edit'; path: string[]; name: string; title?: string; description: string; match: string[]; logo?: LogoChange; teams?: TeamTag[] }
-  | { kind: 'new'; parent: string[]; name: string; title?: string; description: string; match: string[]; logo?: LogoChange; teams?: TeamTag[] }
+  | { kind: 'edit'; path: string[]; name: string; title?: string; description: string; match: string[]; logo?: LogoChange; readme?: ReadmeChange; teams?: TeamTag[] }
+  | { kind: 'new'; parent: string[]; name: string; title?: string; description: string; match: string[]; logo?: LogoChange; readme?: ReadmeChange; teams?: TeamTag[] }
   /** F9: adds the exact repo name to the match list of an existing group. */
   | { kind: 'file'; path: string[]; repo: string }
   /** Removes a group and all its subgroups from the file. No repository is touched: they fall back to the other rules. */
@@ -15,6 +16,25 @@ export type Edit =
 /** A logo change (F7): a new 192x192 PNG (base64, committed with the YAML in one commit) or "use the letter". */
 export type LogoChange = { png: string } | { remove: true };
 export const hasPng = (e: Edit): boolean => (e.kind === 'new' || e.kind === 'edit') && !!e.logo && 'png' in e.logo;
+
+/** The README text of an edit that stores it as a file (committed with repo-groups.yml), if it carries one. */
+export const readmeFileOf = (e: Edit): string | null => ((e.kind === 'new' || e.kind === 'edit') && e.readme && 'file' in e.readme ? cleanReadme(e.readme.file) || null : null);
+export const hasReadmeFile = (e: Edit): boolean => readmeFileOf(e) !== null;
+
+/** Sets or clears `readme` on a group. Returns an error text for a path that leaves the repository. */
+function setReadme(g: Group, change: ReadmeChange | undefined, groupPath: string[]): string | null {
+  if (!change) return null;
+  let v: string | undefined;
+  if ('remove' in change) v = undefined;
+  else if ('inline' in change) v = cleanReadme(change.inline) || undefined;
+  else if ('path' in change) {
+    v = change.path.trim() || undefined;
+    if (v && !isSafeReadmePath(v)) return 'The README path must stay inside the .github repository.';
+  } else v = cleanReadme(change.file) ? readmeFilePath(groupPath) : undefined;
+  if (v) g.readme = v;
+  else delete g.readme;
+  return null;
+}
 
 /** Trimmed tags, empty slugs dropped, one tag per slug (the last one wins). */
 export function cleanTeams(teams: TeamTag[]): TeamTag[] {
@@ -115,7 +135,10 @@ export function applyEdit(groups: Group[], edit: Edit): { groups: Group[] } | { 
     if (!name) return { error: 'Name is required.' };
     if (list.some((g) => g.name === name)) return { error: `A group named "${name}" already exists here.` };
     const logo = edit.logo && 'png' in edit.logo ? logoPath([...edit.parent, name]) : null;
-    list.push({ name, ...(cleanTitle(edit.title, name) ? { title: cleanTitle(edit.title, name) } : {}), description: edit.description.trim(), logo, teams: edit.teams ? cleanTeams(edit.teams) : [], match, groups: [] });
+    const made: Group = { name, ...(cleanTitle(edit.title, name) ? { title: cleanTitle(edit.title, name) } : {}), description: edit.description.trim(), logo, teams: edit.teams ? cleanTeams(edit.teams) : [], match, groups: [] };
+    const bad = setReadme(made, edit.readme, [...edit.parent, name]);
+    if (bad) return { error: bad };
+    list.push(made);
     return { groups: next };
   }
   const g = findGroup(next, edit.path);
@@ -134,6 +157,8 @@ export function applyEdit(groups: Group[], edit: Edit): { groups: Group[] } | { 
   g.match = match;
   if (edit.logo) g.logo = 'png' in edit.logo ? logoPath([...parent, name]) : null;
   if (edit.teams) g.teams = cleanTeams(edit.teams);
+  const bad = setReadme(g, edit.readme, [...parent, name]);
+  if (bad) return { error: bad };
   return { groups: next };
 }
 
@@ -144,10 +169,11 @@ export const editPath = (e: Edit): string =>
 export function commitMessage(e: Edit): string {
   if (e.kind === 'file') return `chore(repo-groups): file ${e.repo} in ${e.path.join('/')}`;
   if (e.kind === 'delete') return `chore(repo-groups): delete ${e.path.length > 1 ? 'subgroup' : 'group'} ${e.path.join('/')}${e.path.length > 1 ? ' (rules moved to the parent group)' : ''}`;
-  if (e.kind === 'new') return `chore(repo-groups): add ${e.parent.length ? 'subgroup' : 'group'} ${editPath(e)}${hasPng(e) ? ' with logo' : ''}`;
+  if (e.kind === 'new') return `chore(repo-groups): add ${e.parent.length ? 'subgroup' : 'group'} ${editPath(e)}${hasPng(e) ? ' with logo' : ''}${hasReadmeFile(e) ? (hasPng(e) ? ' and README' : ' with README') : ''}`;
   const from = e.path.join('/');
   const to = editPath(e);
-  if (from === to && hasPng(e)) return `chore(repo-groups): add logo for ${to}`;
+  if (from === to && hasPng(e)) return `chore(repo-groups): add ${hasReadmeFile(e) ? 'logo and README' : 'logo'} for ${to}`;
+  if (from === to && hasReadmeFile(e)) return `chore(repo-groups): update README for ${to}`;
   return from === to ? `chore(repo-groups): edit group ${from}` : `chore(repo-groups): rename group ${from} to ${to}`;
 }
 

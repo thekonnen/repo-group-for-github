@@ -12,6 +12,9 @@ import { CallError, type Call } from '../../github/client';
 import type { ConfigResult, ErrorInfo, OrgPrefs, OrgSnapshot, Progress } from '../../github/messages';
 import { DETAILS_MAX_REPOS, type DetailsMap } from '../../core/details';
 import { createLogoStore } from '../logos/logo-store';
+import { createReadmeStore } from '../readme/readme-store';
+import { readmeFileOf } from '../../core/edit';
+import { isReadmePath } from '../../core/readme';
 import { createStore, type Store } from '../store';
 import { createTeamsController } from '../teams/teams-controller';
 
@@ -37,7 +40,8 @@ export interface State {
   view: 'grouped' | 'list';
   expanded: Set<string>;
   expandedTouched: boolean;
-  tab: 'items' | 'ungrouped' | 'rules' | 'all';
+  /** `auto` = the default of the group: About when it has a README, otherwise Groups and repositories. */
+  tab: 'auto' | 'about' | 'items' | 'ungrouped' | 'rules' | 'all';
   sort: SortKey;
   query: string;
   access: Access | null;
@@ -78,6 +82,19 @@ export interface Env {
 
 export type Controller = ReturnType<typeof createController>;
 
+/** The README path the saved tree gives the group of a new or edited group, to prime the page with the text just committed. */
+function findReadme(groups: Group[], edit: Extract<Edit, { kind: 'new' | 'edit' }>): string | null {
+  const parent = edit.kind === 'new' ? edit.parent : edit.path.slice(0, -1);
+  let list = groups;
+  let g: Group | undefined;
+  for (const n of [...parent, finalName(edit.name)]) {
+    g = list.find((x) => x.name === n);
+    if (!g) return null;
+    list = g.groups;
+  }
+  return g?.readme && isReadmePath(g.readme) ? g.readme.trim() : null;
+}
+
 const infoOf = (e: unknown): ErrorInfo => (e instanceof CallError ? e.info : { kind: 'other', message: e instanceof Error ? e.message : String(e) });
 
 export function createController(org: string, env: Env) {
@@ -98,7 +115,7 @@ export function createController(org: string, env: Env) {
     view: hasGithubFilter(env.location.search) ? 'list' : 'grouped',
     expanded: new Set(),
     expandedTouched: false,
-    tab: 'items',
+    tab: 'auto',
     sort: 'pushed',
     query: '',
     access: null,
@@ -119,6 +136,18 @@ export function createController(org: string, env: Env) {
     const walk = (gs: Group[]) => gs.forEach((g) => (g.logo && refs.push(g.logo), walk(g.groups)));
     if (cfg && cfg.exists && cfg.config) walk(cfg.config.groups);
     logos.want(refs);
+  });
+  // README files (C4) load through the background too; inline READMEs are part of the config itself.
+  const readmes = createReadmeStore(env.call, org);
+  let readmeCfg: unknown;
+  store.subscribe(() => {
+    const cfg = store.get().config;
+    if (cfg === readmeCfg) return;
+    readmeCfg = cfg;
+    const refs: string[] = [];
+    const walk = (gs: Group[]) => gs.forEach((g) => (g.readme && isReadmePath(g.readme) && refs.push(g.readme.trim()), walk(g.groups)));
+    if (cfg && cfg.exists && cfg.config) walk(cfg.config.groups);
+    readmes.want(refs);
   });
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
@@ -231,6 +260,11 @@ export function createController(org: string, env: Env) {
       const logoFile = editLogoPath(edit);
       const png = pngOf(edit);
       if (logoFile && png) logos.put(logoFile, `data:image/png;base64,${png}`);
+      const readmeText = readmeFileOf(edit);
+      if (readmeText !== null && edit.kind !== 'file' && edit.kind !== 'delete') {
+        const at = r.config?.groups && findReadme(r.config.groups, edit);
+        if (at) readmes.put(at, readmeText);
+      }
       const next: Partial<State> = { config: { exists: true, sha: r.sha, config: r.config, warnings: r.warnings }, indexVersion: before.indexVersion + 1, drawer: null };
       const expanded = new Set(before.expanded);
       if (edit.kind === 'new' && edit.parent.length) expanded.add(edit.parent.join('/')); // creating a group expands its parent
@@ -328,6 +362,7 @@ export function createController(org: string, env: Env) {
     store,
     teams,
     logos,
+    readmes,
     /** Loads an image from a link in the background (CORS-free, asks for the site's permission). Resolves to a data URL. */
     fetchLogoLink: async (url: string) => (await env.call<{ dataUrl: string }>({ type: 'logo:fetch-link', url })).dataUrl,
     model,
@@ -393,13 +428,13 @@ export function createController(org: string, env: Env) {
       const path = r.layer === 'org' ? r.path : [];
       const m = model();
       const known = !m || !path.length || m.byKey.has(path.join('/'));
-      store.set({ path: known ? path : [], tab: 'items', query: '' });
+      store.set({ path: known ? path : [], tab: 'auto', query: '' });
     },
     go(path: string[]) {
       const hash = buildHash({ layer: 'org', path });
       env.history.pushState(null, '', env.location.pathname + env.location.search + hash);
       const wasList = store.get().view !== 'grouped';
-      store.set({ path, tab: 'items', query: '', view: 'grouped' });
+      store.set({ path, tab: 'auto', query: '', view: 'grouped' });
       if (wasList) savePrefs({ view: 'grouped' });
     },
     setView(view: 'grouped' | 'list') {

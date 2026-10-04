@@ -7,7 +7,8 @@ import { describeToken, loadAuth, pollDeviceFlow, publicAuth, saveAuth, signOut,
 import type { KV } from './kv';
 import { commitEditWithLogo } from './commit-logo';
 import { createLogoService, memoryLogoCache, type LogoCache, type Origins } from './logos';
-import { hasPng, pngOf } from '../core/edit';
+import { hasPng, hasReadmeFile, pngOf, readmeFileOf } from '../core/edit';
+import { createReadmeService } from './readmes';
 import { checkYaml, commitEdit, commitYaml, createDotGithub, EditError } from './commit';
 import { discardPending, filePending, setPending } from './new-repo';
 import { probeAccess, readOrgFile, type OrgFile } from './org-data';
@@ -45,6 +46,7 @@ export function createHandler(deps: Deps) {
   const clientId = deps.clientId ?? GITHUB_CLIENT_ID;
   const client = createClient({ fetch: deps.fetch, getToken: async () => (await loadAuth(deps.kv))?.token ?? null });
   const logos = createLogoService({ client, fetch: deps.fetch, cache: deps.logos ?? memoryLogoCache(), origins: deps.origins });
+  const readmes = createReadmeService({ client, cache: deps.logos ?? memoryLogoCache() });
   const FLOW_KEY = 'rg:device-flow';
   // The popup closes as soon as the user opens github.com/login/device, so the pending code lives here
   // and the popup resumes polling with it when it is opened again.
@@ -258,16 +260,20 @@ export function createHandler(deps: Deps) {
         return { exists: true, sha: file.sha, config: r.config, error: r.error, line: r.line, warnings: r.warnings } satisfies ConfigResult;
       }
       case 'org:edit': {
-        if (!hasPng(req.edit)) return commitEdit(client, deps.kv, req.org, req.edit);
+        if (!hasPng(req.edit) && !hasReadmeFile(req.edit)) return commitEdit(client, deps.kv, req.org, req.edit);
         const r = await commitEditWithLogo(client, deps.kv, req.org, req.edit);
         const png = pngOf(req.edit);
         if (r.status === 'ok' && r.logoSha && png) {
           await logos.prime(req.org, r.logoSha, `data:image/png;base64,${png}`).catch(() => {});
         }
+        const text = readmeFileOf(req.edit);
+        if (r.status === 'ok' && r.readmeSha && text !== null) await readmes.prime(req.org, r.readmeSha, text).catch(() => {});
         return r;
       }
       case 'logos:get':
         return logos.load(req.org, req.srcs);
+      case 'readmes:get':
+        return readmes.load(req.org, req.paths);
       case 'logo:fetch-link':
         return logos.fetchLink(req.url);
       case 'org:teams':

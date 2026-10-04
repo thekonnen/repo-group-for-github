@@ -55,3 +55,19 @@ Milestones 1–6 done: scaffold, tested `core/`, background worker (device flow,
 The page selectors in `src/github/selectors.ts` were written from the screenshots in `design/screenshots`, not from live GitHub. If the grouped view does not appear, check them first (the extension logs `[RG] could not find the repositories list…` in the page console and leaves the page alone).
 
 `npm run size` only reports the budgets from CLAUDE.md §10; add `--strict` to fail on them.
+
+## Group README
+
+A group can have a presentation page. Add `readme:` to the group in `repo-groups.yml`, either inline Markdown or a path inside `<org>/.github`:
+
+```yaml
+groups:
+  - name: infra
+    readme: |
+      # Infra
+      Owned by the **platform** team. See [the runbook](https://example.com/runbook).
+  - name: ai
+    readme: "readmes/ai.md"
+```
+
+The group page then opens on an **About** tab. Edit group has a README field with Write and Preview tabs: keep the text inside the YAML, save it as `readmes/<group-path>.md` (committed together with `repo-groups.yml`), or point to an existing file. The Markdown renderer is built in (headings, lists, links, code, quotes, tables); raw HTML is shown as text and only `http`, `https` and `mailto` links work. A README is limited to 64 KB. The AI prompt tells the model to keep every `readme` untouched.

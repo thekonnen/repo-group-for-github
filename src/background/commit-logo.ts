@@ -1,4 +1,6 @@
-import { applyEdit, commitMessage, editLogoPath, pngOf, type Edit } from '../core/edit';
+import { applyEdit, commitMessage, editLogoPath, finalName, pngOf, readmeFileOf, type Edit } from '../core/edit';
+import { findGroup } from '../core/placement';
+import { readmeFilePath } from '../core/readme';
 import type { Config } from '../core/types';
 import { loadYamlParser, readConfig } from '../core/yaml-read';
 import { writeConfig } from '../core/yaml-write';
@@ -12,22 +14,25 @@ const enc = encodeURIComponent;
 const PROTECTED = /protected branch|branch protection|required status|review is required|changes must be made through a pull request/i;
 const refPath = (branch: string) => branch.split('/').map(enc).join('/');
 
-export type LogoEditResult = EditResult & { logoSha?: string };
+export type LogoEditResult = EditResult & { logoSha?: string; readmeSha?: string; readmeFile?: string };
 
 /**
- * An edit that stores a new logo: the PNG and repo-groups.yml go in ONE commit through the Git Data API
+ * An edit that stores a new logo and/or a README file (C4): the files and repo-groups.yml go in ONE commit through the Git Data API
  * (ref, blobs, tree with base_tree, commit, ref update). On a conflict the file is read again and the same
  * edit is re-applied, once (§7).
  */
 export async function commitEditWithLogo(client: Client, kv: KV, org: string, edit: Edit): Promise<LogoEditResult> {
   const png = pngOf(edit);
   const logoFile = editLogoPath(edit);
-  if (!png || !logoFile) throw new EditError('There is no new logo to save.');
+  const readmeText = readmeFileOf(edit);
+  if (!(png && logoFile) && readmeText === null) throw new EditError('There is no new logo or README to save.');
   const load = await loadYamlParser();
   const repo = await readDotGithub(client, org);
   if (!repo.readable) return { status: 'needs-repo' };
   const git = `/repos/${enc(org)}/.github/git`;
   let pngSha: string | null = null;
+  let readmeSha: string | null = null;
+  let readmeFile: string | null = null;
 
   for (let attempt = 0; ; attempt++) {
     let step: 'read' | 'write' | 'ref' = 'read';
@@ -52,7 +57,20 @@ export async function commitEditWithLogo(client: Client, kv: KV, org: string, ed
       const text = writeConfig(next, `${org}/.github/repo-groups.yml`);
 
       step = 'write';
-      pngSha ??= (await client.rest(`${git}/blobs`, { method: 'POST', body: { content: png, encoding: 'base64' } })).data.sha as string;
+      const files: { path: string; mode: string; type: string; sha: string }[] = [];
+      if (png && logoFile) {
+        pngSha ??= (await client.rest(`${git}/blobs`, { method: 'POST', body: { content: png, encoding: 'base64' } })).data.sha as string;
+        files.push({ path: logoFile, mode: '100644', type: 'blob', sha: pngSha });
+      }
+      if (readmeText !== null) {
+        // The file lives at the path the new group tree gives it (a rename in the same edit moves it).
+        const at = readmeLocation(edit, applied.groups);
+        if (at) {
+          readmeSha ??= (await client.rest(`${git}/blobs`, { method: 'POST', body: { content: encodeBase64Utf8(readmeText), encoding: 'base64' } })).data.sha as string;
+          readmeFile = at;
+          files.push({ path: at, mode: '100644', type: 'blob', sha: readmeSha });
+        }
+      }
       const ymlSha: string = (await client.rest(`${git}/blobs`, { method: 'POST', body: { content: encodeBase64Utf8(text), encoding: 'base64' } })).data.sha;
       const tree = await client.rest(`${git}/trees`, {
         method: 'POST',
@@ -60,7 +78,7 @@ export async function commitEditWithLogo(client: Client, kv: KV, org: string, ed
           base_tree: base,
           tree: [
             { path: FILE, mode: '100644', type: 'blob', sha: ymlSha },
-            { path: logoFile, mode: '100644', type: 'blob', sha: pngSha },
+            ...files,
           ],
         },
       });
@@ -69,7 +87,7 @@ export async function commitEditWithLogo(client: Client, kv: KV, org: string, ed
       step = 'ref';
       await client.rest(`${git}/refs/heads/${refPath(repo.defaultBranch)}`, { method: 'PATCH', body: { sha: commit.data.sha } });
       await kv.set(`rg:file:${org}`, { exists: true, text, sha: ymlSha, etag: null } satisfies OrgFile);
-      return { status: 'ok', sha: ymlSha, config: next, warnings: [], logoSha: pngSha };
+      return { status: 'ok', sha: ymlSha, config: next, warnings: [], ...(pngSha && png ? { logoSha: pngSha } : {}), ...(readmeSha && readmeFile ? { readmeSha, readmeFile } : {}) };
     } catch (e) {
       const conflict = e instanceof GitHubError && e.kind === 'validation' && step === 'ref' && !PROTECTED.test(e.message);
       if (conflict && attempt === 0) continue; // the branch moved under us: read again, re-apply
@@ -78,4 +96,12 @@ export async function commitEditWithLogo(client: Client, kv: KV, org: string, ed
       friendly(e, org);
     }
   }
+}
+
+/** Where the README file of an edit ends up: the `readme` the applied tree gives the group. */
+function readmeLocation(edit: Edit, groups: Parameters<typeof findGroup>[0]): string | null {
+  if (edit.kind !== 'new' && edit.kind !== 'edit') return null;
+  const parent = edit.kind === 'new' ? edit.parent : edit.path.slice(0, -1);
+  const g = findGroup(groups, [...parent, finalName(edit.name)]);
+  return g?.readme && g.readme === readmeFilePath([...parent, g.name]) ? g.readme : null;
 }

@@ -48,6 +48,17 @@ The extension then downloads that one file instead of paginating, and confirms e
 
 **Privacy warning:** everyone who can read `<org>/.github` can read the names and descriptions of **all** repositories listed in `repo-index.json`, including private ones they cannot open. Only enable this in organizations where members already see every repository.
 
+## Optional: AI group suggestion on "New repository"
+
+Off by default. In **Options > AI assistant** choose Google Gemini, Anthropic (API key) or an OpenAI-compatible endpoint and paste a key. Without a key nothing is ever sent and the keyword suggestion (`src/core/suggest.ts`, runs in your browser) is used.
+
+- **What is sent:** the new repository's name and description, plus your groups (names, descriptions, keywords, match rules and up to 4 repository names per group) go to the provider you chose. Nothing else.
+- **The key** lives in extension `storage.local`, is used only by the background worker, is never logged and is stripped from error messages. The provider's origin is an optional host permission asked when you click Save.
+- **Answers are strict:** the model must reply with JSON `{"group": "<existing group path>" | "none" | "new", "reason": "..."}`. Anything else (a path that does not exist, text around the JSON, ...) is rejected, so a malicious repository description cannot steer the result.
+- **Never blocks GitHub's form:** the AI gets 4 seconds. When it is offline, slow, erroring or invalid, the closest keyword match is offered instead.
+- **UI:** under the Group picker, a chip reads "Suggested: infra / dagsrv - why", marked `AI` or `keywords`, with **Accept**.
+- Answers are cached per (name, description, config sha, setup) for one hour.
+
 ## Status
 
 Milestones 1–6 done: scaffold, tested `core/`, background worker (device flow, token fallback, parallel repo index with cache, `repo-groups.yml` reader, access detection), and the read-only grouped view on `github.com/orgs/<org>/repositories` (groups and subgroups, sidebar tree, group pages at `#infra/dagsrv`, search, GitHub-list toggle), plus Edit group / New group. Org owners and members with write access to `<org>/.github` can edit groups and create groups and subgroups from the page (each save is a commit to `repo-groups.yml`). The YAML editor (Edit YAML) has the AI round-trip: copy the prompt with the file and repositories, paste the answer back, review the diff, commit. Groups have a display name (any characters) and a slug (`grupo-competicao`). Next: logos, new-repository field, teams (in progress).

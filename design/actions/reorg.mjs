@@ -200,6 +200,38 @@ function dueOn(v) {
 /** Names are case-insensitive on GitHub. */
 var labelKey = (name) => name.trim().toLowerCase();
 //#endregion
+//#region src/core/markdown.ts
+/** A README is at most 64 KB (bytes of UTF-8). */
+var MAX_README_BYTES = 65536;
+//#endregion
+//#region src/core/readme.ts
+/** Group READMEs (C4): where they live and how a `readme:` value is read. Pure, no DOM. */
+/** One line that looks like a file name inside <org>/.github: `readmes/infra.md`. Anything else is inline Markdown. */
+var isReadmePath = (v) => !/[\r\n]/.test(v.trim()) && /^[\w.\-/]+\.(md|markdown)$/i.test(v.trim());
+/** A path must stay inside the repository: no leading slash, no `..`, no empty segments. */
+var isSafeReadmePath = (p) => !p.startsWith("/") && p.split("/").every((s) => s && s !== ".." && s !== ".");
+var byteLength = (s) => new TextEncoder().encode(s).length;
+var readmeTooBig = (text) => byteLength(text) > MAX_README_BYTES;
+MAX_README_BYTES / 1024;
+/** Normalized inline text: LF line ends, no trailing blank space, one final newline. */
+var cleanReadme = (text) => {
+	const t = text.replace(/\r\n?/g, "\n").replace(/[ \t]+$/gm, "").replace(/^\n+/, "").replace(/\s+$/, "");
+	return t ? t + "\n" : "";
+};
+/** Checks a raw `readme:` value of group `name`. */
+function readReadme(name, org, raw) {
+	if (raw == null) return { none: true };
+	if (typeof raw !== "string") return { error: `"${name}": readme must be text or a path to a .md file in ${org}/.github.` };
+	if (!raw.trim()) return { none: true };
+	if (isReadmePath(raw)) {
+		const p = raw.trim();
+		if (!isSafeReadmePath(p)) return { error: `"${name}": readme path "${p}" must stay inside ${org}/.github.` };
+		return { value: p };
+	}
+	if (readmeTooBig(raw)) return { error: `"${name}": readme is larger than ${MAX_README_BYTES / 1024} KB.` };
+	return { value: cleanReadme(raw) };
+}
+//#endregion
 //#region src/core/edit.ts
 /**
 * "dag, dagsrv;dags" -> three rules. Repository names cannot contain commas or spaces, so splitting a rule on them
@@ -402,6 +434,11 @@ function configFromObject(obj, opts = {}) {
 			const words = keywords.map((k) => k.trim()).filter(Boolean);
 			const teams = parseTeams(name, raw.teams);
 			if (!teams) return;
+			const readme = readReadme(name, org, raw.readme);
+			if ("error" in readme) {
+				err = readme.error;
+				return;
+			}
 			const labels = parseLabels(name, raw.labels);
 			if (!labels) return;
 			const milestones = parseMilestones(name, raw.milestones);
@@ -421,6 +458,7 @@ function configFromObject(obj, opts = {}) {
 				description: typeof raw.description === "string" ? raw.description : "",
 				...words.length ? { keywords: words } : {},
 				logo: typeof raw.logo === "string" && raw.logo.trim() ? raw.logo.trim() : null,
+				..."value" in readme ? { readme: readme.value } : {},
 				teams,
 				...labels.length ? { labels } : {},
 				...milestones.length ? { milestones } : {},
@@ -3799,6 +3837,10 @@ var init_js_yaml = __esmMin((() => {
 /** First fenced block (```yaml / ```yml / ```), or the text itself. */
 function stripFences(text) {
 	const m = text.match(/```(?:ya?ml)?\s*\n([\s\S]*?)```/i);
+	if (m && m.index !== void 0 && /^(?:version|groups|index)[ \t]*:/m.test(text.slice(0, m.index))) return {
+		text,
+		stripped: false
+	};
 	return m ? {
 		text: m[1],
 		stripped: true
@@ -3834,12 +3876,20 @@ function readConfig(text, load, opts = {}) {
 //#region src/core/yaml-write.ts
 /** Double-quoted YAML string. */
 var q = (s) => "\"" + String(s).replace(/\\/g, "\\\\").replace(/"/g, "\\\"") + "\"";
+/** `readme:` lines: a path is one quoted string; inline Markdown is a `|` block scalar (a quoted string when a block cannot hold it). */
+function readmeLines(text, ind) {
+	const t = text.replace(/\r\n?/g, "\n");
+	const odd = /[\u0000-\u0008\u000b-\u001f\u007f\u0085\u2028\u2029\ufeff]/.test(t) || /^[ \t\n]/.test(t);
+	if (!t.includes("\n") || isReadmePath(t) || odd) return [`${ind}readme: "${t.replace(/\\/g, "\\\\").replace(/"/g, "\\\"").replace(/\n/g, "\\n").replace(/\t/g, "\\t").replace(/[\u0000-\u001f\u007f\u0085\u2028\u2029\ufeff]/g, (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"))}"`];
+	const body = t.replace(/\s+$/, "").split("\n");
+	return [`${ind}readme: |`, ...body.map((l) => l.trim() ? `${ind}  ${l.replace(/\s+$/, "")}` : "")];
+}
 var teamToYaml = (t) => t.permission === "push" ? q(t.slug) : `{ slug: ${q(t.slug)}, permission: ${q(t.permission)} }`;
 /** A label with only a name is written as the string shorthand. */
 var labelToYaml = (l) => !l.color && !l.description ? q(l.name) : `{ name: ${q(l.name)}${l.color ? `, color: ${q(l.color)}` : ""}${l.description ? `, description: ${q(l.description)}` : ""} }`;
 var milestoneToYaml = (m) => `{ title: ${q(m.title)}${m.due_on ? `, due_on: ${q(m.due_on)}` : ""}${m.description ? `, description: ${q(m.description)}` : ""} }`;
 /**
-* Canonical writer: order name, title, description, keywords, logo, teams, labels, milestones, match, shared, groups; 2-space indent;
+* Canonical writer: order name, title, description, keywords, logo, readme, teams, labels, milestones, match, shared, groups; 2-space indent;
 * flow-style lists; leading comment. `personal` omits index and teams (My groups).
 */
 function writeConfig(cfg, header, opts = {}) {
@@ -3853,6 +3903,7 @@ function writeConfig(cfg, header, opts = {}) {
 		if (g.description) lines.push(`${ind}  description: ${q(g.description)}`);
 		if (g.keywords?.length) lines.push(`${ind}  keywords: [${g.keywords.map(q).join(", ")}]`);
 		if (g.logo) lines.push(`${ind}  logo: ${q(g.logo)}`);
+		if (g.readme) lines.push(...readmeLines(g.readme, ind + "  "));
 		if (!opts.personal && g.teams.length) lines.push(`${ind}  teams: [${g.teams.map(teamToYaml).join(", ")}]`);
 		if (!opts.personal && g.labels?.length) lines.push(`${ind}  labels: [${g.labels.map(labelToYaml).join(", ")}]`);
 		if (!opts.personal && g.milestones?.length) lines.push(`${ind}  milestones: [${g.milestones.map(milestoneToYaml).join(", ")}]`);
@@ -3910,6 +3961,12 @@ function diffTrees(a, b, repos) {
 			cls: "chg",
 			text: `Logo of ${k}`,
 			to: nb.logo || "letter"
+		});
+		if ((na.readme || "") !== (nb.readme || "")) items.push({
+			k: "~",
+			cls: "chg",
+			text: `README of ${k}`,
+			to: !nb.readme ? "removed" : isReadmePath(nb.readme) ? nb.readme.trim() : "text changed"
 		});
 		if (na.match.join("|") !== nb.match.join("|")) items.push({
 			k: "~",

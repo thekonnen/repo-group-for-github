@@ -28,6 +28,8 @@ export interface Group {
   /** Optional words that describe what belongs here (tools, topics). Only used to suggest a group for a new repo. */
   keywords?: string[];
   logo: string | null;
+  /** Optional presentation page (C4): a path inside <org>/.github (`readmes/infra.md`) or inline Markdown. */
+  readme?: string;
   teams: TeamTag[];
   /** Default labels (C2). Inherited by subgroups; the closest definition of a name wins. */
   labels?: LabelTag[];

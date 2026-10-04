@@ -1,6 +1,7 @@
 import type { RuleTarget } from './glob';
 import { flatList, placement, sharedPlacement } from './placement';
 import { labelOf } from './permissions';
+import { isReadmePath } from './readme';
 import type { Group, RepoInfo } from './types';
 
 export interface DiffItem {
@@ -38,6 +39,8 @@ export function diffTrees(a: Group[], b: Group[], repos: RuleTarget[]): DiffResu
       items.push({ k: '~', cls: 'chg', text: `Description of ${k}`, to: `“${nb.description || '(empty)'}”` });
     if ((na.logo || '') !== (nb.logo || ''))
       items.push({ k: '~', cls: 'chg', text: `Logo of ${k}`, to: nb.logo || 'letter' });
+    if ((na.readme || '') !== (nb.readme || ''))
+      items.push({ k: '~', cls: 'chg', text: `README of ${k}`, to: !nb.readme ? 'removed' : isReadmePath(nb.readme) ? nb.readme.trim() : 'text changed' });
     if (na.match.join('|') !== nb.match.join('|'))
       items.push({ k: '~', cls: 'chg', text: `Rules of ${k}`, to: nb.match.join(', ') || '(none)' });
     if ((na.shared ?? []).join('|') !== (nb.shared ?? []).join('|'))

@@ -27,6 +27,7 @@ export type Request =
   | { type: 'org:edit'; org: string; edit: Edit }
   | { type: 'org:create-dotgithub'; org: string }
   | { type: 'logos:get'; org: string; srcs: string[] } // F7: logo references of the org file -> data URLs
+  | { type: 'readmes:get'; org: string; paths: string[] } // C4: README paths of the org file -> Markdown text
   | { type: 'logo:fetch-link'; url: string } // F7: an image from a link, for the cropper
   | { type: 'newrepo:pending'; entry: Omit<PendingRepo, 'createdAt'> }
   | { type: 'newrepo:discard' }
@@ -88,6 +89,8 @@ export interface OrgPrefs {
   expanded: string[];
   /** Order of the "All repositories" tab. */
   sort?: 'pushed' | 'name' | 'stars' | 'issues';
+  /** Order of the group page tabs, by tab id. Ids that are not visible are skipped. */
+  tabOrder?: string[];
   /** Options > "Show grouped view by default". Used when the org has no saved view. Default true. */
   groupedByDefault?: boolean;
   /** Ungrouped repositories already shown on earlier visits (A6). */

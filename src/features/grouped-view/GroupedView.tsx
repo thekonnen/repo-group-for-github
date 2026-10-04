@@ -13,9 +13,11 @@ import { useStore } from '../store';
 import { chipTeams } from '../../core/teams';
 import { MembersPanel } from '../members/MembersPanel';
 import { TeamBanners } from '../teams/TeamBanners';
+import { AboutPanel } from '../readme/AboutPanel';
 import { TeamChips } from '../teams/TeamChips';
 import { AgentContextMenu } from './AgentContextMenu';
 import { dragSource, dropTarget } from './dnd';
+import { moveTab, nudgeTab, orderTabs } from '../../core/tab-order';
 import { RepoMenu, SelectionBar } from './RepoMenu';
 import type { Controller, State } from './controller';
 import { GroupSummary } from './GroupSummary';
@@ -98,8 +100,11 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
   }, [scopeKey, s.phase, s.org]);
   const split = detailTotals(scope, s.details);
 
+  // A group with a README opens on About (C4); everything else opens on the list.
+  const readme = !isRoot && !team ? node.group.readme : undefined;
   const hasMembers = !isRoot && !team; // C3: the Members tab is for group pages of the org page
-  const tab = s.tab === 'rules' && isRoot ? 'items' : s.tab === 'ungrouped' && !isRoot ? 'items' : s.tab === 'members' && !hasMembers ? 'items' : s.tab;
+  const asked = s.tab === 'auto' ? (readme ? 'about' : 'items') : s.tab;
+  const tab = asked === 'about' && !readme ? 'items' : asked === 'rules' && isRoot ? 'items' : asked === 'ungrouped' && !isRoot ? 'items' : asked === 'members' && !hasMembers ? 'items' : asked;
   let rows: Row[];
   let head: preact.ComponentChild;
   if (s.query.trim()) {
@@ -164,14 +169,22 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
         <Stat label={t('summaryPushed30d')} value={groupStats(node).pushed30d.toLocaleString()} />
       </div>
       <GroupSummary node={node} />
-      <div class="rg-tabs" role="tablist">
-        <Tab ctl={ctl} id="items" current={tab} label="Groups and repositories" />
-        {isRoot ? <Tab ctl={ctl} id="ungrouped" current={tab} label={ungroupedTabLabel()} count={ungrouped.length} /> : <Tab ctl={ctl} id="rules" current={tab} label="Match rules" count={node.group.match.length} />}
-        <Tab ctl={ctl} id="all" current={tab} label="All repositories" count={node.total} />
-        <Tab ctl={ctl} id="work" current={tab} label="Issues & PRs" count={split ? split.issues + split.prs : node.total <= DETAILS_MAX_REPOS ? node.issues : undefined} />
-        {hasMembers && <Tab ctl={ctl} id="members" current={tab} label="Members" />}
-      </div>
-      {tab === 'work' ? (
+      <Tabs
+        ctl={ctl}
+        current={tab}
+        saved={s.tabOrder}
+        tabs={[
+          ...(readme ? [{ id: 'about' as const, label: 'About' }] : []),
+          { id: 'items', label: 'Groups and repositories' },
+          isRoot ? { id: 'ungrouped', label: ungroupedTabLabel(), count: ungrouped.length } : { id: 'rules', label: 'Match rules', count: node.group.match.length },
+          { id: 'all', label: 'All repositories', count: node.total },
+          { id: 'work', label: 'Issues & PRs', count: split ? split.issues + split.prs : node.total <= DETAILS_MAX_REPOS ? node.issues : undefined },
+          ...(hasMembers ? [{ id: 'members' as const, label: 'Members' }] : []),
+        ]}
+      />
+      {tab === 'about' && readme && !s.query ? (
+        <AboutPanel org={s.org} readmes={ctl.readmes} readme={readme} />
+      ) : tab === 'work' ? (
         <>
           <Toolbar ctl={ctl} s={s} placeholder={`Search issues and pull requests in ${name}`} />
           <WorkPanel org={s.org} name={name} repos={allRepos(node).map((r) => r.name)} query={s.query} load={ctl.loadWork} />
@@ -292,11 +305,68 @@ function SortSelect({ ctl, value }: { ctl: Controller; value: SortKey }) {
   );
 }
 
-function Tab({ ctl, id, current, label, count }: { ctl: Controller; id: State['tab']; current: string; label: string; count?: number }) {
+type TabDef = { id: State['tab']; label: string; count?: number };
+const TAB_DRAG = 'application/x-rg-tab';
+
+/** The group tabs. The person can drag them, or press Alt+←/→ on a focused tab, to choose the order (saved per org). */
+function Tabs({ ctl, current, saved, tabs }: { ctl: Controller; current: string; saved: string[]; tabs: TabDef[] }) {
+  const [over, setOver] = useState<string | null>(null);
+  const [said, setSaid] = useState('');
+  const order = orderTabs(tabs.map((t) => t.id), saved);
+  const byId = new Map(tabs.map((t) => [t.id as string, t]));
+  const apply = (next: string[]) => {
+    if (next !== order) ctl.setTabOrder(next);
+  };
+  const changed = saved.length > 0 && order.join() !== tabs.map((t) => t.id).join();
   return (
-    <button type="button" role="tab" class="rg-tab" aria-selected={current === id} onClick={() => ctl.setTab(id)}>
-      {label}{count != null && <> <span class="rg-counter">{count}</span></>}
-    </button>
+    <div class="rg-tabs" role="tablist">
+      {order.map((id) => {
+        const t = byId.get(id)!;
+        return (
+          <button
+            type="button"
+            role="tab"
+            class={`rg-tab${over === id ? ' rg-tab-drop' : ''}`}
+            data-tab={id}
+            draggable
+            aria-selected={current === id}
+            onClick={() => ctl.setTab(t.id)}
+            onDragStart={(e) => {
+              e.dataTransfer?.setData(TAB_DRAG, id);
+              if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+            }}
+            onDragOver={(e) => {
+              if (!e.dataTransfer?.types.includes(TAB_DRAG)) return;
+              e.preventDefault();
+              setOver(id);
+            }}
+            onDragLeave={() => setOver((o) => (o === id ? null : o))}
+            onDrop={(e) => {
+              const from = e.dataTransfer?.getData(TAB_DRAG);
+              setOver(null);
+              if (!from) return;
+              e.preventDefault();
+              apply(moveTab(order, from, id));
+            }}
+            onDragEnd={() => setOver(null)}
+            onKeyDown={(e) => {
+              if (!e.altKey || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
+              e.preventDefault();
+              const next = nudgeTab(order, id, e.key === 'ArrowLeft' ? -1 : 1);
+              if (next === order) return;
+              apply(next);
+              setSaid(`${t.label} is now tab ${next.indexOf(id) + 1} of ${next.length}`);
+              const btn = e.currentTarget as HTMLElement;
+              setTimeout(() => btn.focus(), 0);
+            }}
+          >
+            {t.label}{t.count != null && <> <span class="rg-counter">{t.count}</span></>}
+          </button>
+        );
+      })}
+      {changed && <button type="button" class="rg-linkbtn rg-tabs-reset" onClick={() => { ctl.setTabOrder([]); setSaid('Tab order reset'); }}>Reset tab order</button>}
+      <span class="rg-sr-only" role="status">{said}</span>
+    </div>
   );
 }
 

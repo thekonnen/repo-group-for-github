@@ -14,6 +14,9 @@ import type { ConfigResult, ErrorInfo, OrgPrefs, OrgSnapshot, Progress } from '.
 import { DETAILS_MAX_REPOS, type DetailsMap } from '../../core/details';
 import { visitUngrouped, type SeenUngrouped } from '../../core/unassigned';
 import { createLogoStore } from '../logos/logo-store';
+import { createReadmeStore } from '../readme/readme-store';
+import { readmeFileOf } from '../../core/edit';
+import { isReadmePath } from '../../core/readme';
 import { createStore, type Store } from '../store';
 import { createLabelsController } from '../labels/labels-controller';
 import { createTeamsController } from '../teams/teams-controller';
@@ -41,8 +44,11 @@ export interface State {
   view: 'grouped' | 'list';
   expanded: Set<string>;
   expandedTouched: boolean;
-  tab: 'items' | 'ungrouped' | 'rules' | 'all' | 'work' | 'members';
+  /** `auto` = the default of the group: About when it has a README, otherwise Groups and repositories. */
+  tab: 'auto' | 'about' | 'items' | 'ungrouped' | 'rules' | 'all' | 'work' | 'members';
   sort: SortKey;
+  /** Saved order of the group tabs; empty = the built-in order. */
+  tabOrder: string[];
   query: string;
   access: Access | null;
   /** Separate open issue / PR counts (F14), loaded lazily for small groups. */
@@ -103,6 +109,19 @@ export interface Env {
 
 export type Controller = ReturnType<typeof createController>;
 
+/** The README path the saved tree gives the group of a new or edited group, to prime the page with the text just committed. */
+function findReadme(groups: Group[], edit: Extract<Edit, { kind: 'new' | 'edit' }>): string | null {
+  const parent = edit.kind === 'new' ? edit.parent : edit.path.slice(0, -1);
+  let list = groups;
+  let g: Group | undefined;
+  for (const n of [...parent, finalName(edit.name)]) {
+    g = list.find((x) => x.name === n);
+    if (!g) return null;
+    list = g.groups;
+  }
+  return g?.readme && isReadmePath(g.readme) ? g.readme.trim() : null;
+}
+
 const infoOf = (e: unknown): ErrorInfo => (e instanceof CallError ? e.info : { kind: 'other', message: e instanceof Error ? e.message : String(e) });
 
 const dismissKey = (org: string) => `rg:unassigned-dismissed:${org}`;
@@ -132,8 +151,9 @@ export function createController(org: string, env: Env) {
     view: hasGithubFilter(env.location.search) ? 'list' : 'grouped',
     expanded: new Set(),
     expandedTouched: false,
-    tab: 'items',
+    tab: 'auto',
     sort: 'pushed',
+    tabOrder: [],
     query: '',
     access: null,
     details: {},
@@ -160,6 +180,18 @@ export function createController(org: string, env: Env) {
     const walk = (gs: Group[]) => gs.forEach((g) => (g.logo && refs.push(g.logo), walk(g.groups)));
     if (cfg && cfg.exists && cfg.config) walk(cfg.config.groups);
     logos.want(refs);
+  });
+  // README files (C4) load through the background too; inline READMEs are part of the config itself.
+  const readmes = createReadmeStore(env.call, org);
+  let readmeCfg: unknown;
+  store.subscribe(() => {
+    const cfg = store.get().config;
+    if (cfg === readmeCfg) return;
+    readmeCfg = cfg;
+    const refs: string[] = [];
+    const walk = (gs: Group[]) => gs.forEach((g) => (g.readme && isReadmePath(g.readme) && refs.push(g.readme.trim()), walk(g.groups)));
+    if (cfg && cfg.exists && cfg.config) walk(cfg.config.groups);
+    readmes.want(refs);
   });
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
@@ -243,6 +275,7 @@ export function createController(org: string, env: Env) {
     const prefs = await env.call<Partial<OrgPrefs>>({ type: 'prefs:get', org: prefsOrg }).catch(() => ({}) as Partial<OrgPrefs>);
     if (prefs.expanded) store.set({ expanded: new Set(prefs.expanded), expandedTouched: true });
     if (prefs.sort && SORT_KEYS.includes(prefs.sort)) store.set({ sort: prefs.sort });
+    if (Array.isArray(prefs.tabOrder)) store.set({ tabOrder: prefs.tabOrder.filter((x) => typeof x === 'string') });
     if (prefs.unassignedSeen) store.set({ seen: prefs.unassignedSeen });
     if (!hasGithubFilter(env.location.search)) {
       // A saved view wins; otherwise Options > "Show grouped view by default" (default on) decides.
@@ -287,6 +320,11 @@ export function createController(org: string, env: Env) {
       const logoFile = editLogoPath(edit);
       const png = pngOf(edit);
       if (logoFile && png) logos.put(logoFile, `data:image/png;base64,${png}`);
+      const readmeText = readmeFileOf(edit);
+      if (readmeText !== null && (edit.kind === 'new' || edit.kind === 'edit')) {
+        const at = r.config?.groups && findReadme(r.config.groups, edit);
+        if (at) readmes.put(at, readmeText);
+      }
       const next: Partial<State> = { config: { exists: true, sha: r.sha, config: r.config, warnings: r.warnings }, indexVersion: before.indexVersion + 1, drawer: null };
       const expanded = new Set(before.expanded);
       if (edit.kind === 'new' && edit.parent.length) expanded.add(edit.parent.join('/')); // creating a group expands its parent
@@ -499,6 +537,7 @@ export function createController(org: string, env: Env) {
     labels,
     members,
     logos,
+    readmes,
     /** Loads an image from a link in the background (CORS-free, asks for the site's permission). Resolves to a data URL. */
     fetchLogoLink: async (url: string) => (await env.call<{ dataUrl: string }>({ type: 'logo:fetch-link', url })).dataUrl,
     model,
@@ -621,13 +660,13 @@ export function createController(org: string, env: Env) {
       const next = known ? path : [];
       // Same group (for example a pushState from `go` echoed back as a hash change): keep the tab the person chose.
       if (next.join('/') === store.get().path.join('/')) return;
-      store.set({ path: next, tab: 'items', query: '', selected: [] });
+      store.set({ path: next, tab: 'auto', query: '', selected: [] });
     },
     go(path: string[]) {
       const hash = buildHash({ layer: 'org', path });
       env.history.pushState(null, '', env.location.pathname + env.location.search + hash);
       const wasList = store.get().view !== 'grouped';
-      store.set({ path, tab: 'items', query: '', view: 'grouped', selected: [] });
+      store.set({ path, tab: 'auto', query: '', view: 'grouped', selected: [] });
       if (wasList) savePrefs({ view: 'grouped' });
     },
     setView(view: 'grouped' | 'list') {
@@ -645,6 +684,10 @@ export function createController(org: string, env: Env) {
     setTab: (tab: State['tab']) => store.set({ tab, query: '', selected: [] }),
     /** C1: open issues and PRs of these repos (names from the index), `depth` items per repo and kind. */
     loadWork: (repos: string[], depth: number) => env.call<import('../../background/work-items').WorkResult>({ type: 'org:work-items', org, repos, depth }),
+    setTabOrder(tabOrder: string[]) {
+      store.set({ tabOrder });
+      savePrefs({ tabOrder });
+    },
     setSort(sort: SortKey) {
       store.set({ sort });
       savePrefs({ sort });

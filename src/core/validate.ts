@@ -2,6 +2,7 @@ import { splitRules } from './edit';
 import { dueOn, labelKey, normColor } from './labels';
 import { forkTarget, isForkRule, isPropRule, isTopicRule, parsePropRule, topicOf } from './glob';
 import { PERMISSIONS } from './permissions';
+import { readReadme } from './readme';
 import type { Config, Group, LabelTag, MilestoneTag, TeamTag } from './types';
 
 export interface ValidationResult {
@@ -191,6 +192,11 @@ export function configFromObject(obj: unknown, opts: ValidateOptions = {}): Vali
       const words = (keywords as string[]).map((k) => k.trim()).filter(Boolean);
       const teams = parseTeams(name, raw.teams);
       if (!teams) return;
+      const readme = readReadme(name, org, raw.readme);
+      if ('error' in readme) {
+        err = readme.error;
+        return;
+      }
       const labels = parseLabels(name, raw.labels);
       if (!labels) return;
       const milestones = parseMilestones(name, raw.milestones);
@@ -210,6 +216,7 @@ export function configFromObject(obj: unknown, opts: ValidateOptions = {}): Vali
         description: typeof raw.description === 'string' ? raw.description : '',
         ...(words.length ? { keywords: words } : {}),
         logo: typeof raw.logo === 'string' && raw.logo.trim() ? raw.logo.trim() : null,
+        ...('value' in readme ? { readme: readme.value } : {}),
         teams,
         ...(labels.length ? { labels } : {}),
         ...(milestones.length ? { milestones } : {}),

@@ -466,6 +466,8 @@ groups:                    # required list (may be empty)
     description: "..."     # optional string
     keywords: ["s3", "backup"]  # optional list of words (tools, topics). Only used to suggest a group for a new repo (core/suggest.ts); never changes placement
     logo: "logos/infra.png" # optional; path inside <org>/.github, or an https URL
+    readme: |              # optional (C4): inline Markdown, or a path inside <org>/.github ("readmes/infra.md"). Max 64 KB.
+                           # Shown on the group page as the first tab, About. Rendered by core/markdown.ts (no HTML, links http/https/mailto only).
     teams: ["core_team", { slug: "ai-squad", permission: "maintain" }]
                            # optional (F12). A plain string = that team with "push" (Write).
                            # permission: pull | triage | push | maintain | admin | <custom repository role name>
@@ -483,7 +485,7 @@ groups:                    # required list (may be empty)
 - The personal **My groups** file (F13) uses the same schema without `index` and `teams`.
 - Unknown keys are ignored on read and dropped on write.
 - `repositories:` is reserved (AI context) and ignored.
-- The **writer** emits the canonical format: the order is `name, title, description, keywords, logo, teams, labels, milestones, match, shared, groups`; `teams` uses plain strings for `push` and the `{ slug, permission }` form otherwise; strings in double quotes; `match` in flow style (`["a", "b"]`); 2-space indentation; a leading comment line `# <org>/.github/repo-groups.yml`. See `yamlPreview()` in `mockup.js`. Write it by hand; do not ship a YAML dumper.
+- The **writer** emits the canonical format: the order is `name, title, description, keywords, logo, readme, teams, labels, milestones, match, shared, groups`; `teams` uses plain strings for `push` and the `{ slug, permission }` form otherwise; strings in double quotes; `match` in flow style (`["a", "b"]`); 2-space indentation; a leading comment line `# <org>/.github/repo-groups.yml`. See `yamlPreview()` in `mockup.js`. Write it by hand; do not ship a YAML dumper.
 - The **reader** uses a real YAML parser (js-yaml), lazy-loaded.
 
 ### 5.2 Validation errors (copy from the mockup)

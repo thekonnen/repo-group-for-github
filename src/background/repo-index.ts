@@ -60,6 +60,7 @@ export function toRepoInfo(r: any): RepoInfo {
     stars: r.stargazers_count ?? 0,
     forks: r.forks_count ?? 0,
     openIssuesAndPrs: r.open_issues_count ?? 0,
+    topics: Array.isArray(r.topics) ? r.topics.filter((t: unknown) => typeof t === 'string').map((t: string) => t.toLowerCase()) : [],
     viewerIsAdmin: r.permissions?.admin ?? false,
   };
 }

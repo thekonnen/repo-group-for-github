@@ -286,5 +286,59 @@
         "content": "$1"
       }
     }
+  },
+  "unassignedNoticeOne": {
+    "message": "1 repository is not in any group yet"
+  },
+  "unassignedNoticeMany": {
+    "message": "$COUNT$ repositories are not in any group yet",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "unassignedNoticeOneMy": {
+    "message": "1 repository is not in My groups yet"
+  },
+  "unassignedNoticeManyMy": {
+    "message": "$COUNT$ repositories are not in My groups yet",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "unassignedNewCount": {
+    "message": "$COUNT$ new since your last visit",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "unassignedReview": {
+    "message": "Review ungrouped"
+  },
+  "unassignedReviewMy": {
+    "message": "Review not in My groups"
+  },
+  "unassignedStartAi": {
+    "message": "Start with AI"
+  },
+  "unassignedDismiss": {
+    "message": "Dismiss"
+  },
+  "unassignedNewLabel": {
+    "message": "New"
+  },
+  "unassignedNewTitle": {
+    "message": "Appeared since your last visit"
+  },
+  "tabUngrouped": {
+    "message": "Ungrouped"
+  },
+  "tabUngroupedMy": {
+    "message": "Not in My groups"
   }
 }

@@ -41,6 +41,7 @@ export function parseActionIndex(data: unknown, org: string): ActionIndexFile | 
       stars: num(r.stars),
       forks: num(r.forks),
       openIssuesAndPrs: num(r.openIssuesAndPrs),
+      topics: Array.isArray(r.topics) ? r.topics.filter((t): t is string => typeof t === 'string').map((t) => t.toLowerCase()) : [],
     });
   }
   return { repos, generatedAt };

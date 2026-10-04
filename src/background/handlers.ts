@@ -1,7 +1,7 @@
 import { APP_SLUG, GITHUB_CLIENT_ID } from '../config';
 import { loadYamlParser, readConfig } from '../core/yaml-read';
 import type { Config } from '../core/types';
-import type { ConfigResult, ErrorInfo, GroupSuggestion, OrgPrefs, SuggestMethod, OrgSnapshot, Progress, Request, Response, TeamsResult } from '../github/messages';
+import type { ConfigResult, ErrorInfo, GroupSuggestion, OrgPrefs, SuggestMethod, OrgSnapshot, Progress, Request, Response, TeamsResult, TeamMembersResult } from '../github/messages';
 import { createClient, explainTokenRejection, GitHubError, type FetchLike } from './api';
 import { describeToken, loadAuth, pollDeviceFlow, publicAuth, saveAuth, signOut, startDeviceFlow } from './auth';
 import type { KV } from './kv';
@@ -16,8 +16,12 @@ import { listOrgs } from './orgs';
 import { ownerListPath, refreshIndex, type IndexStore } from './repo-index';
 import { refreshActionIndex } from './action-index';
 import { loadDetails } from './details';
+import { loadWorkItems, newWorkCache } from './work-items';
+import { loadParents } from './parents';
+import { loadTeamMembers } from './members-data';
 import { cachedTeamSlugs, grantTeam, loadTeamAccess, loadTeams } from './teams-data';
 import { teamSlugs } from '../core/teams';
+import { loadProps, usesProps, withProps } from './props-data';
 import { postOrder } from '../core/placement';
 import { suggest } from '../core/suggest';
 import { buildTree } from '../core/tree';
@@ -46,6 +50,7 @@ export function createHandler(deps: Deps) {
   const clientId = deps.clientId ?? GITHUB_CLIENT_ID;
   const client = createClient({ fetch: deps.fetch, getToken: async () => (await loadAuth(deps.kv))?.token ?? null });
   const logos = createLogoService({ client, fetch: deps.fetch, cache: deps.logos ?? memoryLogoCache(), origins: deps.origins });
+  const workCache = newWorkCache();
   const FLOW_KEY = 'rg:device-flow';
   // The popup closes as soon as the user opens github.com/login/device, so the pending code lives here
   // and the popup resumes polling with it when it is opened again.
@@ -194,6 +199,20 @@ export function createHandler(deps: Deps) {
     return askGroups(cfg, org, repo, out, auto, file.sha);
   }
 
+  /** Custom property values for rules like `prop:client=Acme`. Only orgs whose file has such a rule pay for it; personal accounts skip. */
+  async function joinProps(req: Request, out: any): Promise<any> {
+    if ((req.type !== 'org:cached' && req.type !== 'org:refresh') || !out || !Array.isArray(out.repos)) return out;
+    await fileLoads.get(req.org)?.catch(() => undefined); // the page reads the file in parallel with the index
+    if (!usesProps((await deps.kv.get<OrgFile>(`rg:file:${req.org}`))?.text) || (await isSelf(req.org))) return out;
+    const r = await loadProps(client, deps.kv, req.org, {
+      cacheOnly: req.type === 'org:cached',
+      force: req.type === 'org:refresh' && req.force,
+      now: deps.now,
+      ttlMs: (await loadSettings(deps.kv)).refreshMinutes * 60_000,
+    });
+    return { ...out, repos: withProps(out.repos, r.props), ...(out.meta && r.unavailable ? { meta: { ...out.meta, propsUnavailable: true } } : {}) };
+  }
+
   async function handle(req: Request): Promise<unknown> {
     switch (req.type) {
       case 'auth:status':
@@ -253,6 +272,14 @@ export function createHandler(deps: Deps) {
       }
       case 'org:details':
         return loadDetails(client, deps.kv, req.org, req.repos);
+      case 'org:work-items': {
+        // Only repos of the user's own index: a name the user cannot open is never queried (F15 §5).
+        const idx = await deps.index.load(req.org);
+        const known = new Set((idx?.repos ?? []).map((r) => r.name));
+        return loadWorkItems(client, workCache, req.org, req.repos.filter((n) => known.has(n)), req.depth, { now: deps.now });
+      }
+      case 'org:parents':
+        return loadParents(client, deps.kv, deps.index, req.org);
       case 'org:progress':
         return progress.get(req.org) ?? null;
       case 'org:config': {
@@ -295,6 +322,9 @@ export function createHandler(deps: Deps) {
       case 'team:access':
         if (await isSelf(req.org)) return {};
         return loadTeamAccess(client, deps.kv, req.org, req.slugs, { force: req.force, now: deps.now });
+      case 'team:members':
+        if (await isSelf(req.org)) return { members: {}, unreadable: {} } satisfies TeamMembersResult;
+        return loadTeamMembers(client, deps.kv, req.org, req.slugs, { force: req.force, now: deps.now });
       case 'team:grant':
         return grantTeam(client, deps.kv, req.org, req.team, req.repo, req.permission);
       case 'yaml:validate':
@@ -368,7 +398,7 @@ export function createHandler(deps: Deps) {
 
   return async (req: Request): Promise<Response> => {
     try {
-      return { ok: true, data: await handle(req) };
+      return { ok: true, data: await joinProps(req, await handle(req)) };
     } catch (e) {
       return { ok: false, error: toErrorInfo(e) };
     }

@@ -31,7 +31,7 @@ const TEAM_REPOS_Q = `query ($org: String!, $slug: String!, $after: String) {
 const MAX_PAGES = 200;
 
 /** GraphQL through the REST client (so rate-limit headers and error mapping are shared). */
-async function gql<T = any>(client: Client, query: string, variables: Record<string, unknown>): Promise<T> {
+export async function gql<T = any>(client: Client, query: string, variables: Record<string, unknown>): Promise<T> {
   const res = await client.rest('/graphql', { method: 'POST', body: { query, variables } });
   const errors: { type?: string; message?: string }[] | undefined = res.data?.errors;
   if (errors?.length && !res.data?.data?.organization) {

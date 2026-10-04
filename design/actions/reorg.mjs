@@ -34,7 +34,24 @@ function globRe(pattern) {
 	return re;
 }
 var isExact = (rule) => !rule.includes("*");
-var matches = (rules, name) => rules.some((r) => globRe(r).test(name));
+/** `topic:foo` / `topic:foo-*` rules match GitHub topics instead of the repository name. */
+var TOPIC_PREFIX = "topic:";
+var isTopicRule = (rule) => rule.slice(0, 6).toLowerCase() === TOPIC_PREFIX;
+/** The topic part of a `topic:` rule, trimmed (may be empty: invalid). */
+var topicOf = (rule) => rule.slice(6).trim();
+/** Does one rule catch a repo? Name rules test the name, topic rules test any topic (case-insensitive, `*` allowed). */
+function ruleMatches(rule, name, topics) {
+	if (!isTopicRule(rule)) return globRe(rule).test(name);
+	const t = topicOf(rule);
+	return !!t && !!topics?.some((x) => globRe(t).test(x));
+}
+/** Exact-style hit: a rule without `*` that equals the name, or (topic rule) equals one of the topics. */
+function exactHit(rule, name, topics) {
+	if (!isExact(rule)) return false;
+	if (!isTopicRule(rule)) return rule.toLowerCase() === name.toLowerCase();
+	const t = topicOf(rule).toLowerCase();
+	return !!t && !!topics?.some((x) => x.toLowerCase() === t);
+}
 //#endregion
 //#region src/core/placement.ts
 var keyOf = (path) => path.join("/");
@@ -65,21 +82,19 @@ function flatList(groups, depth = 0, parent = [], out = []) {
 	}
 	return out;
 }
-/** Exact names win; otherwise the first pattern hit in post-order (deepest wins). */
-function pickIn(order, name) {
-	const n = name.toLowerCase();
-	return order.find((x) => x.group.match.some((r) => isExact(r) && r.toLowerCase() === n)) ?? order.find((x) => matches(x.group.match, name)) ?? null;
+/** Exact names win; otherwise the first pattern hit in post-order (deepest wins). `topic:` rules count like name rules. */
+function pickIn(order, name, topics) {
+	return order.find((x) => x.group.match.some((r) => exactHit(r, name, topics))) ?? order.find((x) => x.group.match.some((r) => ruleMatches(r, name, topics))) ?? null;
 }
 /** The rule of `group` that catches `name` (exact first). */
-function ruleFor(group, name) {
-	const n = name.toLowerCase();
-	return group.match.find((r) => isExact(r) && r.toLowerCase() === n) ?? group.match.find((r) => globRe(r).test(name));
+function ruleFor(group, name, topics) {
+	return group.match.find((r) => exactHit(r, name, topics)) ?? group.match.find((r) => ruleMatches(r, name, topics));
 }
 /** repo name -> group key ('' = ungrouped). */
 function placement(groups, repos) {
 	const order = postOrder(groups);
 	const out = {};
-	for (const r of repos) out[r.name] = pickIn(order, r.name)?.key ?? "";
+	for (const r of repos) out[r.name] = pickIn(order, r.name, r.topics)?.key ?? "";
 	return out;
 }
 //#endregion
@@ -182,6 +197,11 @@ function configFromObject(obj, opts = {}) {
 			if (typeof match === "string") match = [match];
 			if (!Array.isArray(match) || match.some((m) => typeof m !== "string")) {
 				err = `"${name}": match must be a list of names or patterns.`;
+				return;
+			}
+			const emptyTopic = match.flatMap(splitRules).find((r) => isTopicRule(r) && !topicOf(r));
+			if (emptyTopic) {
+				err = `"${name}": the rule "${emptyTopic}" needs a topic name, like topic:kubernetes.`;
 				return;
 			}
 			let keywords = raw.keywords == null ? [] : raw.keywords;
@@ -3749,11 +3769,11 @@ var ruleWords = (rule) => tokens(rule.replace(/\*/g, " "));
 var candidates = (order) => order.filter((n) => n.group.groups.length === 0 || n.group.match.length > 0);
 function suggest(groups, repo) {
 	const order = postOrder(groups);
-	const hit = pickIn(order, repo.name);
+	const hit = pickIn(order, repo.name, repo.topics);
 	if (hit) return {
 		source: "rule",
 		key: hit.key,
-		rule: ruleFor(hit.group, repo.name),
+		rule: ruleFor(hit.group, repo.name, repo.topics),
 		score: 1,
 		margin: 1,
 		ranking: [{

@@ -82,6 +82,7 @@ Off by default. In **Options > AI assistant** choose Google Gemini, Anthropic (A
 - **Never blocks GitHub's form:** the AI gets 4 seconds. When it is offline, slow, erroring or invalid, the closest keyword match is offered instead.
 - **UI:** under the Group picker, a chip reads "Suggested: infra / dagsrv - why", marked `AI` or `keywords`, with **Accept**.
 - Answers are cached per (name, description, config sha, setup) for one hour.
+
 ## Context for AI agents
 
 On any group page, the **Context for agents** menu in the header copies a Markdown "context pack" of the group (path, description, match rules, team names, every repository in the group and its subgroups with URL and clone URL, and a short "how these repositories relate" section built only from the data we have; anything unknown is marked unknown). **Download .md** saves it as `<org>-<group-path>-context.md`; **Copy AGENTS.md snippet** copies a short block to paste into a repository's `AGENTS.md` or `CLAUDE.md`. The pack is capped at 8,000 characters, with a note and a count of omitted repositories. It uses only repositories in your own index, makes no network calls and commits nothing. The generator is `src/core/agent-context.ts`.
@@ -116,6 +117,10 @@ An organization can let a scheduled workflow keep `repo-groups.yml` tidy. Once a
 3. Run it once with `dry_run` on.
 
 The script is generated: edit `src/core` or `src/action`, then run `npm run build:action` (a test fails when the committed file is stale). Details and privacy notes: [docs/reorg-action.md](docs/reorg-action.md).
+
+## Group summary
+
+Each group page (org groups, My groups and team pages) shows "Pushed in 30 days" next to "Last push" in the stats row, and under it a language bar (top 5 + Other, by repository count) and a 12-week gradient line. The sparkline counts **repositories by the week of their last push**, taken from the local index; it is not commit activity. Archived repositories are excluded, subgroups are included, and no extra requests are made.
 
 ## Status
 

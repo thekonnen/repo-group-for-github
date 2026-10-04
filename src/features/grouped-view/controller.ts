@@ -39,7 +39,7 @@ export interface State {
   view: 'grouped' | 'list';
   expanded: Set<string>;
   expandedTouched: boolean;
-  tab: 'items' | 'ungrouped' | 'rules' | 'all' | 'members';
+  tab: 'items' | 'ungrouped' | 'rules' | 'all' | 'work' | 'members';
   sort: SortKey;
   query: string;
   access: Access | null;
@@ -596,6 +596,8 @@ export function createController(org: string, env: Env) {
       prefsTimer = setTimeout(() => savePrefs({ expanded: [...expanded] }), 300);
     },
     setTab: (tab: State['tab']) => store.set({ tab, query: '', selected: [] }),
+    /** C1: open issues and PRs of these repos (names from the index), `depth` items per repo and kind. */
+    loadWork: (repos: string[], depth: number) => env.call<import('../../background/work-items').WorkResult>({ type: 'org:work-items', org, repos, depth }),
     setSort(sort: SortKey) {
       store.set({ sort });
       savePrefs({ sort });

@@ -21,6 +21,7 @@ export type Request =
   | { type: 'org:config'; org: string; cachedOnly?: boolean }
   | { type: 'org:progress'; org: string }
   | { type: 'org:details'; org: string; repos: string[] }
+  | { type: 'org:work-items'; org: string; repos: string[]; depth: number }
   | { type: 'org:parents'; org: string }
   | { type: 'org:edit'; org: string; edit: Edit }
   | { type: 'org:create-dotgithub'; org: string }

@@ -22,6 +22,7 @@ export type Request =
   | { type: 'org:progress'; org: string }
   | { type: 'org:details'; org: string; repos: string[] }
   | { type: 'org:work-items'; org: string; repos: string[]; depth: number }
+  | { type: 'org:parents'; org: string }
   | { type: 'org:edit'; org: string; edit: Edit }
   | { type: 'org:create-dotgithub'; org: string }
   | { type: 'logos:get'; org: string; srcs: string[] } // F7: logo references of the org file -> data URLs
@@ -33,6 +34,7 @@ export type Request =
   | { type: 'org:apply-yaml'; org: string; text: string; baseSha: string | null; changes: number }
   | { type: 'org:teams'; org: string; force?: boolean }
   | { type: 'team:access'; org: string; slugs: string[]; force?: boolean }
+  | { type: 'team:members'; org: string; slugs: string[]; force?: boolean }
   | { type: 'team:grant'; org: string; team: string; repo: string; permission: Permission }
   | { type: 'prefs:get'; org: string }
   | { type: 'prefs:set'; org: string; prefs: Partial<OrgPrefs> }
@@ -121,3 +123,10 @@ export interface TeamsResult {
 }
 
 export type { GrantResult, TeamAccess };
+
+/** C3: members of the teams that give access to a group. */
+export interface TeamMembersResult {
+  members: Record<string, { login: string; name?: string | null; avatarUrl?: string }[]>;
+  /** Teams whose members could not be read. forbidden: no Members permission. hidden: team not visible to the user. */
+  unreadable: Record<string, 'forbidden' | 'hidden'>;
+}

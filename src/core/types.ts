@@ -16,6 +16,11 @@ export interface Group {
   logo: string | null;
   teams: TeamTag[];
   match: string[];
+  /**
+   * Optional (A3). Rules that ALSO list a repository in this group, on top of its primary placement. They never change
+   * where a repo is placed (ungrouped detection, team access and counts of "grouped" use the primary placement only).
+   */
+  shared?: string[];
   groups: Group[];
 }
 
@@ -34,9 +39,15 @@ export interface RepoInfo {
   private?: boolean;
   archived?: boolean;
   fork?: boolean;
+  /** Upstream of a fork as "owner/repo" (A5). Filled lazily from GraphQL; null = looked up, none. */
+  parent?: string | null;
   pushedAt?: string | null;
   stars?: number;
   forks?: number;
   openIssuesAndPrs?: number;
+  /** GitHub topics, lowercase. Matched by `topic:` rules. */
+  topics?: string[];
   viewerIsAdmin?: boolean;
+  /** Org custom property values, joined in by the background worker (never stored in the index). */
+  props?: Record<string, string | string[]>;
 }

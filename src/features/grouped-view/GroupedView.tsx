@@ -1,16 +1,20 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { langColor } from '../../core/lang-colors';
 import { displayName } from '../../core/edit';
+import { isPropRule, ruleLabel } from '../../core/glob';
 import { detailTotals, DETAILS_MAX_REPOS } from '../../core/details';
 import { ago } from '../../core/time';
-import { allRepos, flatRows, searchRows, SORT_KEYS, SORT_LABEL, treeRows, VIRTUALIZE_AFTER, windowRange, type GroupNode, type Row, type SortKey, type TreeModel } from '../../core/tree';
+import { allRepos, flatRows, pathTitle, searchRows, SORT_KEYS, SORT_LABEL, treeRows, VIRTUALIZE_AFTER, windowRange, type GroupNode, type Row, type SortKey, type TreeModel } from '../../core/tree';
 import type { RepoInfo } from '../../core/types';
 import { GroupAvatar } from '../logos/GroupAvatar';
 import { Icon } from '../../ui/Icon';
 import { useStore } from '../store';
 import { chipTeams } from '../../core/teams';
+import { MembersPanel } from '../members/MembersPanel';
 import { TeamBanners } from '../teams/TeamBanners';
 import { TeamChips } from '../teams/TeamChips';
+import { dragSource, dropTarget } from './dnd';
+import { RepoMenu, SelectionBar } from './RepoMenu';
 import type { Controller, State } from './controller';
 import { WorkPanel } from './WorkPanel';
 
@@ -66,6 +70,8 @@ function SignInEmpty({ ctl, s }: { ctl: Controller; s: State }) {
   );
 }
 
+const tab0 = (s: State, isRoot: boolean) => (s.tab === 'ungrouped' && !isRoot ? 'items' : s.tab);
+
 function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel }) {
   const node = (s.path.length && model.byKey.get(s.path.join('/'))) || model.root;
   const isRoot = node === model.root;
@@ -73,6 +79,7 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
   const name = isRoot ? ctl.teams.label ?? s.org : displayName(node.group);
   const ungrouped = model.root.repos;
   const cfg = s.config;
+  const forkProps = !team && s.access?.canWriteOrg && tab0(s, isRoot) === 'ungrouped' ? ctl.forkProposals() : [];
 
   useSlashFocus();
   const scope = node.total <= DETAILS_MAX_REPOS ? allRepos(node) : [];
@@ -82,7 +89,8 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
   }, [scopeKey, s.phase]);
   const split = detailTotals(scope, s.details);
 
-  const tab = s.tab === 'rules' && isRoot ? 'items' : s.tab === 'ungrouped' && !isRoot ? 'items' : s.tab;
+  const hasMembers = !isRoot && !team; // C3: the Members tab is for group pages of the org page
+  const tab = s.tab === 'rules' && isRoot ? 'items' : s.tab === 'ungrouped' && !isRoot ? 'items' : s.tab === 'members' && !hasMembers ? 'items' : s.tab;
   let rows: Row[];
   let head: preact.ComponentChild;
   if (s.query.trim()) {
@@ -94,7 +102,7 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
     head = plural(rows.length, 'repository', 'repositories');
   } else if (tab === 'ungrouped') {
     rows = ungrouped.map((repo) => ({ kind: 'repo' as const, repo, depth: 0 }));
-    head = <>{plural(ungrouped.length, 'ungrouped repository', 'ungrouped repositories')} <span class="rg-muted">· no group rule matches these yet</span></>;
+    head = <>{plural(ungrouped.length, 'ungrouped repository', 'ungrouped repositories')} <span class="rg-muted">· no group rule matches these yet</span>{forkProps.length > 0 && <button type="button" class="rg-btn rg-btn-sm" style="margin-left:12px" title={`Proposes ${plural(forkProps.length, 'group', 'groups')} with the rule fork-of:<owner>. You review it before anything is saved.`} onClick={() => ctl.openForkDraft()}><Icon name="fork" />Auto-group forks ({forkProps.length})</button>}</>;
   } else {
     rows = treeRows(node, s.expanded);
     const kids = node.children.length;
@@ -105,6 +113,7 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
     );
   }
 
+  const repoNames = rows.flatMap((r) => (r.kind === 'repo' && r.also === undefined ? [r.repo.name] : [])); // shared rows are not selectable: they live elsewhere
   return (
     <div class="rg-view">
       <IndexStatus ctl={ctl} s={s} model={model} />
@@ -148,19 +157,23 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
         {isRoot ? <Tab ctl={ctl} id="ungrouped" current={tab} label="Ungrouped" count={ungrouped.length} /> : <Tab ctl={ctl} id="rules" current={tab} label="Match rules" count={node.group.match.length} />}
         <Tab ctl={ctl} id="all" current={tab} label="All repositories" count={node.total} />
         <Tab ctl={ctl} id="work" current={tab} label="Issues & PRs" count={split ? split.issues + split.prs : node.total <= DETAILS_MAX_REPOS ? node.issues : undefined} />
+        {hasMembers && <Tab ctl={ctl} id="members" current={tab} label="Members" />}
       </div>
       {tab === 'work' ? (
         <>
           <Toolbar ctl={ctl} s={s} placeholder={`Search issues and pull requests in ${name}`} />
           <WorkPanel org={s.org} name={name} repos={allRepos(node).map((r) => r.name)} query={s.query} load={ctl.loadWork} />
         </>
+      ) : tab === 'members' ? (
+        <MembersPanel ctl={ctl} org={s.org} groups={cfg && cfg.exists && cfg.config ? cfg.config.groups : []} path={node.path} />
       ) : tab === 'rules' && !s.query ? (
-        <RulesPanel node={node} />
+        <RulesPanel node={node} org={s.org} propsHint={!!s.meta?.propsUnavailable && node.group.match.some(isPropRule)} />
       ) : (
         <>
           <Toolbar ctl={ctl} s={s} placeholder={`Search in ${name}`} />
+          {ctl.canMove() && <SelectionBar ctl={ctl} selected={s.selected} />}
           <div class="rg-box">
-            <div class="rg-box-head"><span>{head}</span>{tab === 'all' ? <SortSelect ctl={ctl} value={s.sort} /> : <span class="rg-muted">Sort: Last pushed</span>}</div>
+            <div class="rg-box-head"><span class="rg-box-title">{ctl.canMove() && repoNames.length > 0 && <input type="checkbox" class="rg-check" aria-label="Select all repositories in this list" checked={repoNames.every((n) => s.selected.includes(n))} onChange={(e) => ((e.target as HTMLInputElement).checked ? ctl.selectAll(repoNames) : ctl.clearSelection())} />}{head}</span>{tab === 'all' ? <SortSelect ctl={ctl} value={s.sort} /> : <span class="rg-muted">Sort: Last pushed</span>}</div>
             {rows.length ? <Rows ctl={ctl} s={s} rows={rows} /> : <Empty tab={tab} query={s.query} isRoot={isRoot} team={team} />}
           </div>
         </>
@@ -341,7 +354,7 @@ function Rows({ ctl, s, rows }: { ctl: Controller; s: State; rows: Row[] }) {
   const slice = virtual ? rows.slice(range.start, range.end) : rows;
   return (
     <div class="rg-rows" ref={ref} style={virtual ? { paddingTop: range.start * ROW_H, paddingBottom: Math.max(0, rows.length - range.end) * ROW_H } : undefined}>
-      {slice.map((r) => (r.kind === 'group' ? <GroupRow key={`g:${r.node.key}`} ctl={ctl} row={r} fixed={virtual} /> : <RepoRow key={`r:${r.repo.name}`} org={s.org} row={r} fixed={virtual} label={ctl.teams.repoLabel(r.repo.name)} />))}
+      {slice.map((r, i) => (r.kind === 'group' ? <GroupRow key={`g:${r.node.key}`} ctl={ctl} row={r} fixed={virtual} /> : <RepoRow key={`r:${virtual ? range.start + i : i}:${r.repo.name}`} ctl={ctl} org={s.org} row={r} selected={r.also === undefined && s.selected.includes(r.repo.name)} fixed={virtual} label={ctl.teams.repoLabel(r.repo.name)} />))}
     </div>
   );
 }
@@ -352,8 +365,9 @@ function GroupRow({ ctl, row, fixed }: { ctl: Controller; row: Extract<Row, { ki
   const chips = cfg && cfg.exists && cfg.config ? chipTeams(cfg.config.groups, node.path) : [];
   const n = node.total;
   const sub = node.subgroups;
+  const drop = ctl.canMove() ? dropTarget(ctl, node.path) : {};
   return (
-    <div class={`rg-row${fixed ? ' rg-fixed' : ''}`} style={{ '--rg-depth': depth } as any}>
+    <div class={`rg-row${fixed ? ' rg-fixed' : ''}`} style={{ '--rg-depth': depth } as any} {...drop}>
       <button type="button" class="rg-chev" aria-expanded={open} aria-label={`${open ? 'Collapse' : 'Expand'} ${displayName(node.group)}`} onClick={() => ctl.toggleGroup(node.key)}><Icon name="chev" /></button>
       <GroupAvatar logos={ctl.logos} name={node.group.name} label={displayName(node.group)} logo={node.group.logo} cls="rg-av" />
       <div class="rg-row-main">
@@ -369,23 +383,34 @@ function GroupRow({ ctl, row, fixed }: { ctl: Controller; row: Extract<Row, { ki
           <span>{node.latest ? `Updated ${ago(node.latest)}` : 'No pushes yet'}</span>
         </div>
       </div>
-      <div class="rg-row-side"><span class="rg-rules-line" title={node.group.match.join(', ')}>Rules: {node.group.match.length ? node.group.match.join(', ') : '—'}</span></div>
+      <div class="rg-row-side"><span class="rg-rules-line" title={node.group.match.map(ruleLabel).join(', ')}>Rules: {node.group.match.length ? node.group.match.map(ruleLabel).join(', ') : '—'}</span></div>
     </div>
   );
 }
 
 /** `label` is the team's permission on the team page; otherwise the label shows Public or Private. */
-function RepoRow({ org, row, fixed, label }: { org: string; row: Extract<Row, { kind: 'repo' }>; fixed: boolean; label?: string }) {
+function RepoRow({ ctl, org, row, fixed, label, selected }: { ctl: Controller; org: string; row: Extract<Row, { kind: 'repo' }>; fixed: boolean; label?: string; selected: boolean }) {
   const r: RepoInfo = row.repo;
+  const movable = ctl.canMove();
+  const current = ctl.model()?.placed.get(r.name) ?? '';
+  // A3: a linked row is listed here through a shared rule; the repo lives (is "linked from") elsewhere.
+  const linked = row.also !== undefined;
+  const from = linked ? pathTitle(ctl.model()!, row.also!) : '';
+  const listedIn = linked && row.in ? pathTitle(ctl.model()!, row.in) : '';
   return (
-    <div class={`rg-row${fixed ? ' rg-fixed' : ''}`} style={{ '--rg-depth': row.depth } as any}>
+    <div class={`rg-row${fixed ? ' rg-fixed' : ''}${linked ? ' rg-linked' : ''}`} style={{ '--rg-depth': row.depth } as any} data-selected={selected ? 'true' : undefined}>
       <span class="rg-chev-sp" />
-      <span class="rg-av rg-av-repo"><Icon name="repo" /></span>
+      <span class={`rg-av rg-av-repo${linked ? ' rg-av-link' : ''}`} {...(linked ? { title: `Linked from ${from}. Remove the link here, or move it from there.` } : {})}><Icon name={linked ? 'link' : 'repo'} /></span>
       <div class="rg-row-main">
         <div class="rg-row-title">
           <a href={repoUrl(org, r.name)}>{row.prefix && <span class="rg-path-pre">{row.prefix}</span>}{r.name}</a>
           <span class="rg-label">{label ?? (r.private ? 'Private' : 'Public')}</span>
           {r.fork && <span class="rg-label">Fork</span>}
+          {linked && (
+            <button type="button" class="rg-also rg-link-chip" title={`Linked from ${from}. Remove the link here, or move it from there.`} onClick={() => ctl.goOriginal(row.also!)}>
+              <Icon name="link" size={12} />linked from {from}
+            </button>
+          )}
         </div>
         {r.description && <p class="rg-desc">{r.description}</p>}
         <div class="rg-meta">
@@ -396,20 +421,52 @@ function RepoRow({ org, row, fixed, label }: { org: string; row: Extract<Row, { 
           <span>Updated {ago(r.pushedAt)}</span>
         </div>
       </div>
+      {movable && linked && (
+        <div class="rg-row-menu rg-row-menu-shared">
+          <button
+            type="button"
+            class="rg-btn rg-btn-sm rg-unlink"
+            title={`Remove link to ${r.name} from ${listedIn || 'this group'}`}
+            aria-label={`Remove link to ${r.name} from ${listedIn || 'this group'}`}
+            disabled={!row.in}
+            onClick={() => row.in && ctl.stageUnshare([r.name], row.in.split('/'))}
+          >
+            <Icon name="unlink" size={14} /><span class="rg-unlink-text">Remove link</span>
+          </button>
+        </div>
+      )}
+      {movable && !linked && (
+        <div class="rg-row-menu">
+          <input type="checkbox" class="rg-check" aria-label={`Select ${r.name}`} checked={selected} onChange={() => ctl.toggleSelect(r.name)} />
+          <span class="rg-grip" role="img" aria-label={`Drag ${r.name} to a group`} title="Drag to a group" {...dragSource(() => ctl.store.get().selected, r.name)}><Icon name="grip" /></span>
+          <RepoMenu ctl={ctl} repo={r.name} current={current} />
+        </div>
+      )}
     </div>
   );
 }
 
-function RulesPanel({ node }: { node: GroupNode }) {
+function RulesPanel({ node, org, propsHint }: { node: GroupNode; org: string; propsHint: boolean }) {
   const own = node.repos;
   return (
     <div class="rg-box">
       <div class="rg-box-head"><span>How repositories join <code>{node.key}</code></span></div>
       <div class="rg-rules">
         <div class="rg-chips">
-          {node.group.match.length ? node.group.match.map((m) => <span class="rg-chip rg-ro" key={m}>{m}</span>) : <span class="rg-muted">No rules. Repositories only appear here through subgroups.</span>}
+          {node.group.match.length ? node.group.match.map((m) => <span class="rg-chip rg-ro" key={m} title={m}>{ruleLabel(m)}</span>) : <span class="rg-muted">No rules. Repositories only appear here through subgroups.</span>}
         </div>
+        {propsHint && <p class="rg-desc" role="status">Rules on custom properties match nothing yet: GitHub did not share the properties of {org}. An org owner must accept the new "Custom properties: Read" permission of the app in Settings → GitHub Apps.</p>}
         <p class="rg-desc">Patterns use <code>*</code> as a wildcard and are checked against the repository name. An exact name always wins; when several patterns match, the deepest group wins. New repositories are placed automatically on the next visit.</p>
+        {!!node.group.shared?.length && (
+          <div>
+            <b>Also include (shared rules)</b>
+            <div class="rg-chips" style="margin-top:8px">{node.group.shared.map((m) => <span class="rg-chip rg-ro" key={m}>{m}</span>)}</div>
+            <p class="rg-desc">Repositories that match these rules are listed here as well, in addition to the group they belong to. They are counted once.</p>
+            <div class="rg-chips" style="margin-top:8px">
+              {node.shared.length ? node.shared.map((r) => <span class="rg-chip rg-ro" key={r.name}>{r.name}</span>) : <span class="rg-muted">No other repository matches these rules yet.</span>}
+            </div>
+          </div>
+        )}
         <div>
           <b>Matched directly here</b>
           <div class="rg-chips" style="margin-top:8px">

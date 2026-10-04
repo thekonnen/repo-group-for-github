@@ -29,14 +29,6 @@
   "accountKindApp": {
     "message": "GitHub App"
   },
-  "popupOpenGrouped": {
-    "message": "Open grouped view for $ORG$",
-    "placeholders": {
-      "org": {
-        "content": "$1"
-      }
-    }
-  },
   "popupOrgsHeading": {
     "message": "Organizations with groups"
   },

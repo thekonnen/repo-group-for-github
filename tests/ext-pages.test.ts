@@ -65,25 +65,8 @@ describe('popup', () => {
     expect(a.getAttribute('href')).toBe('https://github.com/orgs/thekonnen/repositories');
     expect(text()).not.toContain('acme');
   });
-  it('offers "Open grouped view" for the org of the current tab', async () => {
+  it('has no separate "Open grouped view" button: the org row already links there', async () => {
     backend();
-    render(h(Popup, {}), root());
-    const btn = await vi.waitFor(() => {
-      const b = [...root().querySelectorAll('button')].find((x) => x.textContent?.startsWith('Open grouped view for'));
-      expect(b).toBeTruthy();
-      return b!;
-    });
-    expect(btn.textContent).toBe('Open grouped view for thekonnen');
-    btn.click();
-    await vi.waitFor(() => expect(mock.create).toHaveBeenCalledWith({ url: 'https://github.com/orgs/thekonnen/repositories' }));
-  });
-  it('treats /<org>/<repo> as an org only when the user belongs to it, and ignores other tabs', async () => {
-    backend();
-    mock.query.mockResolvedValue([{ url: 'https://github.com/acme/site/issues' }]);
-    render(h(Popup, {}), root());
-    await vi.waitFor(() => expect([...root().querySelectorAll('button')].some((b) => b.textContent === 'Open grouped view for acme')).toBe(true));
-    render(null, root());
-    mock.query.mockResolvedValue([{ url: 'https://news.example.com/' }]);
     render(h(Popup, {}), root());
     await vi.waitFor(() => expect(root().querySelectorAll('.orgs a')).toHaveLength(1));
     expect([...root().querySelectorAll('button')].some((b) => b.textContent?.startsWith('Open grouped'))).toBe(false);

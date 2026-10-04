@@ -170,7 +170,6 @@ describe('helpers', () => {
     expect(orgFromUrl('https://github.com/', known)).toBeNull();
   });
   it('fills i18n placeholders from the English file', () => {
-    expect(englishMessage('popupOpenGrouped', ['acme'])).toBe('Open grouped view for acme');
     expect(englishMessage('signIn')).toBe('Sign in with GitHub');
   });
 });

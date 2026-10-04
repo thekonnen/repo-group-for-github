@@ -1,34 +1,16 @@
 import { useEffect, useState } from 'preact/hooks';
-import { browser } from 'wxt/browser';
 import { t } from '../../i18n';
 import { call } from '../../github/client';
-import { groupedViewUrl, orgFromUrl } from '../../ext-pages/tab-org';
+import { groupedViewUrl } from '../../ext-pages/tab-org';
 import { toInfo, useAuth } from '../../ext-pages/use-auth';
 import type { OrgEntry, OrgList } from '../../background/orgs';
-
-/**
- * Reads the URL of the active tab. For a github.com tab this works with the existing host permission
- * (https://github.com/*): no "tabs" or "activeTab" permission is needed. Any other tab simply has no url.
- */
-async function activeTabUrl(): Promise<string | undefined> {
-  try {
-    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-    return tab?.url;
-  } catch {
-    return undefined;
-  }
-}
 
 export function App() {
   const auth = useAuth();
   const [orgs, setOrgs] = useState<OrgEntry[] | null>(null);
-  const [tabUrl, setTabUrl] = useState<string | undefined>();
   const [orgError, setOrgError] = useState('');
   const signedIn = !!auth.status?.signedIn;
 
-  useEffect(() => {
-    activeTabUrl().then(setTabUrl);
-  }, []);
   useEffect(() => {
     if (!signedIn) return setOrgs(null);
     let alive = true;
@@ -40,9 +22,7 @@ export function App() {
     };
   }, [signedIn]);
 
-  const tabOrg = signedIn ? orgFromUrl(tabUrl, (l) => !!orgs?.some((o) => o.login.toLowerCase() === l.toLowerCase())) : null;
   const withFile = (orgs ?? []).filter((o) => o.hasFile);
-  const open = (url: string) => browser.tabs.create({ url }).then(() => window.close());
   const err = auth.error;
 
   return (
@@ -56,9 +36,6 @@ export function App() {
             <span class="rg-ext-muted">{auth.status.kind === 'pat' ? t('accountKindToken') : t('accountKindApp')}</span>
             <button class="rg-ext-btn" onClick={() => auth.signOut()}>{t('signOut')}</button>
           </div>
-          {tabOrg && (
-            <button class="rg-ext-btn primary block" onClick={() => open(groupedViewUrl(tabOrg))}>{t('popupOpenGrouped', tabOrg)}</button>
-          )}
           <h2>{t('popupOrgsHeading')}</h2>
           {orgs === null ? (
             <span class="rg-ext-muted" role="status">{t('popupOrgsLoading')}</span>

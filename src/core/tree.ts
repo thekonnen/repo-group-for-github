@@ -1,5 +1,5 @@
 import { displayName } from './edit';
-import { pickIn, postOrder } from './placement';
+import { flatList, pickIn, postOrder, sharedKeysFor } from './placement';
 import { byPush, orderRepos, SORT_KEYS, SORT_LABEL, sortRepos, type SortKey } from './sort';
 import type { Group, RepoInfo } from './types';
 
@@ -10,8 +10,11 @@ export interface GroupNode {
   key: string; // 'infra/dagsrv'; '' for the virtual root
   repos: RepoInfo[]; // placed here (root: the ungrouped ones): pinned first, then the group's sort (default newest push)
   pins: string[]; // names of the repos actually pinned here (stale pins are ignored), in pin order
+  shared: RepoInfo[]; // A3: also listed here through `shared` rules (their primary group is elsewhere), newest push first
+  sharedFrom: Map<string, string>; // A3: shared repo name -> key of its primary group ('' = Ungrouped)
+  members: RepoInfo[]; // every distinct repository of the group, subgroups and shared included
   children: GroupNode[];
-  total: number; // recursive repo count (root: every visible repo)
+  total: number; // recursive count of distinct repos (a shared repo counts once per group, never twice in a parent or the root)
   subgroups: number; // recursive group count
   issues: number; // recursive sum of open issues + PRs
   latest: string | null; // newest push, recursive
@@ -22,6 +25,8 @@ export interface TreeModel {
   byKey: Map<string, GroupNode>;
   /** repo name -> key of the group it landed in ('' = ungrouped). */
   placed: Map<string, string>;
+  /** A3: repo name -> keys of the extra groups it is listed in (primary placement excluded). */
+  secondary: Map<string, string[]>;
   visible: number;
 }
 
@@ -34,7 +39,7 @@ export function buildTree(groups: Group[], repos: RepoInfo[]): TreeModel {
   const order = postOrder(groups);
   const byKey = new Map<string, GroupNode>();
   const mk = (group: Group, path: string[]): GroupNode => {
-    const node: GroupNode = { group, path, key: path.join('/'), repos: [], pins: [], children: [], total: 0, subgroups: 0, issues: 0, latest: null };
+    const node: GroupNode = { group, path, key: path.join('/'), repos: [], pins: [], shared: [], sharedFrom: new Map(), members: [], children: [], total: 0, subgroups: 0, issues: 0, latest: null };
     node.children = group.groups.map((c) => mk(c, [...path, c.name]));
     byKey.set(node.key, node);
     return node;
@@ -43,30 +48,47 @@ export function buildTree(groups: Group[], repos: RepoInfo[]): TreeModel {
   const root = mk(rootGroup, []);
   const placed = new Map<string, string>();
   for (const r of visible) {
-    const hit = pickIn(order, r.name);
+    const hit = pickIn(order, r);
     const node = hit ? byKey.get(hit.key)! : root;
     node.repos.push(r);
     placed.set(r.name, node.key);
   }
+  const secondary = new Map<string, string[]>();
+  const flat = flatList(groups);
+  if (flat.some((x) => x.group.shared?.length)) {
+    for (const r of visible) {
+      const keys = sharedKeysFor(flat, r, placed.get(r.name) ?? '');
+      if (!keys.length) continue;
+      secondary.set(r.name, keys);
+      for (const k of keys) {
+        const n = byKey.get(k)!;
+        n.shared.push(r);
+        n.sharedFrom.set(r.name, placed.get(r.name) ?? '');
+      }
+    }
+  }
   const fold = (n: GroupNode) => {
     n.repos.sort(byPush);
-    let latest = n.repos[0]?.pushedAt ?? null; // before the group's own order is applied
     const ordered = orderRepos(n.repos, n.group.sort ?? 'pushed', n.group.pinned);
     n.repos = ordered.list;
     n.pins = ordered.pins;
-    n.total = n.repos.length;
-    n.issues = n.repos.reduce((s, r) => s + (r.openIssuesAndPrs ?? 0), 0);
+    n.shared.sort(byPush);
+    // Distinct repos of the group: own, shared, then subgroups (a repo shared into a group and also below it counts once).
+    const uniq = new Map<string, RepoInfo>();
+    for (const r of n.repos) uniq.set(r.name, r);
+    for (const r of n.shared) uniq.set(r.name, r);
     for (const c of n.children) {
       fold(c);
-      n.total += c.total;
+      for (const r of c.members) uniq.set(r.name, r);
       n.subgroups += 1 + c.subgroups;
-      n.issues += c.issues;
-      if (c.latest && (!latest || Date.parse(c.latest) > Date.parse(latest))) latest = c.latest;
     }
-    n.latest = latest;
+    n.members = [...uniq.values()];
+    n.total = n.members.length;
+    n.issues = n.members.reduce((s, r) => s + (r.openIssuesAndPrs ?? 0), 0);
+    n.latest = n.members.reduce<string | null>((m, r) => (r.pushedAt && (!m || Date.parse(r.pushedAt) > Date.parse(m)) ? r.pushedAt : m), null);
   };
   fold(root);
-  return { root, byKey, placed, visible: visible.length };
+  return { root, byKey, placed, secondary, visible: visible.length };
 }
 
 let last: { sha: string | null; version: unknown; model: TreeModel } | null = null;
@@ -79,13 +101,22 @@ export function memoTree(sha: string | null, version: unknown, groups: Group[], 
 
 export const nodeAt = (model: TreeModel, path: string[]): GroupNode | null => model.byKey.get(path.join('/')) ?? null;
 
+/** Every distinct repository of the group: its own, those shared into it, and those of its subgroups. */
 export function allRepos(node: GroupNode): RepoInfo[] {
-  return node.children.reduce<RepoInfo[]>((acc, c) => acc.concat(allRepos(c)), node.repos.slice());
+  return node.members;
+}
+
+/** "infra/dagsrv" -> "Infra / Scheduler" (display names); '' -> "Ungrouped". */
+export function pathTitle(model: TreeModel, key: string): string {
+  if (!key) return 'Ungrouped';
+  const parts = key.split('/');
+  return parts.map((p, i) => { const g = model.byKey.get(parts.slice(0, i + 1).join('/'))?.group; return g ? displayName(g) : p; }).join(' / ');
 }
 
 export type Row =
   | { kind: 'group'; node: GroupNode; depth: number; open: boolean }
-  | { kind: 'repo'; repo: RepoInfo; depth: number; prefix?: string };
+  /** `also` (A3): this row is a shared membership; it holds the key of the repo's primary group ('' = Ungrouped). `in` is the group that lists it. */
+  | { kind: 'repo'; repo: RepoInfo; depth: number; prefix?: string; also?: string; in?: string };
 
 /** Visible rows of a group: its subgroups (expandable inline) first, then the repos placed directly in it. */
 export function treeRows(node: GroupNode, expanded: ReadonlySet<string>, depth = 0, order: (n: GroupNode) => RepoInfo[] = (n) => n.repos): Row[] {
@@ -96,6 +127,7 @@ export function treeRows(node: GroupNode, expanded: ReadonlySet<string>, depth =
     if (open) out.push(...treeRows(c, expanded, depth + 1, order));
   }
   for (const r of order(node)) out.push({ kind: 'repo', repo: r, depth });
+  for (const r of node.shared) out.push({ kind: 'repo', repo: r, depth, also: node.sharedFrom.get(r.name) ?? '', in: node.key });
   return out;
 }
 
@@ -104,15 +136,23 @@ export function searchRows(model: TreeModel, node: GroupNode, query: string): Ro
   const q = query.trim().toLowerCase();
   if (!q) return [];
   const hits = allRepos(node).filter((r) => r.name.toLowerCase().includes(q) || (r.description ?? '').toLowerCase().includes(q));
+  // Titles for people, slugs only as a fallback.
+  const titled = (parts: string[], from: number) =>
+    parts.slice(from).map((_, i) => {
+      const g = model.byKey.get(parts.slice(0, from + i + 1).join('/'))?.group;
+      return g ? displayName(g) : parts[from + i];
+    });
+  const under = (key: string) => node.key === '' || key === node.key || key.startsWith(node.key + '/');
   return hits.sort(byPush).map((repo) => {
     const key = model.placed.get(repo.name) ?? '';
+    if (!under(key)) {
+      // A3: only reachable here through a shared rule. Show where it is listed here, and where it lives.
+      const here = (model.secondary.get(repo.name) ?? []).find(under) ?? node.key;
+      const rel = here ? titled(here.split('/'), node.path.length) : [];
+      return { kind: 'repo' as const, repo, depth: 0, prefix: rel.length ? rel.join(' / ') + ' / ' : undefined, also: key, in: here };
+    }
     const parts = key ? key.split('/') : [];
-    // Titles for people, slugs only as a fallback.
-    const rel = parts.slice(node.path.length).map((_, i) => {
-      const k = parts.slice(0, node.path.length + i + 1).join('/');
-      const g = model.byKey.get(k)?.group;
-      return g ? displayName(g) : parts[node.path.length + i];
-    });
+    const rel = titled(parts, node.path.length);
     return { kind: 'repo' as const, repo, depth: 0, prefix: rel.length ? rel.join(' / ') + ' / ' : undefined };
   });
 }

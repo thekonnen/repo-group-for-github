@@ -77,3 +77,10 @@
 .rg-root .rg-dest-path b { color: var(--rg-fg); font-weight: 600; overflow-wrap: anywhere; }
 @media (max-width: 480px) { .rg-root .rg-picker { min-width: 0; width: 100%; } .rg-root .rg-picker-wrap { align-self: stretch; } }
 @media (prefers-reduced-motion: reduce) { .rg-root * { transition: none !important; } }
+
+/* D2: suggestion chip under the Group picker */
+.rg-root .rg-nr-chip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 8px; padding: 6px 10px; border: 1px solid var(--rg-border); border-radius: 6px; background: var(--rg-bg-subtle, var(--rg-bg)); font-size: 12px; }
+.rg-root .rg-chip-src { display: inline-flex; align-items: center; gap: 3px; padding: 0 6px; border: 1px solid var(--rg-border); border-radius: 999px; color: var(--rg-muted); font-weight: 600; }
+.rg-root .rg-chip-src.rg-ai { color: var(--rg-ext, var(--rg-accent)); border-color: var(--rg-ext, var(--rg-accent)); }
+.rg-root .rg-chip-text { flex: 1 1 200px; min-width: 0; }
+.rg-root .rg-chip-why { color: var(--rg-muted); }

@@ -13,17 +13,17 @@ import { useStore } from '../store';
 export function YamlDrawer({ ctl }: { ctl: Controller }) {
   const s = useStore(ctl.store);
   if (!s.yaml) return null;
-  return <Editor ctl={ctl} initial={s.yaml.text} />;
+  return <Editor ctl={ctl} initial={s.yaml.text} scope={s.yaml.scope} />;
 }
 
 type CopyKind = 'all' | 'yaml';
 
-function Editor({ ctl, initial }: { ctl: Controller; initial: string }) {
+function Editor({ ctl, initial, scope: initialScope }: { ctl: Controller; initial: string; scope?: 'ungrouped' }) {
   const s = useStore(ctl.store);
   const model = ctl.model()!;
   const [text, setText] = useState(initial);
   const [check, setCheck] = useState<YamlCheck | null>(null);
-  const [scopeId, setScopeId] = useState<'all' | 'ungrouped' | 'group'>('all');
+  const [scopeId, setScopeId] = useState<'all' | 'ungrouped' | 'group'>(initialScope ?? 'all');
   const [copied, setCopied] = useState<CopyKind | null>(null);
   const [fallback, setFallback] = useState<string | null>(null);
   const [conflict, setConflict] = useState<Conflict | null>(null);

@@ -46,7 +46,7 @@ export function mergeIndex(existing: RepoInfo[], incoming: RepoInfo[]): RepoInfo
 /** Full reconciliation replaces the index; deleted and renamed repos disappear. Keeps viewerIsAdmin if not provided. */
 export function reconcile(existing: RepoInfo[], fresh: RepoInfo[]): RepoInfo[] {
   const old = new Map(existing.map((r) => [r.name, r]));
-  return sortByPush(fresh.map((r) => ({ ...r, viewerIsAdmin: r.viewerIsAdmin ?? old.get(r.name)?.viewerIsAdmin })));
+  return sortByPush(fresh.map((r) => ({ ...r, viewerIsAdmin: r.viewerIsAdmin ?? old.get(r.name)?.viewerIsAdmin, ...(r.fork && r.parent === undefined && old.get(r.name)?.parent !== undefined ? { parent: old.get(r.name)!.parent } : {}) })));
 }
 
 export const sortByPush = (list: RepoInfo[]): RepoInfo[] =>
@@ -58,6 +58,8 @@ export interface IndexMeta {
   total: number;
   /** How the first index was built: from the user's own API calls, or from repo-index.json (after confirmation). */
   index?: 'api' | 'action';
+  /** Set on output only: GitHub refused the custom properties (permission missing or not accepted yet). */
+  propsUnavailable?: boolean;
 }
 
 /** Whether a background full reconciliation is due (§F14). */

@@ -3,6 +3,8 @@ import { configFromObject, type ValidateOptions, type ValidationResult } from '.
 /** First fenced block (```yaml / ```yml / ```), or the text itself. */
 export function stripFences(text: string): { text: string; stripped: boolean } {
   const m = text.match(/```(?:ya?ml)?\s*\n([\s\S]*?)```/i);
+  // A file that already has its top-level keys before the fence is plain YAML: the fence is inside a README text (C4).
+  if (m && m.index !== undefined && /^(?:version|groups|index)[ \t]*:/m.test(text.slice(0, m.index))) return { text, stripped: false };
   return m ? { text: m[1], stripped: true } : { text, stripped: false };
 }
 

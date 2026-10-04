@@ -93,6 +93,13 @@ export function configFromObject(obj: unknown, opts: ValidateOptions = {}): Vali
         err = `"${name}": match must be a list of names or patterns.`;
         return;
       }
+      let shared: unknown = raw.shared == null ? [] : raw.shared;
+      if (typeof shared === 'string') shared = [shared];
+      if (!Array.isArray(shared) || shared.some((m) => typeof m !== 'string')) {
+        err = `"${name}": shared must be a list of names or patterns.`;
+        return;
+      }
+      const sharedRules = (shared as string[]).flatMap(splitRules);
       let keywords: unknown = raw.keywords == null ? [] : raw.keywords;
       if (typeof keywords === 'string') keywords = [keywords];
       if (!Array.isArray(keywords) || keywords.some((k) => typeof k !== 'string')) {
@@ -119,6 +126,7 @@ export function configFromObject(obj: unknown, opts: ValidateOptions = {}): Vali
         logo: typeof raw.logo === 'string' && raw.logo.trim() ? raw.logo.trim() : null,
         teams,
         match: (match as string[]).flatMap(splitRules),
+        ...(sharedRules.length ? { shared: sharedRules } : {}),
         groups,
       });
     });

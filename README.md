@@ -48,6 +48,21 @@ The extension then downloads that one file instead of paginating, and confirms e
 
 **Privacy warning:** everyone who can read `<org>/.github` can read the names and descriptions of **all** repositories listed in `repo-index.json`, including private ones they cannot open. Only enable this in organizations where members already see every repository.
 
+## Optional: one repository in several groups (`shared`)
+
+Each repository has one home group, chosen by `match`. A group can also list repositories that live elsewhere, like a tag:
+
+```yaml
+groups:
+  - name: platform
+    match: ["lib-core"]
+  - name: payments
+    match: ["pay-*"]
+    shared: ["lib-core", "ui-*"]   # also shown here
+```
+
+`lib-core` stays in `platform` (its primary group, used for ungrouped detection, team access and Sync access) and is also listed in `payments` with an "also in Platform" label. It is counted once in every total. Files without `shared` behave exactly as before.
+
 ## Status
 
 Milestones 1–6 done: scaffold, tested `core/`, background worker (device flow, token fallback, parallel repo index with cache, `repo-groups.yml` reader, access detection), and the read-only grouped view on `github.com/orgs/<org>/repositories` (groups and subgroups, sidebar tree, group pages at `#infra/dagsrv`, search, GitHub-list toggle), plus Edit group / New group. Org owners and members with write access to `<org>/.github` can edit groups and create groups and subgroups from the page (each save is a commit to `repo-groups.yml`). The YAML editor (Edit YAML) has the AI round-trip: copy the prompt with the file and repositories, paste the answer back, review the diff, commit. Groups have a display name (any characters) and a slug (`grupo-competicao`). Next: logos, new-repository field, teams (in progress).

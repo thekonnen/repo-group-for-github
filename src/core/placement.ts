@@ -59,6 +59,45 @@ export function ruleFor(group: Group, name: string): string | undefined {
   );
 }
 
+/** Shared rules (A3): the repo is also listed in the groups whose `shared` rules catch it. Same glob semantics as `match`. */
+export interface SharedPlacement {
+  /** Exactly `placement()`: repo name -> group key ('' = ungrouped). */
+  primary: Record<string, string>;
+  /** repo name -> keys of the extra groups it belongs to (file order). Only repos that have any. */
+  secondary: Map<string, string[]>;
+}
+
+/** True when `key` is `of` itself or lies below it. ('' = root contains everything.) */
+const within = (key: string, of: string): boolean => of === '' || key === of || key.startsWith(of + '/');
+
+/**
+ * Extra memberships for one repo given its primary group key. A group that already contains the primary group
+ * (itself or an ancestor) is skipped: the repo is listed there anyway, recursively.
+ */
+export function sharedKeysFor(order: Node[], name: string, primary: string): string[] {
+  const out: string[] = [];
+  for (const x of order) {
+    if (!x.group.shared?.length || !matches(x.group.shared, name)) continue;
+    if (primary && within(primary, x.key)) continue;
+    out.push(x.key);
+  }
+  return out;
+}
+
+/** `placement()` plus the secondary memberships. `order` must be in file (pre-order) so the keys come out in file order. */
+export function sharedPlacement(groups: Group[], repos: Pick<RepoInfo, 'name'>[]): SharedPlacement {
+  const primary = placement(groups, repos);
+  const secondary = new Map<string, string[]>();
+  const order = flatList(groups);
+  if (order.some((x) => x.group.shared?.length)) {
+    for (const r of repos) {
+      const keys = sharedKeysFor(order, r.name, primary[r.name]);
+      if (keys.length) secondary.set(r.name, keys);
+    }
+  }
+  return { primary, secondary };
+}
+
 /** repo name -> group key ('' = ungrouped). */
 export function placement(groups: Group[], repos: Pick<RepoInfo, 'name'>[]): Record<string, string> {
   const order = postOrder(groups);

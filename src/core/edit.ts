@@ -5,8 +5,8 @@ import type { Group, TeamTag } from './types';
 /** The single change behind Edit group / New group. Re-applied to a fresh file when a commit conflicts (§7). */
 export type Edit =
   /** `teams` (F12): when given it replaces the group's own team tags; when absent they are kept. */
-  | { kind: 'edit'; path: string[]; name: string; title?: string; description: string; match: string[]; logo?: LogoChange; teams?: TeamTag[] }
-  | { kind: 'new'; parent: string[]; name: string; title?: string; description: string; match: string[]; logo?: LogoChange; teams?: TeamTag[] }
+  | { kind: 'edit'; path: string[]; name: string; title?: string; description: string; match: string[]; shared?: string[]; logo?: LogoChange; teams?: TeamTag[] }
+  | { kind: 'new'; parent: string[]; name: string; title?: string; description: string; match: string[]; shared?: string[]; logo?: LogoChange; teams?: TeamTag[] }
   /** F9: adds the exact repo name to the match list of an existing group. */
   | { kind: 'file'; path: string[]; repo: string }
   /** Removes a group and all its subgroups from the file. No repository is touched: they fall back to the other rules. */
@@ -109,13 +109,14 @@ export function applyEdit(groups: Group[], edit: Edit): { groups: Group[] } | { 
   }
   const name = finalName(edit.name);
   const match = edit.match.map((m) => m.trim()).filter(Boolean);
+  const shared = (edit.shared ?? []).map((m) => m.trim()).filter(Boolean);
   if (edit.kind === 'new') {
     const list = edit.parent.length ? findGroup(next, edit.parent)?.groups : next;
     if (!list) return { error: `The group "${edit.parent.join('/')}" no longer exists. Reload the page and try again.` };
     if (!name) return { error: 'Name is required.' };
     if (list.some((g) => g.name === name)) return { error: `A group named "${name}" already exists here.` };
     const logo = edit.logo && 'png' in edit.logo ? logoPath([...edit.parent, name]) : null;
-    list.push({ name, ...(cleanTitle(edit.title, name) ? { title: cleanTitle(edit.title, name) } : {}), description: edit.description.trim(), logo, teams: edit.teams ? cleanTeams(edit.teams) : [], match, groups: [] });
+    list.push({ name, ...(cleanTitle(edit.title, name) ? { title: cleanTitle(edit.title, name) } : {}), description: edit.description.trim(), logo, teams: edit.teams ? cleanTeams(edit.teams) : [], match, ...(shared.length ? { shared } : {}), groups: [] });
     return { groups: next };
   }
   const g = findGroup(next, edit.path);
@@ -132,6 +133,11 @@ export function applyEdit(groups: Group[], edit: Edit): { groups: Group[] } | { 
   }
   g.description = edit.description.trim();
   g.match = match;
+  // `shared` given: it replaces the group's rules (empty clears them); absent: kept.
+  if (edit.shared) {
+    if (shared.length) g.shared = shared;
+    else delete g.shared;
+  }
   if (edit.logo) g.logo = 'png' in edit.logo ? logoPath([...parent, name]) : null;
   if (edit.teams) g.teams = cleanTeams(edit.teams);
   return { groups: next };

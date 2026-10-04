@@ -59,6 +59,9 @@ function Form({ ctl, mode, path, focusLogo }: { ctl: Controller; mode: 'edit' | 
     .map(([slug, t]) => ({ slug, permission: t.permission, from: titled(model, t.from) }));
   const savedSlugs = node ? Object.keys(effectiveTeams(groups, path)) : [];
   const [ruleInput, setRuleInput] = useState('');
+  // A3: shared rules also list a repository here without changing where it belongs.
+  const [sharedRules, setSharedRules] = useState<string[]>(node?.group.shared ?? []);
+  const [sharedInput, setSharedInput] = useState('');
   const [logo, setLogo] = useState<LogoDraft>({ kind: 'keep' });
   const currentLogo = useLogoSrc(ctl.logos, node?.group.logo);
   const [touched, setTouched] = useState(false);
@@ -68,6 +71,8 @@ function Form({ ctl, mode, path, focusLogo }: { ctl: Controller; mode: 'edit' | 
 
   // Text still sitting in the rule field when Save is pressed counts too.
   const allRules = [...new Set([...rules, ...splitRules(ruleInput)])];
+  const allShared = [...new Set([...sharedRules, ...splitRules(sharedInput)])];
+  const sharedDirty = !!node && allShared.join('\n') !== (node.group.shared ?? []).join('\n');
 
   const error = validateDraft(groups, { mode, path, name: slug, title });
   const nameError = error === 'Name is required.' ? error : null;
@@ -79,6 +84,7 @@ function Form({ ctl, mode, path, focusLogo }: { ctl: Controller; mode: 'edit' | 
     finalName(slug) !== node.group.name ||
     description !== node.group.description ||
     allRules.join('\n') !== node.group.match.join('\n') ||
+    sharedDirty ||
     teamsDirty ||
     logo.kind !== 'keep';
 
@@ -95,14 +101,21 @@ function Form({ ctl, mode, path, focusLogo }: { ctl: Controller; mode: 'edit' | 
     setRuleInput('');
   };
 
+  const addShared = (v: string) => {
+    const add = splitRules(v).filter((r) => !sharedRules.includes(r));
+    if (add.length) setSharedRules([...sharedRules, ...add]);
+    setSharedInput('');
+  };
+
+  const alsoHits = useMemo(() => s.repos.filter((r) => !r.archived && allShared.length && matches(allShared, r.name)).sort(byPush), [s.repos, sharedInput, sharedRules]);
   const hits = useMemo(() => s.repos.filter((r) => !r.archived && allRules.length && matches(allRules, r.name)).sort(byPush), [s.repos, ruleInput, rules]);
   const here = mode === 'edit' ? path.join('/') : null;
 
   const logoChange = logo.kind === 'png' ? { png: logo.png } : logo.kind === 'remove' ? { remove: true as const } : undefined;
   const edit: Edit =
     mode === 'edit'
-      ? { kind: 'edit', path, name: slug, title, description, match: allRules, ...(logoChange && { logo: logoChange }), ...(teamsDirty ? { teams } : {}) }
-      : { kind: 'new', parent: path, name: slug, title, description, match: allRules, ...(logoChange && { logo: logoChange }), ...(teams.length ? { teams } : {}) };
+      ? { kind: 'edit', path, name: slug, title, description, match: allRules, ...(sharedDirty ? { shared: allShared } : {}), ...(logoChange && { logo: logoChange }), ...(teamsDirty ? { teams } : {}) }
+      : { kind: 'new', parent: path, name: slug, title, description, match: allRules, ...(allShared.length ? { shared: allShared } : {}), ...(logoChange && { logo: logoChange }), ...(teams.length ? { teams } : {}) };
 
   const submit = async () => {
     setTouched(true);
@@ -201,6 +214,32 @@ function Form({ ctl, mode, path, focusLogo }: { ctl: Controller; mode: 'edit' | 
             <button type="button" class="rg-btn" onClick={() => addRules(ruleInput)} disabled={!ruleInput.trim()}>Add</button>
           </div>
           <span class="rg-hint">Separate several with commas. Use <code>*</code> as a wildcard. An exact name always wins; otherwise the deepest group wins.</span>
+        </div>
+
+        <div class="rg-field">
+          <label for="rg-f-shared">Also include (shared rules)</label>
+          <div class="rg-chips">
+            {sharedRules.map((r, i) => (
+              <span class="rg-chip" key={r}>{r}
+                <button type="button" aria-label={`Remove shared rule ${r}`} onClick={() => setSharedRules(sharedRules.filter((_, j) => j !== i))}><Icon name="x" size={12} /></button>
+              </span>
+            ))}
+          </div>
+          <div class="rg-add-rule">
+            <input id="rg-f-shared" class="rg-input rg-mono" value={sharedInput} placeholder="lib-core  or  ui-*" autocomplete="off"
+              onInput={(e) => {
+                const v = (e.target as HTMLInputElement).value;
+                if (/[\s,;]/.test(v) && splitRules(v).length) addShared(v);
+                else setSharedInput(v);
+              }}
+              onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addShared((e.target as HTMLInputElement).value))} />
+            <button type="button" class="rg-btn" onClick={() => addShared(sharedInput)} disabled={!sharedInput.trim()}>Add</button>
+          </div>
+          <span class="rg-hint">
+            {allShared.length
+              ? `Also lists ${alsoHits.length} ${alsoHits.length === 1 ? 'repository' : 'repositories'} here, on top of where they belong. They stay in their own group and are counted once.`
+              : 'Optional. Repositories that match are listed here as well as in their own group, like a tag. Same patterns as match rules.'}
+          </span>
         </div>
 
         <div class="rg-field">

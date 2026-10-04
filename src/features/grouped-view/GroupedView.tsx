@@ -3,7 +3,7 @@ import { langColor } from '../../core/lang-colors';
 import { displayName } from '../../core/edit';
 import { detailTotals, DETAILS_MAX_REPOS } from '../../core/details';
 import { ago } from '../../core/time';
-import { allRepos, flatRows, searchRows, SORT_KEYS, SORT_LABEL, treeRows, VIRTUALIZE_AFTER, windowRange, type GroupNode, type Row, type SortKey, type TreeModel } from '../../core/tree';
+import { allRepos, flatRows, pathTitle, searchRows, SORT_KEYS, SORT_LABEL, treeRows, VIRTUALIZE_AFTER, windowRange, type GroupNode, type Row, type SortKey, type TreeModel } from '../../core/tree';
 import type { RepoInfo } from '../../core/types';
 import { GroupAvatar } from '../logos/GroupAvatar';
 import { Icon } from '../../ui/Icon';
@@ -329,7 +329,7 @@ function Rows({ ctl, s, rows }: { ctl: Controller; s: State; rows: Row[] }) {
   const slice = virtual ? rows.slice(range.start, range.end) : rows;
   return (
     <div class="rg-rows" ref={ref} style={virtual ? { paddingTop: range.start * ROW_H, paddingBottom: Math.max(0, rows.length - range.end) * ROW_H } : undefined}>
-      {slice.map((r) => (r.kind === 'group' ? <GroupRow key={`g:${r.node.key}`} ctl={ctl} row={r} fixed={virtual} /> : <RepoRow key={`r:${r.repo.name}`} org={s.org} row={r} fixed={virtual} label={ctl.teams.repoLabel(r.repo.name)} />))}
+      {slice.map((r, i) => (r.kind === 'group' ? <GroupRow key={`g:${r.node.key}`} ctl={ctl} row={r} fixed={virtual} /> : <RepoRow key={`r:${virtual ? range.start + i : i}:${r.repo.name}`} org={s.org} row={r} fixed={virtual} label={ctl.teams.repoLabel(r.repo.name)} also={r.also === undefined ? undefined : pathTitle(ctl.model()!, r.also)} />))}
     </div>
   );
 }
@@ -363,7 +363,7 @@ function GroupRow({ ctl, row, fixed }: { ctl: Controller; row: Extract<Row, { ki
 }
 
 /** `label` is the team's permission on the team page; otherwise the label shows Public or Private. */
-function RepoRow({ org, row, fixed, label }: { org: string; row: Extract<Row, { kind: 'repo' }>; fixed: boolean; label?: string }) {
+function RepoRow({ org, row, fixed, label, also }: { org: string; row: Extract<Row, { kind: 'repo' }>; fixed: boolean; label?: string; also?: string }) {
   const r: RepoInfo = row.repo;
   return (
     <div class={`rg-row${fixed ? ' rg-fixed' : ''}`} style={{ '--rg-depth': row.depth } as any}>
@@ -374,6 +374,7 @@ function RepoRow({ org, row, fixed, label }: { org: string; row: Extract<Row, { 
           <a href={repoUrl(org, r.name)}>{row.prefix && <span class="rg-path-pre">{row.prefix}</span>}{r.name}</a>
           <span class="rg-label">{label ?? (r.private ? 'Private' : 'Public')}</span>
           {r.fork && <span class="rg-label">Fork</span>}
+          {also !== undefined && <span class="rg-also rg-muted" title="Listed here through a shared rule">also in {also}</span>}
         </div>
         {r.description && <p class="rg-desc">{r.description}</p>}
         <div class="rg-meta">
@@ -398,6 +399,16 @@ function RulesPanel({ node }: { node: GroupNode }) {
           {node.group.match.length ? node.group.match.map((m) => <span class="rg-chip rg-ro" key={m}>{m}</span>) : <span class="rg-muted">No rules. Repositories only appear here through subgroups.</span>}
         </div>
         <p class="rg-desc">Patterns use <code>*</code> as a wildcard and are checked against the repository name. An exact name always wins; when several patterns match, the deepest group wins. New repositories are placed automatically on the next visit.</p>
+        {!!node.group.shared?.length && (
+          <div>
+            <b>Also include (shared rules)</b>
+            <div class="rg-chips" style="margin-top:8px">{node.group.shared.map((m) => <span class="rg-chip rg-ro" key={m}>{m}</span>)}</div>
+            <p class="rg-desc">Repositories that match these rules are listed here as well, in addition to the group they belong to. They are counted once.</p>
+            <div class="rg-chips" style="margin-top:8px">
+              {node.shared.length ? node.shared.map((r) => <span class="rg-chip rg-ro" key={r.name}>{r.name}</span>) : <span class="rg-muted">No other repository matches these rules yet.</span>}
+            </div>
+          </div>
+        )}
         <div>
           <b>Matched directly here</b>
           <div class="rg-chips" style="margin-top:8px">

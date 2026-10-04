@@ -41,6 +41,8 @@ export type TeamAccess = Record<string, Record<string, Permission>>; // slug -> 
 /**
  * Rows for the Sync access drawer: repos whose team access is lower than the target of their group.
  * Never yields removals or downgrades. Archived and ungrouped repos are skipped.
+ * Uses the PRIMARY placement only (A3): a repo also listed in other groups through `shared` rules has one target,
+ * the one of its primary group, so two groups with different team tags can never make the target ambiguous.
  */
 export function syncPlan(
   groups: Group[],

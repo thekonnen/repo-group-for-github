@@ -6,8 +6,8 @@ The extension signs users in with a GitHub App and the **device flow**. Create t
 
 The App can be installed on any personal account or organization once you select **Any account** (step 3).
 
-- Personal account: https://github.com/settings/apps/new?name=Repository+Group+for+Github&description=Organizes+the+repositories+of+a+GitHub+organization+into+groups+and+subgroups.+No+server%3A+data+stays+in+GitHub+and+in+your+browser.&url=https%3A%2F%2Fgithub.com%2Fthekonnen%2Frepo-group-for-github&public=true&webhook_active=false&metadata=read&contents=write&issues=read&pull_requests=read&administration=write&members=read
-- Organization `thekonnen`: https://github.com/organizations/thekonnen/settings/apps/new?name=Repository+Group+for+Github&description=Organizes+the+repositories+of+a+GitHub+organization+into+groups+and+subgroups.+No+server%3A+data+stays+in+GitHub+and+in+your+browser.&url=https%3A%2F%2Fgithub.com%2Fthekonnen%2Frepo-group-for-github&public=true&webhook_active=false&metadata=read&contents=write&issues=read&pull_requests=read&administration=write&members=read
+- Personal account: https://github.com/settings/apps/new?name=Repository+Group+for+Github&description=Organizes+the+repositories+of+a+GitHub+organization+into+groups+and+subgroups.+No+server%3A+data+stays+in+GitHub+and+in+your+browser.&url=https%3A%2F%2Fgithub.com%2Fthekonnen%2Frepo-group-for-github&public=true&webhook_active=false&metadata=read&contents=write&issues=write&pull_requests=read&administration=write&members=read
+- Organization `thekonnen`: https://github.com/organizations/thekonnen/settings/apps/new?name=Repository+Group+for+Github&description=Organizes+the+repositories+of+a+GitHub+organization+into+groups+and+subgroups.+No+server%3A+data+stays+in+GitHub+and+in+your+browser.&url=https%3A%2F%2Fgithub.com%2Fthekonnen%2Frepo-group-for-github&public=true&webhook_active=false&metadata=read&contents=write&issues=write&pull_requests=read&administration=write&members=read
 - Any other org: `node scripts/app-link.mjs <org>`
 
 The links preselect the name, homepage, no webhook, and the permissions below. They cannot set the install scope or the two device-flow options. GitHub lets you edit everything before you click **Create**. The name must be unique across GitHub; if it is taken, change it (and the slug in `src/config.ts` follows it).
@@ -18,7 +18,7 @@ The links preselect the name, homepage, no webhook, and the permissions below. T
 |---|---|---|
 | Repository | Metadata | Read |
 | Repository | Contents | Read & write (only used on `<org>/.github`) |
-| Repository | Issues | Read |
+| Repository | Issues | Read & write (open counts; adds default labels and milestones, Sync labels) |
 | Repository | Pull requests | Read |
 | Repository | Administration | Read & write (only to add teams to repositories) |
 | Organization | Members | Read |

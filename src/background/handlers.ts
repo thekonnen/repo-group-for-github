@@ -17,6 +17,7 @@ import { ownerListPath, refreshIndex, type IndexStore } from './repo-index';
 import { refreshActionIndex } from './action-index';
 import { loadDetails } from './details';
 import { cachedTeamSlugs, grantTeam, loadTeamAccess, loadTeams } from './teams-data';
+import { addLabel, addMilestone, readLabelStates } from './labels-data';
 import { teamSlugs } from '../core/teams';
 import { postOrder } from '../core/placement';
 import { suggest } from '../core/suggest';
@@ -278,6 +279,12 @@ export function createHandler(deps: Deps) {
         return loadTeamAccess(client, deps.kv, req.org, req.slugs, { force: req.force, now: deps.now });
       case 'team:grant':
         return grantTeam(client, deps.kv, req.org, req.team, req.repo, req.permission);
+      case 'labels:read':
+        return readLabelStates(client, req.org, req.repos);
+      case 'labels:add':
+        return addLabel(client, req.org, req.repo, req.label);
+      case 'milestone:add':
+        return addMilestone(client, req.org, req.repo, req.milestone);
       case 'yaml:validate':
         return checkYaml(req.org, req.text, await cachedTeamSlugs(deps.kv, req.org));
       case 'org:apply-yaml':

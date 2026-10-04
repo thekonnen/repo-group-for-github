@@ -4,7 +4,8 @@ import type { Edit } from '../core/edit';
 import type { GrantResult } from '../core/grant';
 import type { PendingRepo } from '../core/newrepo';
 import type { TeamAccess } from '../core/teams';
-import type { Config, Permission, RepoInfo } from '../core/types';
+import type { LabelStateResult } from '../background/labels-data';
+import type { Config, LabelTag, MilestoneTag, Permission, RepoInfo } from '../core/types';
 import type { Provider } from '../background/llm';
 
 /** Content script / popup / options -> background. The token never leaves the background. */
@@ -33,6 +34,9 @@ export type Request =
   | { type: 'org:teams'; org: string; force?: boolean }
   | { type: 'team:access'; org: string; slugs: string[]; force?: boolean }
   | { type: 'team:grant'; org: string; team: string; repo: string; permission: Permission }
+  | { type: 'labels:read'; org: string; repos: string[] }
+  | { type: 'labels:add'; org: string; repo: string; label: LabelTag }
+  | { type: 'milestone:add'; org: string; repo: string; milestone: MilestoneTag }
   | { type: 'prefs:get'; org: string }
   | { type: 'prefs:set'; org: string; prefs: Partial<OrgPrefs> }
   | { type: 'orgs:list'; force?: boolean }
@@ -119,4 +123,4 @@ export interface TeamsResult {
   customRoles: Record<string, string> | null;
 }
 
-export type { GrantResult, TeamAccess };
+export type { GrantResult, TeamAccess, LabelStateResult };

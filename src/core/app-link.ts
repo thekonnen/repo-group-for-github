@@ -3,7 +3,7 @@
 export const APP_PERMISSIONS = {
   metadata: 'read', // mandatory on every App: listing
   contents: 'write', // only used on <org>/.github
-  issues: 'read', // open counts
+  issues: 'write', // open counts; C2 adds labels and milestones to repositories
   pull_requests: 'read', // open counts
   administration: 'write', // F12: add teams to repositories (the sensitive one)
   members: 'read', // organization permission: list teams and their repositories

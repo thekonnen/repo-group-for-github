@@ -30,7 +30,9 @@ Open it, then on the form:
 6. Set the Client ID and slug in `src/config.ts`.
 7. **Install App** on each account or org with **All repositories**.
 
-Permissions: Metadata (read), Contents (read & write), Issues (read), Pull requests (read), Administration (read & write), Organization Members (read). Details in [docs/github-app.md](docs/github-app.md).
+Permissions: Metadata (read), Contents (read & write), Issues (read & write), Pull requests (read), Administration (read & write), Organization Members (read). Details in [docs/github-app.md](docs/github-app.md).
+
+**Default labels and milestones (C2).** A group can list `labels` and `milestones` in `repo-groups.yml`; subgroups inherit them and the closest definition of a name wins. **Edit group → Sync labels** adds the ones a repository is missing (`POST /repos/{org}/{repo}/labels` and `/milestones`). It is add-only: existing labels and milestones are never changed, recolored, renamed or deleted, and a label that exists with a different color is shown and skipped. Creating labels and milestones needs the App permission **Issues: Read & write**. If you installed the App before this feature, an org owner must accept the new permission at `https://github.com/organizations/<org>/settings/installations`; until then Sync labels fails with a message that points there.
 
 ## Personal account
 

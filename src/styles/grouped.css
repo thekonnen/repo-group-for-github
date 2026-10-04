@@ -180,6 +180,9 @@
 .rg-root .rg-menu a, .rg-root .rg-menu button { display: block; padding: 6px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--rg-fg); text-align: left; cursor: pointer; font-size: 13px; }
 .rg-root .rg-menu a:hover, .rg-root .rg-menu button:hover { background: var(--rg-selected); text-decoration: none; }
 .rg-root .rg-select { height: 28px; padding: 0 8px; border: 1px solid var(--rg-border); border-radius: 6px; background: var(--rg-btn); color: var(--rg-fg); font: inherit; font-size: 13px; }
+.rg-root .rg-llist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.rg-root .rg-lrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
+.rg-root .rg-lrow-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .rg-root .rg-tlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .rg-root .rg-trow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
 .rg-root .rg-trow-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -203,6 +206,8 @@
 .rg-root .rg-ok { color: var(--rg-success-fg); }
 .rg-root .rg-mono { font-family: var(--rg-mono); font-size: 12px; overflow-wrap: anywhere; }
 .rg-root .rg-progress { height: 6px; border-radius: 3px; background: var(--rg-selected); overflow: hidden; }
+.rg-root .rg-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; border: 1px solid var(--rg-border); }
+.rg-root .rg-add-rule:has(.rg-mono + .rg-input) { flex-wrap: wrap; }
 .rg-root .rg-progress > i { display: block; height: 100%; background: var(--rg-accent); transition: width .12s ease; }
 .rg-root .rg-untagged { margin: 8px 0 0; padding-left: 18px; font-size: 13px; }
 @media (max-width: 520px) { .rg-root .rg-sync-row { grid-template-columns: 24px minmax(0, 1fr) minmax(0, .8fr) 52px 60px; font-size: 12px; } }

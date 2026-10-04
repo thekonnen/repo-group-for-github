@@ -1,12 +1,13 @@
 import { logoPath } from './logo';
 import { findGroup, placement } from './placement';
-import type { Group, TeamTag } from './types';
+import { labelKey } from './labels';
+import type { Group, LabelTag, MilestoneTag, TeamTag } from './types';
 
 /** The single change behind Edit group / New group. Re-applied to a fresh file when a commit conflicts (§7). */
 export type Edit =
   /** `teams` (F12): when given it replaces the group's own team tags; when absent they are kept. */
-  | { kind: 'edit'; path: string[]; name: string; title?: string; description: string; match: string[]; logo?: LogoChange; teams?: TeamTag[] }
-  | { kind: 'new'; parent: string[]; name: string; title?: string; description: string; match: string[]; logo?: LogoChange; teams?: TeamTag[] }
+  | { kind: 'edit'; path: string[]; name: string; title?: string; description: string; match: string[]; logo?: LogoChange; teams?: TeamTag[]; labels?: LabelTag[]; milestones?: MilestoneTag[] }
+  | { kind: 'new'; parent: string[]; name: string; title?: string; description: string; match: string[]; logo?: LogoChange; teams?: TeamTag[]; labels?: LabelTag[]; milestones?: MilestoneTag[] }
   /** F9: adds the exact repo name to the match list of an existing group. */
   | { kind: 'file'; path: string[]; repo: string }
   /** Removes a group and all its subgroups from the file. No repository is touched: they fall back to the other rules. */
@@ -22,6 +23,32 @@ export function cleanTeams(teams: TeamTag[]): TeamTag[] {
   for (const t of teams) {
     const slug = t.slug.trim();
     if (slug) map.set(slug, { slug, permission: t.permission.trim() || 'push' });
+  }
+  return [...map.values()];
+}
+
+/** Trimmed labels, empty names dropped, one per name (case-insensitive, the last one wins). A blank color means the default. */
+export function cleanLabels(labels: LabelTag[]): LabelTag[] {
+  const map = new Map<string, LabelTag>();
+  for (const l of labels) {
+    const name = l.name.trim();
+    if (!name) continue;
+    const color = l.color?.trim().replace(/^#/, '').toLowerCase();
+    const description = l.description?.trim();
+    map.set(labelKey(name), { name, ...(color ? { color } : {}), ...(description ? { description } : {}) });
+  }
+  return [...map.values()];
+}
+
+/** Trimmed milestones, empty titles dropped, one per title (case-insensitive, the last one wins). */
+export function cleanMilestones(ms: MilestoneTag[]): MilestoneTag[] {
+  const map = new Map<string, MilestoneTag>();
+  for (const m of ms) {
+    const title = m.title.trim();
+    if (!title) continue;
+    const due_on = m.due_on?.trim();
+    const description = m.description?.trim();
+    map.set(labelKey(title), { title, ...(due_on ? { due_on } : {}), ...(description ? { description } : {}) });
   }
   return [...map.values()];
 }
@@ -116,6 +143,9 @@ export function applyEdit(groups: Group[], edit: Edit): { groups: Group[] } | { 
     if (list.some((g) => g.name === name)) return { error: `A group named "${name}" already exists here.` };
     const logo = edit.logo && 'png' in edit.logo ? logoPath([...edit.parent, name]) : null;
     list.push({ name, ...(cleanTitle(edit.title, name) ? { title: cleanTitle(edit.title, name) } : {}), description: edit.description.trim(), logo, teams: edit.teams ? cleanTeams(edit.teams) : [], match, groups: [] });
+    const made = list[list.length - 1];
+    if (edit.labels?.length) made.labels = cleanLabels(edit.labels);
+    if (edit.milestones?.length) made.milestones = cleanMilestones(edit.milestones);
     return { groups: next };
   }
   const g = findGroup(next, edit.path);
@@ -134,6 +164,16 @@ export function applyEdit(groups: Group[], edit: Edit): { groups: Group[] } | { 
   g.match = match;
   if (edit.logo) g.logo = 'png' in edit.logo ? logoPath([...parent, name]) : null;
   if (edit.teams) g.teams = cleanTeams(edit.teams);
+  if (edit.labels) {
+    const l = cleanLabels(edit.labels);
+    if (l.length) g.labels = l;
+    else delete g.labels;
+  }
+  if (edit.milestones) {
+    const m = cleanMilestones(edit.milestones);
+    if (m.length) g.milestones = m;
+    else delete g.milestones;
+  }
   return { groups: next };
 }
 

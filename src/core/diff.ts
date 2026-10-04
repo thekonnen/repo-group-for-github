@@ -16,6 +16,8 @@ export interface DiffResult {
 }
 
 const byKey = (groups: Group[]) => new Map(flatList(groups).map((n) => [n.key, n.group]));
+const labelsStr = (g: Group) => (g.labels ?? []).map((l) => `${l.name}:${l.color ?? ''}:${l.description ?? ''}`).join('|');
+const milestonesStr = (g: Group) => (g.milestones ?? []).map((m) => `${m.title}:${m.due_on ?? ''}:${m.description ?? ''}`).join('|');
 const teamsStr = (g: Group) => g.teams.map((t) => `${t.slug}:${t.permission}`).join(', ');
 
 export function diffTrees(a: Group[], b: Group[], repos: Pick<RepoInfo, 'name'>[]): DiffResult {
@@ -44,6 +46,10 @@ export function diffTrees(a: Group[], b: Group[], repos: Pick<RepoInfo, 'name'>[
         text: `Teams of ${k}`,
         to: nb.teams.map((t) => `${t.slug} · ${labelOf(t.permission)}`).join(', ') || '(none)',
       });
+    if (labelsStr(na) !== labelsStr(nb))
+      items.push({ k: '~', cls: 'chg', text: `Default labels of ${k}`, to: (nb.labels ?? []).map((l) => l.name).join(', ') || '(none)' });
+    if (milestonesStr(na) !== milestonesStr(nb))
+      items.push({ k: '~', cls: 'chg', text: `Default milestones of ${k}`, to: (nb.milestones ?? []).map((m) => m.title).join(', ') || '(none)' });
   }
   for (const r of repos) {
     if (pa[r.name] !== pb[r.name])

@@ -469,6 +469,10 @@ groups:                    # required list (may be empty)
                            # optional (F12). A plain string = that team with "push" (Write).
                            # permission: pull | triage | push | maintain | admin | <custom repository role name>
                            # Inherited by every subgroup; the closest definition of a slug wins.
+    labels: ["urgent", { name: "bug", color: "d73a4a", description: "Something is broken" }]
+                           # optional (C2). Default issue labels; a string = default color (ededed). Inherited; closest name wins.
+    milestones: [{ title: "v1", due_on: "2026-12-31", description: "First release" }]
+                           # optional (C2). Default milestones, same inheritance. Sync labels only adds what a repo lacks.
     match: ["dagsrv", "dags-*"]  # optional list of exact names or * patterns (a single string is accepted)
     groups: [ ... ]        # optional nested groups, any depth (UI and AI prompt recommend ≤ 3)
 ```
@@ -476,7 +480,7 @@ groups:                    # required list (may be empty)
 - The personal **My groups** file (F13) uses the same schema without `index` and `teams`.
 - Unknown keys are ignored on read and dropped on write.
 - `repositories:` is reserved (AI context) and ignored.
-- The **writer** emits the canonical format: the order is `name, title, description, keywords, logo, teams, match, groups`; `teams` uses plain strings for `push` and the `{ slug, permission }` form otherwise; strings in double quotes; `match` in flow style (`["a", "b"]`); 2-space indentation; a leading comment line `# <org>/.github/repo-groups.yml`. See `yamlPreview()` in `mockup.js`. Write it by hand; do not ship a YAML dumper.
+- The **writer** emits the canonical format: the order is `name, title, description, keywords, logo, teams, labels, milestones, match, groups`; `teams` uses plain strings for `push` and the `{ slug, permission }` form otherwise; strings in double quotes; `match` in flow style (`["a", "b"]`); 2-space indentation; a leading comment line `# <org>/.github/repo-groups.yml`. See `yamlPreview()` in `mockup.js`. Write it by hand; do not ship a YAML dumper.
 - The **reader** uses a real YAML parser (js-yaml), lazy-loaded.
 
 ### 5.2 Validation errors (copy from the mockup)
@@ -541,7 +545,7 @@ Never yield removals or downgrades. Put this in `core/teams.ts`, pure and unit t
   - **Permissions:**
     - Repository → Metadata: Read (listing);
     - Repository → Contents: Read & write (only used on `<org>/.github`);
-    - Repository → Issues / Pull requests: Read (open counts);
+    - Repository → Issues: Read & write (open counts; C2 adds default labels and milestones to repositories), Pull requests: Read;
     - Repository → Administration: Read & write (F12: add teams to repositories);
     - Organization → Members: Read (F12: see teams, list teams and their repositories).
   - **Adding a team to a repository** (`PUT /orgs/{org}/teams/{team_slug}/repos/{owner}/{repo}`, confirmed in GitHub Docs → "REST API endpoints for teams") needs **all three** at once:

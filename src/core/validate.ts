@@ -1,6 +1,7 @@
 import { splitRules } from './edit';
+import { dueOn, labelKey, normColor } from './labels';
 import { PERMISSIONS } from './permissions';
-import type { Config, Group, TeamTag } from './types';
+import type { Config, Group, LabelTag, MilestoneTag, TeamTag } from './types';
 
 export interface ValidationResult {
   config?: Config;
@@ -66,6 +67,71 @@ export function configFromObject(obj: unknown, opts: ValidateOptions = {}): Vali
     return out;
   };
 
+  const parseLabels = (name: string, raw: unknown): LabelTag[] | null => {
+    if (raw == null) return [];
+    const bad = () => {
+      err = `"${name}": labels must be a list of label names or { name, color, description }.`;
+      return null;
+    };
+    if (!Array.isArray(raw)) return bad();
+    const map = new Map<string, LabelTag>();
+    for (const l of raw) {
+      let n: unknown;
+      let color: unknown;
+      let description: unknown;
+      if (typeof l === 'string') n = l;
+      else if (l && typeof l === 'object') ({ name: n, color, description } = l as Record<string, unknown>);
+      else return bad();
+      if (typeof n !== 'string' || !n.trim()) return bad();
+      if (description != null && typeof description !== 'string') return bad();
+      let c: string | undefined;
+      if (color != null) {
+        const v = typeof color === 'string' || typeof color === 'number' ? normColor(String(color)) : null;
+        if (!v) {
+          err = `"${name}": label "${n.trim()}" color must be six hex digits, like d73a4a.`;
+          return null;
+        }
+        c = v;
+      }
+      const tag: LabelTag = { name: n.trim(), ...(c ? { color: c } : {}), ...(typeof description === 'string' && description.trim() ? { description: description.trim() } : {}) };
+      map.set(labelKey(tag.name), tag);
+    }
+    return [...map.values()];
+  };
+
+  const parseMilestones = (name: string, raw: unknown): MilestoneTag[] | null => {
+    if (raw == null) return [];
+    const bad = () => {
+      err = `"${name}": milestones must be a list of { title, due_on, description }.`;
+      return null;
+    };
+    if (!Array.isArray(raw)) return bad();
+    const map = new Map<string, MilestoneTag>();
+    for (const m of raw) {
+      let title: unknown;
+      let due: unknown;
+      let description: unknown;
+      if (typeof m === 'string') title = m;
+      else if (m && typeof m === 'object') ({ title, due_on: due, description } = m as Record<string, unknown>);
+      else return bad();
+      if (typeof title !== 'string' || !title.trim()) return bad();
+      if (description != null && typeof description !== 'string') return bad();
+      let d: string | undefined;
+      if (due != null) {
+        // js-yaml turns an unquoted 2026-12-31 into a Date.
+        const text = due instanceof Date ? (Number.isNaN(due.getTime()) ? '' : due.toISOString().replace(/T00:00:00(\.000)?Z$/, '')) : typeof due === 'string' ? due : '';
+        if (!dueOn(text)) {
+          err = `"${name}": milestone "${title.trim()}" due_on must be a date like 2026-12-31.`;
+          return null;
+        }
+        d = text.trim();
+      }
+      const tag: MilestoneTag = { title: title.trim(), ...(d ? { due_on: d } : {}), ...(typeof description === 'string' && description.trim() ? { description: description.trim() } : {}) };
+      map.set(labelKey(tag.title), tag);
+    }
+    return [...map.values()];
+  };
+
   const build = (list: unknown[], where: string): Group[] => {
     const seen = new Set<string>();
     const out: Group[] = [];
@@ -102,6 +168,10 @@ export function configFromObject(obj: unknown, opts: ValidateOptions = {}): Vali
       const words = (keywords as string[]).map((k) => k.trim()).filter(Boolean);
       const teams = parseTeams(name, raw.teams);
       if (!teams) return;
+      const labels = parseLabels(name, raw.labels);
+      if (!labels) return;
+      const milestones = parseMilestones(name, raw.milestones);
+      if (!milestones) return;
       let groups: Group[] = [];
       if (raw.groups != null) {
         if (!Array.isArray(raw.groups)) {
@@ -118,6 +188,8 @@ export function configFromObject(obj: unknown, opts: ValidateOptions = {}): Vali
         ...(words.length ? { keywords: words } : {}),
         logo: typeof raw.logo === 'string' && raw.logo.trim() ? raw.logo.trim() : null,
         teams,
+        ...(labels.length ? { labels } : {}),
+        ...(milestones.length ? { milestones } : {}),
         match: (match as string[]).flatMap(splitRules),
         groups,
       });

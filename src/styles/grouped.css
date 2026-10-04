@@ -311,3 +311,14 @@
 .rg-root .rg-del-label { font-weight: 600; }
 .rg-root .rg-dialog-foot { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--rg-border); }
 .rg-root .rg-dialog-foot .rg-btn:not(.rg-btn-danger-solid) { width: 100%; justify-content: center; }
+
+/* C1: Issues & PRs tab */
+.rg-root .rg-stat-link { border: 0; background: transparent; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.rg-root .rg-stat-link:hover b { color: var(--rg-accent, var(--rg-fg)); text-decoration: underline; }
+.rg-root .rg-work-seg { margin-left: auto; }
+.rg-root .rg-work-seg button.rg-work-kind { width: auto; padding: 0 12px; font-size: 13px; gap: 4px; }
+.rg-root .rg-work-ic.rg-work-issue { color: var(--rg-success); }
+.rg-root .rg-work-ic.rg-work-pr { color: var(--rg-ext, var(--rg-muted)); }
+.rg-root .rg-work-row .rg-row-title { flex-wrap: wrap; }
+.rg-root .rg-work-label { border: 1px solid transparent; }
+.rg-root .rg-work-more { display: flex; justify-content: center; padding: 12px; border-top: 1px solid var(--rg-border-muted); }

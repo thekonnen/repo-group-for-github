@@ -250,12 +250,12 @@ describe('grouped view on the page', () => {
   it('tabs: Ungrouped on the root, Match rules on a group', async () => {
     const { call } = fakeCall();
     const m = (await mountOrgRepos('thekonnen', { call }, document, 200))!;
-    await vi.waitFor(() => expect([...document.querySelectorAll('.rg-tab')].map((t) => t.textContent!.trim())).toEqual(['Groups and repositories', 'Ungrouped 1', 'All repositories 10']));
+    await vi.waitFor(() => expect([...document.querySelectorAll('.rg-tab')].map((t) => t.textContent!.trim())).toEqual(['Groups and repositories', 'Ungrouped 1', 'All repositories 10', 'Issues & PRs 0']));
     (document.querySelectorAll('.rg-tab')[1] as HTMLElement).click();
     await vi.waitFor(() => expect(names()).toEqual(['keep_alive_job']));
     window.history.pushState(null, '', '/orgs/thekonnen/repositories#infra/dagsrv');
     window.dispatchEvent(new Event('hashchange'));
-    await vi.waitFor(() => expect([...document.querySelectorAll('.rg-tab')].map((t) => t.textContent!.trim())).toEqual(['Groups and repositories', 'Match rules 3', 'All repositories 3']));
+    await vi.waitFor(() => expect([...document.querySelectorAll('.rg-tab')].map((t) => t.textContent!.trim())).toEqual(['Groups and repositories', 'Match rules 3', 'All repositories 3', 'Issues & PRs 0']));
     (document.querySelectorAll('.rg-tab')[1] as HTMLElement).click();
     await vi.waitFor(() => expect(document.querySelector('.rg-rules')!.textContent).toContain('dags-*'));
     expect([...document.querySelectorAll('.rg-rules .rg-chip')].map((c) => c.textContent)).toEqual(expect.arrayContaining(['dagsrv', 'dags-*', 'kite-dagsrv']));

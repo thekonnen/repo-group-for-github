@@ -12,6 +12,7 @@ import { chipTeams } from '../../core/teams';
 import { TeamBanners } from '../teams/TeamBanners';
 import { TeamChips } from '../teams/TeamChips';
 import type { Controller, State } from './controller';
+import { WorkPanel } from './WorkPanel';
 
 const ROW_H = 76;
 const plural = (n: number, one: string, many: string) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
@@ -134,11 +135,11 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
         <Stat label={isRoot ? 'Groups' : 'Subgroups'} value={node.subgroups.toLocaleString()} />
         {split ? (
           <>
-            <Stat label="Open issues" value={split.issues.toLocaleString()} />
-            <Stat label="Open pull requests" value={split.prs.toLocaleString()} />
+            <Stat label="Open issues" value={split.issues.toLocaleString()} onOpen={() => ctl.setTab('work')} />
+            <Stat label="Open pull requests" value={split.prs.toLocaleString()} onOpen={() => ctl.setTab('work')} />
           </>
         ) : (
-          <Stat label="Open issues & PRs" value={node.issues.toLocaleString()} />
+          <Stat label="Open issues & PRs" value={node.issues.toLocaleString()} onOpen={() => ctl.setTab('work')} />
         )}
         <Stat label="Last push" value={ago(node.latest)} />
       </div>
@@ -146,8 +147,14 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
         <Tab ctl={ctl} id="items" current={tab} label="Groups and repositories" />
         {isRoot ? <Tab ctl={ctl} id="ungrouped" current={tab} label="Ungrouped" count={ungrouped.length} /> : <Tab ctl={ctl} id="rules" current={tab} label="Match rules" count={node.group.match.length} />}
         <Tab ctl={ctl} id="all" current={tab} label="All repositories" count={node.total} />
+        <Tab ctl={ctl} id="work" current={tab} label="Issues & PRs" count={split ? split.issues + split.prs : node.total <= DETAILS_MAX_REPOS ? node.issues : undefined} />
       </div>
-      {tab === 'rules' && !s.query ? (
+      {tab === 'work' ? (
+        <>
+          <Toolbar ctl={ctl} s={s} placeholder={`Search issues and pull requests in ${name}`} />
+          <WorkPanel org={s.org} name={name} repos={allRepos(node).map((r) => r.name)} query={s.query} load={ctl.loadWork} />
+        </>
+      ) : tab === 'rules' && !s.query ? (
         <RulesPanel node={node} />
       ) : (
         <>
@@ -241,7 +248,12 @@ function Header({ ctl, s, node, name, isRoot }: { ctl: Controller; s: State; nod
   );
 }
 
-const Stat = ({ label, value }: { label: string; value: string }) => <div class="rg-stat"><span>{label}</span><b>{value}</b></div>;
+const Stat = ({ label, value, onOpen }: { label: string; value: string; onOpen?: () => void }) =>
+  onOpen ? (
+    <button type="button" class="rg-stat rg-stat-link" title="List them in the Issues & PRs tab" onClick={onOpen}><span>{label}</span><b>{value}</b></button>
+  ) : (
+    <div class="rg-stat"><span>{label}</span><b>{value}</b></div>
+  );
 
 function SortSelect({ ctl, value }: { ctl: Controller; value: SortKey }) {
   return (

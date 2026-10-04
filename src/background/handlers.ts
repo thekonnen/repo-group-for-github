@@ -16,6 +16,7 @@ import { listOrgs } from './orgs';
 import { ownerListPath, refreshIndex, type IndexStore } from './repo-index';
 import { refreshActionIndex } from './action-index';
 import { loadDetails } from './details';
+import { loadWorkItems, newWorkCache } from './work-items';
 import { cachedTeamSlugs, grantTeam, loadTeamAccess, loadTeams } from './teams-data';
 import { teamSlugs } from '../core/teams';
 import { postOrder } from '../core/placement';
@@ -45,6 +46,7 @@ export function createHandler(deps: Deps) {
   const clientId = deps.clientId ?? GITHUB_CLIENT_ID;
   const client = createClient({ fetch: deps.fetch, getToken: async () => (await loadAuth(deps.kv))?.token ?? null });
   const logos = createLogoService({ client, fetch: deps.fetch, cache: deps.logos ?? memoryLogoCache(), origins: deps.origins });
+  const workCache = newWorkCache();
   const FLOW_KEY = 'rg:device-flow';
   // The popup closes as soon as the user opens github.com/login/device, so the pending code lives here
   // and the popup resumes polling with it when it is opened again.
@@ -234,6 +236,12 @@ export function createHandler(deps: Deps) {
       }
       case 'org:details':
         return loadDetails(client, deps.kv, req.org, req.repos);
+      case 'org:work-items': {
+        // Only repos of the user's own index: a name the user cannot open is never queried (F15 §5).
+        const idx = await deps.index.load(req.org);
+        const known = new Set((idx?.repos ?? []).map((r) => r.name));
+        return loadWorkItems(client, workCache, req.org, req.repos.filter((n) => known.has(n)), req.depth, { now: deps.now });
+      }
       case 'org:progress':
         return progress.get(req.org) ?? null;
       case 'org:config': {

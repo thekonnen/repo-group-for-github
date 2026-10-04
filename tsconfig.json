@@ -8,5 +8,5 @@
     "skipLibCheck": true,
     "types": ["node", "chrome"]
   },
-  "include": ["src", "tests", "wxt.config.ts"]
+  "include": ["src", "tests", "packages/cli/src", "wxt.config.ts"]
 }

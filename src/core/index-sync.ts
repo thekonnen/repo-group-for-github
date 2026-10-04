@@ -58,6 +58,8 @@ export interface IndexMeta {
   total: number;
   /** How the first index was built: from the user's own API calls, or from repo-index.json (after confirmation). */
   index?: 'api' | 'action';
+  /** Set on output only: GitHub refused the custom properties (permission missing or not accepted yet). */
+  propsUnavailable?: boolean;
 }
 
 /** Whether a background full reconciliation is due (§F14). */

@@ -4,7 +4,7 @@ import { displayName } from '../../core/edit';
 import { isPropRule, ruleLabel } from '../../core/glob';
 import { detailTotals, DETAILS_MAX_REPOS } from '../../core/details';
 import { ago } from '../../core/time';
-import { allRepos, flatRows, searchRows, SORT_KEYS, SORT_LABEL, treeRows, VIRTUALIZE_AFTER, windowRange, type GroupNode, type Row, type SortKey, type TreeModel } from '../../core/tree';
+import { allRepos, flatRows, pathTitle, searchRows, SORT_KEYS, SORT_LABEL, treeRows, VIRTUALIZE_AFTER, windowRange, type GroupNode, type Row, type SortKey, type TreeModel } from '../../core/tree';
 import type { RepoInfo } from '../../core/types';
 import { GroupAvatar } from '../logos/GroupAvatar';
 import { Icon } from '../../ui/Icon';
@@ -112,7 +112,7 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
     );
   }
 
-  const repoNames = rows.flatMap((r) => (r.kind === 'repo' ? [r.repo.name] : []));
+  const repoNames = rows.flatMap((r) => (r.kind === 'repo' && r.also === undefined ? [r.repo.name] : [])); // shared rows are not selectable: they live elsewhere
   return (
     <div class="rg-view">
       <IndexStatus ctl={ctl} s={s} model={model} />
@@ -342,7 +342,7 @@ function Rows({ ctl, s, rows }: { ctl: Controller; s: State; rows: Row[] }) {
   const slice = virtual ? rows.slice(range.start, range.end) : rows;
   return (
     <div class="rg-rows" ref={ref} style={virtual ? { paddingTop: range.start * ROW_H, paddingBottom: Math.max(0, rows.length - range.end) * ROW_H } : undefined}>
-      {slice.map((r) => (r.kind === 'group' ? <GroupRow key={`g:${r.node.key}`} ctl={ctl} row={r} fixed={virtual} /> : <RepoRow key={`r:${r.repo.name}`} ctl={ctl} org={s.org} row={r} selected={s.selected.includes(r.repo.name)} fixed={virtual} label={ctl.teams.repoLabel(r.repo.name)} />))}
+      {slice.map((r, i) => (r.kind === 'group' ? <GroupRow key={`g:${r.node.key}`} ctl={ctl} row={r} fixed={virtual} /> : <RepoRow key={`r:${virtual ? range.start + i : i}:${r.repo.name}`} ctl={ctl} org={s.org} row={r} selected={r.also === undefined && s.selected.includes(r.repo.name)} fixed={virtual} label={ctl.teams.repoLabel(r.repo.name)} />))}
     </div>
   );
 }
@@ -381,15 +381,24 @@ function RepoRow({ ctl, org, row, fixed, label, selected }: { ctl: Controller; o
   const r: RepoInfo = row.repo;
   const movable = ctl.canMove();
   const current = ctl.model()?.placed.get(r.name) ?? '';
+  // A3: a linked row is listed here through a shared rule; the repo lives (is "linked from") elsewhere.
+  const linked = row.also !== undefined;
+  const from = linked ? pathTitle(ctl.model()!, row.also!) : '';
+  const listedIn = linked && row.in ? pathTitle(ctl.model()!, row.in) : '';
   return (
-    <div class={`rg-row${fixed ? ' rg-fixed' : ''}`} style={{ '--rg-depth': row.depth } as any} data-selected={selected ? 'true' : undefined}>
+    <div class={`rg-row${fixed ? ' rg-fixed' : ''}${linked ? ' rg-linked' : ''}`} style={{ '--rg-depth': row.depth } as any} data-selected={selected ? 'true' : undefined}>
       <span class="rg-chev-sp" />
-      <span class="rg-av rg-av-repo"><Icon name="repo" /></span>
+      <span class={`rg-av rg-av-repo${linked ? ' rg-av-link' : ''}`} {...(linked ? { title: `Linked from ${from}. Remove the link here, or move it from there.` } : {})}><Icon name={linked ? 'link' : 'repo'} /></span>
       <div class="rg-row-main">
         <div class="rg-row-title">
           <a href={repoUrl(org, r.name)}>{row.prefix && <span class="rg-path-pre">{row.prefix}</span>}{r.name}</a>
           <span class="rg-label">{label ?? (r.private ? 'Private' : 'Public')}</span>
           {r.fork && <span class="rg-label">Fork</span>}
+          {linked && (
+            <button type="button" class="rg-also rg-link-chip" title={`Linked from ${from}. Remove the link here, or move it from there.`} onClick={() => ctl.goOriginal(row.also!)}>
+              <Icon name="link" size={12} />linked from {from}
+            </button>
+          )}
         </div>
         {r.description && <p class="rg-desc">{r.description}</p>}
         <div class="rg-meta">
@@ -400,7 +409,21 @@ function RepoRow({ ctl, org, row, fixed, label, selected }: { ctl: Controller; o
           <span>Updated {ago(r.pushedAt)}</span>
         </div>
       </div>
-      {movable && (
+      {movable && linked && (
+        <div class="rg-row-menu rg-row-menu-shared">
+          <button
+            type="button"
+            class="rg-btn rg-btn-sm rg-unlink"
+            title={`Remove link to ${r.name} from ${listedIn || 'this group'}`}
+            aria-label={`Remove link to ${r.name} from ${listedIn || 'this group'}`}
+            disabled={!row.in}
+            onClick={() => row.in && ctl.stageUnshare([r.name], row.in.split('/'))}
+          >
+            <Icon name="unlink" size={14} /><span class="rg-unlink-text">Remove link</span>
+          </button>
+        </div>
+      )}
+      {movable && !linked && (
         <div class="rg-row-menu">
           <input type="checkbox" class="rg-check" aria-label={`Select ${r.name}`} checked={selected} onChange={() => ctl.toggleSelect(r.name)} />
           <span class="rg-grip" role="img" aria-label={`Drag ${r.name} to a group`} title="Drag to a group" {...dragSource(() => ctl.store.get().selected, r.name)}><Icon name="grip" /></span>
@@ -422,6 +445,16 @@ function RulesPanel({ node, org, propsHint }: { node: GroupNode; org: string; pr
         </div>
         {propsHint && <p class="rg-desc" role="status">Rules on custom properties match nothing yet: GitHub did not share the properties of {org}. An org owner must accept the new "Custom properties: Read" permission of the app in Settings → GitHub Apps.</p>}
         <p class="rg-desc">Patterns use <code>*</code> as a wildcard and are checked against the repository name. An exact name always wins; when several patterns match, the deepest group wins. New repositories are placed automatically on the next visit.</p>
+        {!!node.group.shared?.length && (
+          <div>
+            <b>Also include (shared rules)</b>
+            <div class="rg-chips" style="margin-top:8px">{node.group.shared.map((m) => <span class="rg-chip rg-ro" key={m}>{m}</span>)}</div>
+            <p class="rg-desc">Repositories that match these rules are listed here as well, in addition to the group they belong to. They are counted once.</p>
+            <div class="rg-chips" style="margin-top:8px">
+              {node.shared.length ? node.shared.map((r) => <span class="rg-chip rg-ro" key={r.name}>{r.name}</span>) : <span class="rg-muted">No other repository matches these rules yet.</span>}
+            </div>
+          </div>
+        )}
         <div>
           <b>Matched directly here</b>
           <div class="rg-chips" style="margin-top:8px">

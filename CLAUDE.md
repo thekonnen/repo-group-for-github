@@ -471,13 +471,15 @@ groups:                    # required list (may be empty)
                            # permission: pull | triage | push | maintain | admin | <custom repository role name>
                            # Inherited by every subgroup; the closest definition of a slug wins.
     match: ["dagsrv", "dags-*", "topic:kubernetes"]  # optional list of exact names, * patterns or topic:<github-topic> rules (a single string is accepted)
+    shared: ["lib-core", "ui-*", "topic:backend"]  # optional (A3). Same rules as match (names, patterns, topic:, prop:, fork-of:), but they ALSO list the repo in this group, like a tag.
+                           # Never changes the primary placement. Additive: files without it parse exactly as before.
     groups: [ ... ]        # optional nested groups, any depth (UI and AI prompt recommend ≤ 3)
 ```
 - UI labels for permissions: `pull` = Read, `triage` = Triage, `push` = Write, `maintain` = Maintain, `admin` = Admin (GitHub's own names).
 - The personal **My groups** file (F13) uses the same schema without `index` and `teams`.
 - Unknown keys are ignored on read and dropped on write.
 - `repositories:` is reserved (AI context) and ignored.
-- The **writer** emits the canonical format: the order is `name, title, description, keywords, logo, teams, match, groups`; `teams` uses plain strings for `push` and the `{ slug, permission }` form otherwise; strings in double quotes; `match` in flow style (`["a", "b"]`); 2-space indentation; a leading comment line `# <org>/.github/repo-groups.yml`. See `yamlPreview()` in `mockup.js`. Write it by hand; do not ship a YAML dumper.
+- The **writer** emits the canonical format: the order is `name, title, description, keywords, logo, teams, match, shared, groups`; `teams` uses plain strings for `push` and the `{ slug, permission }` form otherwise; strings in double quotes; `match` in flow style (`["a", "b"]`); 2-space indentation; a leading comment line `# <org>/.github/repo-groups.yml`. See `yamlPreview()` in `mockup.js`. Write it by hand; do not ship a YAML dumper.
 - The **reader** uses a real YAML parser (js-yaml), lazy-loaded.
 
 ### 5.2 Validation errors (copy from the mockup)
@@ -486,6 +488,7 @@ groups:                    # required list (may be empty)
 - `Two groups are named "x" in <parent>.`
 - `"x": match must be a list of names or patterns.`
 - `"x": keywords must be a list of words.`
+- `"x": shared must be a list of names or patterns.`
 - `"x": groups must be a list.`
 - `"x": teams must be a list of team slugs or { slug, permission }.`
 - `"x": permission "y" must be one of pull, triage, push, maintain, admin, or a custom repository role of <org>.` (When the custom roles cannot be read, accept any non-empty name and show a warning instead.)
@@ -502,11 +505,18 @@ groups:                    # required list (may be empty)
 
 Reference: `globRe`, `pickIn`, `ruleFor`, `assign`, `placement` in `design/mockup/mockup.js`.
 
+**Shared memberships (A3, additive).** The four steps above give each repo exactly one **primary** group. A group may also declare `shared` rules (same glob semantics, exact or `*`). A repo that matches a group's `shared` rule is additionally **listed** in that group (`sharedPlacement()` in `core/placement.ts` returns `primary` plus `secondary: repo -> [group keys]`). Rules:
+- The primary placement is untouched. Ungrouped detection, the "grouped" counts, the diff's `→` moves, the New repository destination and **team target access / the sync plan (§5.5) use the primary placement only**. A repo listed in two groups with different team tags would have two possible targets; using the primary keeps the target unambiguous and never grants access by accident.
+- A group that already contains the primary group (itself or an ancestor) is skipped: the repo is already listed there recursively.
+- `shared` rules take every rule kind `match` takes (names, `*` patterns, `topic:`, `prop:`, `fork-of:`), tested against the whole repo, and are validated like `match`.
+- **Move vs. Also list in…** (drag & drop and the row/selection menus): *Move* changes the home (exact name in `match`; it also removes the now-redundant exact name from the `shared` of the destination and its ancestors). *Also list in…* (Alt/Option-drag) only adds the exact name to the destination's `shared` (`shareRepos()`), skipping repos that live there or below it and repos it already lists. A move to Ungrouped reports the groups that still list the repo through `shared`; a checkbox (on by default) also removes the exact names, rules only warn. The confirmation dialog notes how the target team access changes with the new home (informational, `teamTargetChanges()`); nothing is granted or removed. Shared rows have no checkbox or drag handle: selection and drag always refer to the primary row. A shared row is shown as a **link** (link icon, dashed look, chip "linked from <primary>" that opens the original). Its **Remove link** button (`unshareRepos()`, Edit kind `unshare`, commit `stop listing <repo> in <path>`) removes only the exact name from that group's `shared`; the home is never touched. When only a rule lists the repo, the dialog points to Edit group instead of committing.
+- Counts: a repo counts once per group, never twice in a parent or in the root total. A shared repo is shown inside each group with a muted "also in <primary path>" label; search shows it once.
+
 ### 5.4 Diff (YAML editor)
 Compare the saved and the draft tree:
 - groups added or removed (by full path);
-- per surviving path: description, logo, teams and rules changes;
-- per repo: placement changes.
+- per surviving path: description, logo, teams, rules and shared-rules changes;
+- per repo: placement changes, and changes of the extra (shared) memberships.
 
 Reference: `diffTrees`.
 

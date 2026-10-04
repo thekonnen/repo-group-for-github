@@ -146,6 +146,36 @@ function ruleFor(group, repo, topics, props) {
 	const t = target(repo, topics, props);
 	return group.match.find((r) => exactRuleHit(r, t)) ?? group.match.find((r) => ruleHits(r, t));
 }
+/** True when `key` is `of` itself or lies below it. ('' = root contains everything.) */
+var within = (key, of) => of === "" || key === of || key.startsWith(of + "/");
+/**
+* Extra memberships for one repo given its primary group key. A group that already contains the primary group
+* (itself or an ancestor) is skipped: the repo is listed there anyway, recursively.
+*/
+function sharedKeysFor(order, repo, primary) {
+	const t = target(repo);
+	const out = [];
+	for (const x of order) {
+		if (!x.group.shared?.length || !matchesRepo(x.group.shared, t)) continue;
+		if (primary && within(primary, x.key)) continue;
+		out.push(x.key);
+	}
+	return out;
+}
+/** `placement()` plus the secondary memberships. `order` must be in file (pre-order) so the keys come out in file order. */
+function sharedPlacement(groups, repos) {
+	const primary = placement(groups, repos);
+	const secondary = /* @__PURE__ */ new Map();
+	const order = flatList(groups);
+	if (order.some((x) => x.group.shared?.length)) for (const r of repos) {
+		const keys = sharedKeysFor(order, r, primary[r.name]);
+		if (keys.length) secondary.set(r.name, keys);
+	}
+	return {
+		primary,
+		secondary
+	};
+}
 /** repo name -> group key ('' = ungrouped). */
 function placement(groups, repos) {
 	const order = postOrder(groups);
@@ -256,19 +286,25 @@ function configFromObject(obj, opts = {}) {
 				err = `"${name}": match must be a list of names or patterns.`;
 				return;
 			}
-			const badFork = match.flatMap(splitRules).find((r) => isForkRule(r) && !FORK_TARGET_RE.test(forkTarget(r)));
-			if (badFork) {
-				err = `"${name}": rule "${badFork}" needs an owner, like fork-of:macfuse or fork-of:macfuse/macfuse.`;
+			let shared = raw.shared == null ? [] : raw.shared;
+			if (typeof shared === "string") shared = [shared];
+			if (!Array.isArray(shared) || shared.some((m) => typeof m !== "string")) {
+				err = `"${name}": shared must be a list of names or patterns.`;
 				return;
 			}
-			const badProp = match.flatMap(splitRules).find((r) => isPropRule(r) && !parsePropRule(r));
-			if (badProp) {
-				err = `"${name}": rule "${badProp}" needs a property and a value, like prop:client=Acme.`;
-				return;
-			}
-			const emptyTopic = match.flatMap(splitRules).find((r) => isTopicRule(r) && !topicOf(r));
-			if (emptyTopic) {
-				err = `"${name}": the rule "${emptyTopic}" needs a topic name, like topic:kubernetes.`;
+			const sharedRules = shared.flatMap(splitRules);
+			const ruleProblem = (rules) => {
+				const badFork = rules.find((r) => isForkRule(r) && !FORK_TARGET_RE.test(forkTarget(r)));
+				if (badFork) return `"${name}": rule "${badFork}" needs an owner, like fork-of:macfuse or fork-of:macfuse/macfuse.`;
+				const badProp = rules.find((r) => isPropRule(r) && !parsePropRule(r));
+				if (badProp) return `"${name}": rule "${badProp}" needs a property and a value, like prop:client=Acme.`;
+				const emptyTopic = rules.find((r) => isTopicRule(r) && !topicOf(r));
+				if (emptyTopic) return `"${name}": the rule "${emptyTopic}" needs a topic name, like topic:kubernetes.`;
+				return null;
+			};
+			const problem = ruleProblem(match.flatMap(splitRules)) ?? ruleProblem(sharedRules);
+			if (problem) {
+				err = problem;
 				return;
 			}
 			let keywords = raw.keywords == null ? [] : raw.keywords;
@@ -297,6 +333,7 @@ function configFromObject(obj, opts = {}) {
 				logo: typeof raw.logo === "string" && raw.logo.trim() ? raw.logo.trim() : null,
 				teams,
 				match: match.flatMap(splitRules),
+				...sharedRules.length ? { shared: sharedRules } : {},
 				groups
 			});
 		});
@@ -3707,7 +3744,7 @@ function readConfig(text, load, opts = {}) {
 var q = (s) => "\"" + String(s).replace(/\\/g, "\\\\").replace(/"/g, "\\\"") + "\"";
 var teamToYaml = (t) => t.permission === "push" ? q(t.slug) : `{ slug: ${q(t.slug)}, permission: ${q(t.permission)} }`;
 /**
-* Canonical writer: order name, title, description, keywords, logo, teams, match, groups; 2-space indent;
+* Canonical writer: order name, title, description, keywords, logo, teams, match, shared, groups; 2-space indent;
 * flow-style lists; leading comment. `personal` omits index and teams (My groups).
 */
 function writeConfig(cfg, header, opts = {}) {
@@ -3723,6 +3760,7 @@ function writeConfig(cfg, header, opts = {}) {
 		if (g.logo) lines.push(`${ind}  logo: ${q(g.logo)}`);
 		if (!opts.personal && g.teams.length) lines.push(`${ind}  teams: [${g.teams.map(teamToYaml).join(", ")}]`);
 		if (g.match.length) lines.push(`${ind}  match: [${g.match.map(q).join(", ")}]`);
+		if (g.shared?.length) lines.push(`${ind}  shared: [${g.shared.map(q).join(", ")}]`);
 		if (g.groups.length) {
 			lines.push(`${ind}  groups:`);
 			g.groups.forEach((c) => emit(c, ind + "    "));
@@ -3780,6 +3818,12 @@ function diffTrees(a, b, repos) {
 			text: `Rules of ${k}`,
 			to: nb.match.join(", ") || "(none)"
 		});
+		if ((na.shared ?? []).join("|") !== (nb.shared ?? []).join("|")) items.push({
+			k: "~",
+			cls: "chg",
+			text: `Shared rules of ${k}`,
+			to: (nb.shared ?? []).join(", ") || "(none)"
+		});
 		if (teamsStr(na) !== teamsStr(nb)) items.push({
 			k: "~",
 			cls: "chg",
@@ -3793,6 +3837,20 @@ function diffTrees(a, b, repos) {
 		text: r.name,
 		to: `${pa[r.name] || "ungrouped"} → ${pb[r.name] || "ungrouped"}`
 	});
+	if ([...ga.values(), ...gb.values()].some((g) => g.shared?.length)) {
+		const sa = sharedPlacement(a, repos).secondary;
+		const sb = sharedPlacement(b, repos).secondary;
+		for (const r of repos) {
+			const x = (sa.get(r.name) ?? []).join(", ");
+			const y = (sb.get(r.name) ?? []).join(", ");
+			if (x !== y) items.push({
+				k: "~",
+				cls: "chg",
+				text: `${r.name} also in`,
+				to: y || "(none)"
+			});
+		}
+	}
 	const ungrouped = repos.filter((r) => !pb[r.name]).length;
 	return {
 		items,

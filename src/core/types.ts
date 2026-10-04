@@ -16,6 +16,11 @@ export interface Group {
   logo: string | null;
   teams: TeamTag[];
   match: string[];
+  /**
+   * Optional (A3). Rules that ALSO list a repository in this group, on top of its primary placement. They never change
+   * where a repo is placed (ungrouped detection, team access and counts of "grouped" use the primary placement only).
+   */
+  shared?: string[];
   groups: Group[];
 }
 

@@ -95,19 +95,25 @@ export function configFromObject(obj: unknown, opts: ValidateOptions = {}): Vali
         err = `"${name}": match must be a list of names or patterns.`;
         return;
       }
-      const badFork = (match as string[]).flatMap(splitRules).find((r) => isForkRule(r) && !FORK_TARGET_RE.test(forkTarget(r)));
-      if (badFork) {
-        err = `"${name}": rule "${badFork}" needs an owner, like fork-of:macfuse or fork-of:macfuse/macfuse.`;
+      let shared: unknown = raw.shared == null ? [] : raw.shared;
+      if (typeof shared === 'string') shared = [shared];
+      if (!Array.isArray(shared) || shared.some((m) => typeof m !== 'string')) {
+        err = `"${name}": shared must be a list of names or patterns.`;
         return;
       }
-      const badProp = (match as string[]).flatMap(splitRules).find((r) => isPropRule(r) && !parsePropRule(r));
-      if (badProp) {
-        err = `"${name}": rule "${badProp}" needs a property and a value, like prop:client=Acme.`;
-        return;
-      }
-      const emptyTopic = (match as string[]).flatMap(splitRules).find((r) => isTopicRule(r) && !topicOf(r));
-      if (emptyTopic) {
-        err = `"${name}": the rule "${emptyTopic}" needs a topic name, like topic:kubernetes.`;
+      const sharedRules = (shared as string[]).flatMap(splitRules);
+      const ruleProblem = (rules: string[]): string | null => {
+        const badFork = rules.find((r) => isForkRule(r) && !FORK_TARGET_RE.test(forkTarget(r)));
+        if (badFork) return `"${name}": rule "${badFork}" needs an owner, like fork-of:macfuse or fork-of:macfuse/macfuse.`;
+        const badProp = rules.find((r) => isPropRule(r) && !parsePropRule(r));
+        if (badProp) return `"${name}": rule "${badProp}" needs a property and a value, like prop:client=Acme.`;
+        const emptyTopic = rules.find((r) => isTopicRule(r) && !topicOf(r));
+        if (emptyTopic) return `"${name}": the rule "${emptyTopic}" needs a topic name, like topic:kubernetes.`;
+        return null;
+      };
+      const problem = ruleProblem((match as string[]).flatMap(splitRules)) ?? ruleProblem(sharedRules);
+      if (problem) {
+        err = problem;
         return;
       }
       let keywords: unknown = raw.keywords == null ? [] : raw.keywords;
@@ -136,6 +142,7 @@ export function configFromObject(obj: unknown, opts: ValidateOptions = {}): Vali
         logo: typeof raw.logo === 'string' && raw.logo.trim() ? raw.logo.trim() : null,
         teams,
         match: (match as string[]).flatMap(splitRules),
+        ...(sharedRules.length ? { shared: sharedRules } : {}),
         groups,
       });
     });

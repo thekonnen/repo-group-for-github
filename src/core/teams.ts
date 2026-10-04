@@ -41,6 +41,8 @@ export type TeamAccess = Record<string, Record<string, Permission>>; // slug -> 
 /**
  * Rows for the Sync access drawer: repos whose team access is lower than the target of their group.
  * Never yields removals or downgrades. Archived and ungrouped repos are skipped.
+ * Uses the PRIMARY placement only (A3): a repo also listed in other groups through `shared` rules has one target,
+ * the one of its primary group, so two groups with different team tags can never make the target ambiguous.
  */
 export function syncPlan(
   groups: Group[],
@@ -119,3 +121,26 @@ export function withGranted(access: TeamAccess, slug: string, repo: string, perm
 export const inGroup = (placedKey: string, groupKey: string): boolean => placedKey === groupKey || placedKey.startsWith(groupKey + '/');
 
 export { findGroup };
+
+export interface TeamTargetChange {
+  slug: string;
+  /** Target access at the old home ('' = Ungrouped): undefined when the team had no target there. */
+  from?: Permission;
+  /** Target access at the new home: undefined when the team has no target there. */
+  to?: Permission;
+}
+
+/**
+ * Informational (A4/A3): how the target team access of a repository changes when its HOME group moves from `fromKey` to
+ * `toKey` ('' = Ungrouped). Nothing is granted or removed by a move; Sync access only ever adds or raises access.
+ */
+export function teamTargetChanges(groups: Group[], fromKey: string, toKey: string): TeamTargetChange[] {
+  const a = fromKey ? effectiveTeams(groups, fromKey.split('/')) : {};
+  const b = toKey ? effectiveTeams(groups, toKey.split('/')) : {};
+  const out: TeamTargetChange[] = [];
+  for (const slug of [...new Set([...Object.keys(a), ...Object.keys(b)])].sort()) {
+    if (a[slug]?.permission === b[slug]?.permission) continue;
+    out.push({ slug, from: a[slug]?.permission, to: b[slug]?.permission });
+  }
+  return out;
+}

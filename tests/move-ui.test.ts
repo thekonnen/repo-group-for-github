@@ -121,7 +121,7 @@ describe('Send to… menu and confirmation (A4)', () => {
     await vi.waitFor(() => expect(toast()).toContain('Moved kite-dagsrv to infra / cmonitor'));
     expect(toast()).toContain('thekonnen/.github/repo-groups.yml');
     expect(dialog()).toBeNull();
-    expect(edits(fc)).toEqual([{ kind: 'move', repos: ['kite-dagsrv'], to: ['infra', 'cmonitor'] }]);
+    expect(edits(fc)).toMatchObject([{ kind: 'move', repos: ['kite-dagsrv'], to: ['infra', 'cmonitor'] }]);
   });
 
   it('Cancel, Esc and the backdrop close the dialog without any request', async () => {
@@ -199,7 +199,7 @@ describe('selection and bulk move (A4)', () => {
     (rowOf('dags-repo').querySelector('.rg-check') as HTMLElement).click();
     await vi.waitFor(() => expect($('.rg-selbar')?.textContent).toContain('2 selected'));
     const bar = $('.rg-selbar')!;
-    expect([...bar.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Send to…', 'Clear']);
+    expect([...bar.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Send to…', 'Also list in…', 'Clear']);
     (bar.querySelector('button') as HTMLElement).click();
     await vi.waitFor(() => expect($('[role=listbox].rg-move-pop')).toBeTruthy());
     pickOption($('[role=listbox].rg-move-pop')!, 'ai').click();
@@ -240,7 +240,7 @@ describe('drag & drop (A4)', () => {
     const dt = transfer();
     fire(grip, 'dragstart', dt);
     expect(JSON.parse(dt.getData(DRAG_TYPE))).toEqual([name]);
-    expect(dt.effectAllowed).toBe('move');
+    expect(dt.effectAllowed).toBe('copyMove');
     const over = fire(target, 'dragover', dt);
     expect(over.defaultPrevented).toBe(true);
     expect(target.classList.contains('rg-drop-over')).toBe(true);

@@ -16,12 +16,13 @@ Task:
 
 Output rules:
 - Answer with ONLY the complete YAML inside one ```yaml block. No explanations before or after.
-- Keep the format: version, then groups -> name, title, description, logo, teams, match, groups (nested subgroups).
+- Keep the format: version, then groups -> name, title, description, logo, teams, match, shared, groups (nested subgroups).
 - name: the slug. Short and lowercase; letters, numbers, "-", "_" or "."; unique among siblings.
 - title: optional display name for people (capitals, spaces and accents allowed, for example "Grupo: Competição"). Keep every "title" exactly as it is, on the same group. Add one only when the slug alone reads badly.
 - Use at most 3 levels. Prefer 3 to 9 groups per level. Avoid a group with a single repository unless it clearly stands alone.
 - match: exact repository names or patterns with * as wildcard. Prefer patterns that will also catch future repositories of the same kind (for example "dags-*" or "fork-of:macfuse"), without catching repositories that belong elsewhere. An exact name always wins over a pattern; when several patterns match, the deepest group wins.
 - Some repositories list "properties" (organization custom properties, for example client or team). When a property clearly defines a group, you may use a rule like "prop:client=Acme" (the value accepts * and ignores case). Use it only with property names and values that appear in the list. Exact names and "prop:" rules without * win over patterns.
+- shared: optional, same patterns as "match". A repository that matches is ALSO listed in this group, without leaving the group where "match" put it (like a tag; for example a library used by several products). Keep every "shared" value exactly as it is. Add one only when a repository clearly serves more than one group.
 - description: one short sentence, up to about 80 characters, saying what the group holds.
 - Keep every "logo" value exactly as it is, on the same group.
 - Keep every "teams" value exactly as it is. If you merge or rename a group, carry its teams to the group that replaces it. Never invent team names.

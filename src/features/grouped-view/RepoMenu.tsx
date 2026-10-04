@@ -11,12 +11,12 @@ export const pickItems = (ctl: Controller, current?: string): PickItem[] => {
 };
 
 /**
- * The "⋯" menu of a repository row (A4). One entry: "Send to…", which opens the group picker. Picking a group only
+ * The "⋯" menu of a repository row (A4). Entries: "Send to…" (move) and "Also list in…" (A3), both open the group picker. Picking a group only
  * stages the move; the confirmation dialog commits it.
  * Keyboard: Enter/Space/ArrowDown on the button opens the menu, Esc closes it and returns focus.
  */
 export function RepoMenu({ ctl, repo, current }: { ctl: Controller; repo: string; current: string }) {
-  const [mode, setMode] = useState<'closed' | 'menu' | 'pick'>('closed');
+  const [mode, setMode] = useState<'closed' | 'menu' | 'pick' | 'share'>('closed');
   const btn = useRef<HTMLButtonElement>(null);
   const item = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -36,8 +36,8 @@ export function RepoMenu({ ctl, repo, current }: { ctl: Controller; repo: string
     setMode('closed');
     if (refocus) btn.current?.focus();
   };
-  const items = mode === 'pick' ? pickItems(ctl, current) : [];
-  const menuPos = mode === 'menu' && btn.current ? placeBelow(btn.current.getBoundingClientRect(), 200, 44, window.innerWidth, window.innerHeight) : { left: 8, top: 8 };
+  const items = mode === 'pick' ? pickItems(ctl, current) : mode === 'share' ? pickItems(ctl).filter((i) => i.key) : []; // "Also list in…" needs a real group
+  const menuPos = mode === 'menu' && btn.current ? placeBelow(btn.current.getBoundingClientRect(), 200, 80, window.innerWidth, window.innerHeight) : { left: 8, top: 8 };
 
   return (
     <span class="rg-kebab-wrap">
@@ -56,17 +56,19 @@ export function RepoMenu({ ctl, repo, current }: { ctl: Controller; repo: string
       {mode === 'menu' && (
         <div class="rg-pop rg-menu" role="menu" style={{ left: menuPos.left, top: menuPos.top }} onKeyDown={(e) => e.key === 'Escape' && (e.stopPropagation(), close(true))}>
           <button type="button" role="menuitem" class="rg-menu-item" ref={item} onClick={() => setMode('pick')}>Send to…</button>
+          <button type="button" role="menuitem" class="rg-menu-item" onClick={() => setMode('share')}>Also list in…</button>
         </div>
       )}
-      {mode === 'pick' && items.length > 0 && (
+      {(mode === 'pick' || mode === 'share') && items.length > 0 && (
         <GroupPicker
           items={items}
-          label={`Send ${repo} to`}
+          label={mode === 'share' ? `Also list ${repo} in` : `Send ${repo} to`}
           anchor={btn.current}
           onClose={close}
           onPick={(key) => {
             close(false); // focus goes to the confirmation dialog
-            ctl.stageMove([repo], key ? key.split('/') : []);
+            if (mode === 'share') ctl.stageShare([repo], key.split('/'));
+            else ctl.stageMove([repo], key ? key.split('/') : []);
           }}
         />
       )}
@@ -76,24 +78,28 @@ export function RepoMenu({ ctl, repo, current }: { ctl: Controller; repo: string
 
 /** "N selected · Send to… · Clear" above the list (A4). */
 export function SelectionBar({ ctl, selected }: { ctl: Controller; selected: string[] }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState<'' | 'move' | 'share'>('');
   const btn = useRef<HTMLButtonElement>(null);
+  const shareBtn = useRef<HTMLButtonElement>(null);
   if (!selected.length) return null;
   return (
     <div class="rg-selbar" role="region" aria-label="Selected repositories">
       <b>{selected.length} selected</b>
       <span class="rg-muted">·</span>
-      <button type="button" class="rg-btn rg-btn-primary" ref={btn} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)}>Send to…</button>
+      <button type="button" class="rg-btn rg-btn-primary" ref={btn} aria-haspopup="listbox" aria-expanded={open === 'move'} onClick={() => setOpen(open === 'move' ? '' : 'move')}>Send to…</button>
+      <button type="button" class="rg-btn" ref={shareBtn} aria-haspopup="listbox" aria-expanded={open === 'share'} onClick={() => setOpen(open === 'share' ? '' : 'share')}>Also list in…</button>
       <button type="button" class="rg-btn" onClick={() => ctl.clearSelection()}>Clear</button>
       {open && (
         <GroupPicker
-          items={pickItems(ctl)}
-          label={`Send ${selected.length} selected to`}
-          anchor={btn.current}
-          onClose={(refocus) => (setOpen(false), refocus && btn.current?.focus())}
+          items={open === 'share' ? pickItems(ctl).filter((i) => i.key) : pickItems(ctl)}
+          label={open === 'share' ? `Also list ${selected.length} selected in` : `Send ${selected.length} selected to`}
+          anchor={open === 'share' ? shareBtn.current : btn.current}
+          onClose={(refocus) => (setOpen(''), refocus && (open === 'share' ? shareBtn : btn).current?.focus())}
           onPick={(key) => {
-            setOpen(false);
-            ctl.stageMove(selected, key ? key.split('/') : []);
+            const mode = open;
+            setOpen('');
+            if (mode === 'share') ctl.stageShare(selected, key.split('/'));
+            else ctl.stageMove(selected, key ? key.split('/') : []);
           }}
         />
       )}

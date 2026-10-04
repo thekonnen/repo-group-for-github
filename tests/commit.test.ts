@@ -209,3 +209,54 @@ describe('Edit YAML backend (F8)', () => {
     expect(a.data.status).toBe('ok');
   });
 });
+
+describe('commitEdit: delete group', () => {
+  it('commits a subgroup delete: one PUT with the sha, the rules moved to the parent, the rest untouched', async () => {
+    const { s, f } = world();
+    const before = parsed(s.file!.text);
+    const rules = findGroup(before.groups, ['infra', 'dagsrv'])!.match;
+    const parentBefore = findGroup(before.groups, ['infra'])!.match;
+    const r = await commitEdit(client(f), memoryKV(), 'o', { kind: 'delete', path: ['infra', 'dagsrv'] });
+    expect(r).toMatchObject({ status: 'ok', sha: 'sha-2' });
+    expect(puts(f)).toHaveLength(1);
+    const body = JSON.parse(puts(f)[0].body!);
+    expect(body.message).toBe('chore(repo-groups): delete subgroup infra/dagsrv (rules moved to the parent group)');
+    expect(body.sha).toBe('sha-1');
+    const cfg = parsed(s.file!.text);
+    expect(findGroup(cfg.groups, ['infra', 'dagsrv'])).toBeNull();
+    expect(findGroup(cfg.groups, ['infra'])!.match).toEqual([...parentBefore, ...rules.filter((m) => !parentBefore.some((p) => p.toLowerCase() === m.toLowerCase()))]);
+    expect(findGroup(cfg.groups, ['ai', 'llm-proxy'])).toBeTruthy(); // other groups untouched
+  });
+
+  it('commits a top-level delete with its subgroups', async () => {
+    const { s, f } = world();
+    await commitEdit(client(f), memoryKV(), 'o', { kind: 'delete', path: ['infra'] });
+    expect(JSON.parse(puts(f)[0].body!).message).toBe('chore(repo-groups): delete group infra');
+    const cfg = parsed(s.file!.text);
+    expect(cfg.groups.map((g) => g.name)).not.toContain('infra');
+    expect(findGroup(cfg.groups, ['ai'])).toBeTruthy();
+  });
+
+  it('re-applies the delete once when the file changed under it (409), then commits', async () => {
+    const { s, f } = world({ putErrors: [{ status: 409, message: 'does not match' }] });
+    const r = await commitEdit(client(f), memoryKV(), 'o', { kind: 'delete', path: ['infra', 'dagsrv'] });
+    expect(r.status).toBe('ok');
+    expect(findGroup(parsed(s.file!.text).groups, ['infra', 'dagsrv'])).toBeNull();
+  });
+
+  it('stops with a clear message when the group is already gone, and commits nothing', async () => {
+    const { f } = world();
+    await expect(commitEdit(client(f), memoryKV(), 'o', { kind: 'delete', path: ['infra', 'nope'] })).rejects.toThrow(/no longer exists/);
+    expect(puts(f)).toHaveLength(0);
+  });
+
+  it('works through the message handler (org:edit)', async () => {
+    const { s, f } = world();
+    const handle = createHandler({ fetch: f.fetch, kv: memoryKV(), index: memoryIndexStore() });
+    const r: any = await handle({ type: 'org:edit', org: 'o', edit: { kind: 'delete', path: ['infra', 'dagsrv'] } });
+    expect(r.ok).toBe(true);
+    expect(r.data.status).toBe('ok');
+    expect(findGroup(parsed(s.file!.text).groups, ['infra', 'dagsrv'])).toBeNull();
+  });
+});
+

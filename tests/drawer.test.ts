@@ -304,3 +304,188 @@ describe('who can edit', () => {
     expect($$('.rg-g-actions button')).toHaveLength(0);
   });
 });
+
+describe('Delete group (drawer + confirmation)', () => {
+  const openEdit = async (hash: string, opts: Parameters<typeof fakeCall>[0] = {}) => {
+    const fc = await open(hash, opts);
+    await vi.waitFor(() => expect(btn('Edit group')).toBeTruthy());
+    btn('Edit group').click();
+    await vi.waitFor(() => expect(drawer()).toBeTruthy());
+    return fc;
+  };
+  const dialog = () => $('.rg-dialog');
+  const confirm = () => $('#rg-del-confirm') as HTMLInputElement;
+  const go = () => $('#rg-del-go') as HTMLButtonElement;
+  const deleteEdit = (path: string[]) => okEdit((groups) => {
+    const parent = path.length > 1 ? groups.find((g: any) => g.name === path[0]) : null;
+    const list = parent ? parent.groups : groups;
+    list.splice(list.findIndex((g: any) => g.name === path[path.length - 1]), 1);
+  });
+
+  it('shows a quiet red row at the end of Edit group, and not in New group', async () => {
+    await openEdit('#infra/dagsrv');
+    const zone = $('#rg-danger-zone')!;
+    expect(zone).toBeTruthy();
+    expect(zone.textContent).toContain('Delete this subgroup');
+    expect(zone.textContent).toContain('Its repositories stay in the group above.');
+    expect($('#rg-del-open')!.textContent).toBe('Delete…');
+    // it is the last thing in the form, after the YAML link
+    expect($('.rg-form')!.lastElementChild).toBe(zone);
+    btn('Cancel', drawer()!).click();
+    await vi.waitFor(() => expect(drawer()).toBeNull());
+    btn(/^New (sub)?group/).click();
+    await vi.waitFor(() => expect(drawer()).toBeTruthy());
+    expect($('#rg-danger-zone')).toBeNull();
+  });
+
+  it('says a top-level group sends its repositories to Ungrouped', async () => {
+    await openEdit('#infra');
+    expect($('#rg-danger-zone')!.textContent).toContain('Delete this group');
+    expect($('#rg-danger-zone')!.textContent).toContain('become Ungrouped');
+    expect($('#rg-danger-zone')!.textContent).toContain('subgroups are removed too');
+  });
+
+  it('opens a confirmation that names the group, what changes and where the repositories go', async () => {
+    await openEdit('#infra/dagsrv');
+    $('#rg-del-open')!.click();
+    await vi.waitFor(() => expect(dialog()).toBeTruthy());
+    expect(dialog()!.getAttribute('role')).toBe('alertdialog');
+    expect($('#rg-del-title')!.textContent).toBe('Delete thekonnen / infra / dagsrv');
+    const text = dialog()!.textContent!;
+    expect(text).toContain('No repository is deleted.');
+    expect(text).toMatch(/rules? move to infra, so its repositories stay there/);
+    expect(text).toMatch(/repositories now in this subgroup: \d+ will be in infra/);
+    expect(document.activeElement).toBe(confirm());
+    expect(go().disabled).toBe(true);
+    expect(go().textContent).toBe('I want to delete this subgroup');
+  });
+
+  it('keeps the red button off until the full path is typed exactly', async () => {
+    await openEdit('#infra/dagsrv');
+    $('#rg-del-open')!.click();
+    await vi.waitFor(() => expect(dialog()).toBeTruthy());
+    for (const wrong of ['dagsrv', 'infra', 'INFRA/DAGSRV', 'infra/dagsr']) {
+      type(confirm(), wrong);
+      await vi.waitFor(() => expect(go().disabled).toBe(true));
+    }
+    type(confirm(), 'infra/dagsrv');
+    await vi.waitFor(() => expect(go().disabled).toBe(false));
+  });
+
+  it('Cancel, Esc and the backdrop close only the confirmation, and nothing is sent', async () => {
+    const fc = await openEdit('#infra/dagsrv');
+    for (const how of ['cancel', 'esc', 'backdrop'] as const) {
+      $('#rg-del-open')!.click();
+      await vi.waitFor(() => expect(dialog()).toBeTruthy());
+      if (how === 'cancel') btn('Cancel', dialog()!).click();
+      else if (how === 'esc') dialog()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      else $('.rg-dialog-overlay')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      await vi.waitFor(() => expect(dialog()).toBeNull());
+      expect(drawer()).toBeTruthy(); // the edit drawer stays open
+    }
+    expect(fc.log.some((r) => r.type === 'org:edit')).toBe(false);
+  });
+
+  it('deleting sends one delete edit, closes everything, goes to the parent group and says so', async () => {
+    const fc = await openEdit('#infra/dagsrv', { edit: deleteEdit(['infra', 'dagsrv']) });
+    $('#rg-del-open')!.click();
+    await vi.waitFor(() => expect(dialog()).toBeTruthy());
+    type(confirm(), 'infra/dagsrv');
+    await vi.waitFor(() => expect(go().disabled).toBe(false));
+    go().click();
+    await vi.waitFor(() => expect(drawer()).toBeNull());
+    expect(dialog()).toBeNull();
+    const edits = fc.log.filter((r) => r.type === 'org:edit') as any[];
+    expect(edits).toHaveLength(1);
+    expect(edits[0].edit).toEqual({ kind: 'delete', path: ['infra', 'dagsrv'] });
+    expect(window.location.hash).toBe('#infra'); // the page of the deleted group no longer exists
+    expect($('.rg-toast')!.textContent).toContain('Deleted infra/dagsrv');
+  });
+
+  it('Enter in the field confirms too, but only when the path matches', async () => {
+    const fc = await openEdit('#infra/dagsrv', { edit: deleteEdit(['infra', 'dagsrv']) });
+    $('#rg-del-open')!.click();
+    await vi.waitFor(() => expect(dialog()).toBeTruthy());
+    type(confirm(), 'infra/dag');
+    confirm().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(fc.log.some((r) => r.type === 'org:edit')).toBe(false);
+    type(confirm(), 'infra/dagsrv');
+    confirm().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    await vi.waitFor(() => expect(fc.log.some((r) => r.type === 'org:edit')).toBe(true));
+  });
+
+  it('a failed commit keeps the dialog open with the reason, and the group is untouched', async () => {
+    const fc = await openEdit('#infra/dagsrv', { edit: () => { throw new Error('The default branch of thekonnen/.github is protected.'); } });
+    $('#rg-del-open')!.click();
+    await vi.waitFor(() => expect(dialog()).toBeTruthy());
+    type(confirm(), 'infra/dagsrv');
+    await vi.waitFor(() => expect(go().disabled).toBe(false));
+    go().click();
+    await vi.waitFor(() => expect(dialog()!.querySelector('.rg-error')!.textContent).toContain('is protected'));
+    expect(drawer()).toBeTruthy();
+    expect(go().textContent).toBe('I want to delete this subgroup');
+    expect(fc.log.filter((r) => r.type === 'org:edit')).toHaveLength(1);
+  });
+
+  it('deleting a top-level group goes back to the top level', async () => {
+    await openEdit('#infra', { edit: deleteEdit(['infra']) });
+    $('#rg-del-open')!.click();
+    await vi.waitFor(() => expect(dialog()).toBeTruthy());
+    expect($('#rg-del-title')!.textContent).toBe('Delete thekonnen / infra');
+    expect(dialog()!.textContent).toContain('top-level group, so its repositories become Ungrouped');
+    expect(dialog()!.textContent).toMatch(/will be Ungrouped/);
+    type(confirm(), 'infra');
+    await vi.waitFor(() => expect(go().disabled).toBe(false));
+    go().click();
+    await vi.waitFor(() => expect(drawer()).toBeNull());
+    expect(window.location.hash).toBe('');
+    expect(names()).not.toContain('infra');
+  });
+});
+
+describe('stacking of the delete confirmation', () => {
+  /** z-index of the last rule whose selector is exactly `selector`. happy-dom does not lay out, so the CSS itself is checked. */
+  const css = readFileSync(join(process.cwd(), 'src/styles/grouped.css'), 'utf8');
+  const zOf = (selector: string): number => {
+    let z = NaN;
+    for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      if (m[1].trim() !== selector) continue;
+      const v = /z-index:\s*(-?\d+)/.exec(m[2]);
+      if (v) z = Number(v[1]);
+    }
+    return z;
+  };
+
+  it('the confirmation is above the drawer overlay and below the toast', () => {
+    const drawer = zOf('.rg-root .rg-overlay');
+    const dialog = zOf('.rg-root .rg-dialog-overlay');
+    const toast = zOf('.rg-root .rg-toast');
+    expect(drawer).toBeGreaterThan(0);
+    expect(dialog).toBeGreaterThan(drawer); // it was behind the drawer when this was 30
+    expect(toast).toBeGreaterThan(dialog); // "Deleted …" must stay readable
+  });
+
+  it('no later rule pulls the dialog layer back under the drawer', () => {
+    // any bare `.rg-dialog-overlay` z-index would lose to `.rg-root .rg-overlay`, so none may exist
+    expect(Number.isNaN(zOf('.rg-dialog-overlay'))).toBe(true);
+  });
+
+  it('renders the confirmation after the drawer in the same layer root, so it paints on top at equal order', async () => {
+    document.documentElement.innerHTML = body;
+    window.history.replaceState(null, '', '/orgs/thekonnen/repositories#infra/dagsrv');
+    const fc = fakeCall();
+    mounted = (await mountOrgRepos('thekonnen', { call: fc.call }, document, 200))!;
+    await vi.waitFor(() => expect(btn('Edit group')).toBeTruthy());
+    btn('Edit group').click();
+    await vi.waitFor(() => expect($('.rg-drawer')).toBeTruthy());
+    $('#rg-del-open')!.click();
+    await vi.waitFor(() => expect($('.rg-dialog')).toBeTruthy());
+    const layer = $('.rg-overlay')!.parentElement!;
+    expect($('.rg-dialog-overlay')!.parentElement).toBe(layer);
+    const kids = [...layer.children];
+    expect(kids.indexOf($('.rg-dialog-overlay')!)).toBeGreaterThan(kids.indexOf($('.rg-overlay')!));
+    expect(layer.classList.contains('rg-root')).toBe(true); // the rule `.rg-root .rg-dialog-overlay` applies
+  });
+});
+

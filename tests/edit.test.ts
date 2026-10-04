@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { applyEdit, commitMessage, finalName, slugName, validateDraft, type Edit } from '../src/core/edit';
+import { applyEdit, commitMessage, deleteImpact, editPath, finalName, slugName, validateDraft, type Edit } from '../src/core/edit';
+import { readConfig } from '../src/core/yaml-read';
+import { writeConfig } from '../src/core/yaml-write';
 import { example, load } from './fixtures';
-import { findGroup } from '../src/core/placement';
+import { findGroup, placement } from '../src/core/placement';
 
 describe('group names', () => {
   it('slugs: lowercase, non-slug characters become "-"', () => {
@@ -149,5 +151,129 @@ describe('display names and slugs (like GitLab)', () => {
     const b = structuredClone(a);
     b[0].title = 'Infraestrutura';
     expect(diffTrees(a, b, []).items).toEqual([{ k: '~', cls: 'chg', text: 'Name of infra', to: '“Infraestrutura”' }]);
+  });
+});
+
+describe('delete group', () => {
+  const TREE = [
+    'groups:',
+    '  - name: infra',
+    '    match: ["keep_alive_job"]',
+    '    groups:',
+    '      - name: jobs',
+    '        teams: ["core_team"]',
+    '        logo: "logos/infra-jobs.png"',
+    '        match: ["dagsrv", "dags-*", "Cron-*"]',
+    '        groups:',
+    '          - name: nightly',
+    '            match: ["nightly-*", "dags-*"]',
+    '      - name: auth',
+    '        match: ["authn"]',
+    '  - name: ai',
+    '    match: ["llm-*"]',
+    '  - name: apps',
+    '    match: ["app-*"]',
+  ].join('\n');
+  const groups = () => readConfig(TREE, load, { org: 'o' }).config!.groups;
+  const repos = ['keep_alive_job', 'dagsrv', 'dags-one', 'cron-x', 'nightly-1', 'authn', 'llm-1', 'app-1', 'stray'].map((name) => ({ name }));
+  const where = (g: ReturnType<typeof groups>) => placement(g, repos);
+  const del = (path: string[], g = groups()) => {
+    const r = applyEdit(g, { kind: 'delete', path });
+    if ('error' in r) throw new Error(r.error);
+    return r.groups;
+  };
+
+  it('a top-level group goes with its subgroups and its repositories become Ungrouped', () => {
+    const before = where(groups());
+    expect(before['dagsrv']).toBe('infra/jobs');
+    expect(before['nightly-1']).toBe('infra/jobs/nightly');
+    const after = del(['infra']);
+    expect(after.map((g) => g.name)).toEqual(['ai', 'apps']);
+    const now = where(after);
+    for (const r of ['keep_alive_job', 'dagsrv', 'dags-one', 'cron-x', 'nightly-1', 'authn']) expect(now[r]).toBe('');
+    expect(now['llm-1']).toBe('ai'); // other groups are untouched
+    expect(now['app-1']).toBe('apps');
+  });
+
+  it('a subgroup is removed and its repositories stay in the group above', () => {
+    const after = del(['infra', 'auth']);
+    expect(findGroup(after, ['infra', 'auth'])).toBeNull();
+    expect(findGroup(after, ['infra'])!.match).toEqual(['keep_alive_job', 'authn']);
+    expect(where(after)['authn']).toBe('infra'); // was infra/auth
+    expect(where(after)['dagsrv']).toBe('infra/jobs'); // siblings keep theirs
+  });
+
+  it('a subgroup with subgroups of its own: all their rules move up and nothing is left behind', () => {
+    const after = del(['infra', 'jobs']);
+    expect(findGroup(after, ['infra', 'jobs'])).toBeNull();
+    expect(findGroup(after, ['infra', 'jobs', 'nightly'])).toBeNull();
+    // own rules first, then the sub-subgroup's; "dags-*" is not repeated
+    expect(findGroup(after, ['infra'])!.match).toEqual(['keep_alive_job', 'dagsrv', 'dags-*', 'Cron-*', 'nightly-*']);
+    const now = where(after);
+    for (const r of ['dagsrv', 'dags-one', 'cron-x', 'nightly-1', 'keep_alive_job']) expect(now[r]).toBe('infra');
+    expect(now['authn']).toBe('infra/auth');
+  });
+
+  it('deleting a middle level moves the deeper rules to the grandparent, not to a group that no longer exists', () => {
+    const after = del(['infra', 'jobs', 'nightly']);
+    expect(findGroup(after, ['infra', 'jobs'])!.match).toEqual(['dagsrv', 'dags-*', 'Cron-*', 'nightly-*']);
+    expect(where(after)['nightly-1']).toBe('infra/jobs');
+  });
+
+  it('does not repeat a rule the parent already has, whatever its case', () => {
+    const g = groups();
+    findGroup(g, ['infra'])!.match.push('DAGSRV');
+    expect(findGroup(del(['infra', 'jobs'], g), ['infra'])!.match.filter((m) => m.toLowerCase() === 'dagsrv')).toEqual(['DAGSRV']);
+  });
+
+  it('never mutates its input and reports a group that is gone', () => {
+    const g = groups();
+    const copy = structuredClone(g);
+    del(['infra', 'jobs'], g);
+    expect(g).toEqual(copy);
+    expect(applyEdit(g, { kind: 'delete', path: ['infra', 'nope'] })).toEqual({ error: 'The group "infra/nope" no longer exists. Reload the page and try again.' });
+    expect('error' in applyEdit(g, { kind: 'delete', path: ['gone'] })).toBe(true);
+  });
+
+  it('deleting the only group leaves an empty file that still reads back', () => {
+    const one = readConfig('groups:\n  - name: a\n', load, { org: 'o' }).config!;
+    const text = writeConfig({ ...one, groups: del(['a'], one.groups) }, 'o/.github/repo-groups.yml');
+    expect(text).toContain('groups: []');
+    expect(readConfig(text, load, { org: 'o' }).config!.groups).toEqual([]);
+  });
+
+  it('commit message and path name what was deleted', () => {
+    expect(commitMessage({ kind: 'delete', path: ['infra'] })).toBe('chore(repo-groups): delete group infra');
+    expect(commitMessage({ kind: 'delete', path: ['infra', 'jobs'] })).toBe('chore(repo-groups): delete subgroup infra/jobs (rules moved to the parent group)');
+    expect(editPath({ kind: 'delete', path: ['infra', 'jobs'] })).toBe('infra/jobs');
+  });
+
+  describe('impact shown before confirming', () => {
+    it('a subgroup: counts, the rules that move, and where the repositories stay', () => {
+      const i = deleteImpact(groups(), ['infra', 'jobs'], repos)!;
+      expect(i).toMatchObject({ subgroups: 1, rules: 5, movedRules: 5, parentKey: 'infra', hasTeams: true, hasLogo: true });
+      expect(i.repos).toBe(4); // dagsrv, dags-one, cron-x, nightly-1
+      expect(i.landing).toEqual([{ key: 'infra', count: 4 }]);
+    });
+    it('a top-level group: nothing moves up and the repositories become Ungrouped', () => {
+      const i = deleteImpact(groups(), ['infra'], repos)!;
+      expect(i).toMatchObject({ subgroups: 3, movedRules: 0, parentKey: '', hasTeams: true });
+      expect(i.repos).toBe(6);
+      expect(i.landing).toEqual([{ key: '', count: 6 }]);
+    });
+    it('a group with no repositories, no teams and no logo', () => {
+      expect(deleteImpact(groups(), ['apps'], [])).toMatchObject({ repos: 0, landing: [], hasTeams: false, hasLogo: false });
+    });
+    it('reports honestly when a repository would land somewhere else', () => {
+      const g = groups();
+      // another group, listed earlier, has a glob that also matches dagsrv: after the delete it can win
+      g.unshift({ name: 'early', description: '', logo: null, teams: [], match: ['dags*'], groups: [] });
+      const i = deleteImpact(g, ['infra', 'jobs'], repos)!;
+      expect(i.landing.map((l) => l.key)).toContain('infra');
+      expect(i.landing.reduce((n, l) => n + l.count, 0)).toBe(i.repos);
+    });
+    it('is null for a group that does not exist', () => {
+      expect(deleteImpact(groups(), ['nope'], repos)).toBeNull();
+    });
   });
 });

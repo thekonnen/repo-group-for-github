@@ -246,11 +246,22 @@ export function createController(org: string, env: Env) {
           }
         }
       }
+      if (edit.kind === 'delete') {
+        const gone = edit.path.join('/');
+        for (const k of [...expanded]) if (k === gone || k.startsWith(gone + '/')) expanded.delete(k);
+        const here = before.path.join('/');
+        if (here === gone || here.startsWith(gone + '/')) {
+          // the page being viewed no longer exists: go to the parent group (or the top level)
+          const path = edit.path.slice(0, -1);
+          env.history.pushState(null, '', env.location.pathname + env.location.search + buildHash({ layer: 'org', path }));
+          next.path = path;
+        }
+      }
       next.expanded = expanded;
       next.expandedTouched = true;
       store.set(next);
       savePrefs({ expanded: [...expanded] });
-      showToast(`Committed to ${org}/.github/repo-groups.yml`);
+      showToast(edit.kind === 'delete' ? `Deleted ${edit.path.join('/')} · committed to ${org}/.github/repo-groups.yml` : `Committed to ${org}/.github/repo-groups.yml`);
       return { ok: true };
     } catch (e) {
       return { ok: false, message: infoOf(e).message };

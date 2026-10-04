@@ -146,13 +146,20 @@ Route: `https://github.com/orgs/<org>/repositories` (also when GitHub adds query
   - **Teams** (org layer only, F12): chips for this group's own teams, each with a permission select (Read, Triage, Write, Maintain, Admin) and ×, plus **Add team** (a picker of the org's teams). Inherited teams show read-only and muted, e.g. "core_team · Write · from infra";
   - **Match rules**: chips with ×, plus an input that adds on Enter;
   - **Matching repositories (n)**: a live list. It marks repos that currently sit in another group with "now in x/y";
-  - a link **Edit .github/repo-groups.yml** that opens F8 with this draft included.
+  - a link **Edit .github/repo-groups.yml** that opens F8 with this draft included;
+  - at the very end, a quiet red row **Delete this group / subgroup** with a **Delete…** button (edit mode only, not in F6).
 - **Footer:** "Saved as a commit to `<org>/.github`…", **Cancel**, **Save changes**.
 - **Validation:**
   - the name is required;
   - no duplicate name among siblings. The error reads "A group named "x" already exists here."
 - Saving commits the YAML (§7) and shows a toast: "Committed to `<org>/.github/repo-groups.yml`".
 - Esc or a click on the backdrop closes the drawer.
+- **Delete group:** **Delete…** opens a GitHub-style confirmation (`role=alertdialog`) titled "Delete `<org> / <path>`": the group, how many subgroups, rules and repositories it holds, and where those repositories go. The red button **I want to delete this group/subgroup** stays off until the person types the group's full path (`infra/dagu`). Esc, Cancel or the backdrop close only the confirmation.
+  - One commit to `repo-groups.yml` (`chore(repo-groups): delete group infra`). The group and all its subgroups are removed. **No repository is deleted.**
+  - **A subgroup:** its match rules, and those of its own subgroups, move to the parent's `match`, so its repositories stay in the group above.
+  - **A top-level group:** nothing moves up; its repositories become Ungrouped unless another group's rules catch them.
+  - Team tags of the removed groups go away but access already granted on GitHub is not revoked; logo files stay in `<org>/.github/logos`. The confirmation says so when it applies.
+  - Afterwards the page goes to the parent group (or the top level) when it was showing the deleted group, and the toast reads "Deleted infra/dagu · committed to …".
 
 ### F6 — New group / New subgroup
 - Same drawer in create mode. The parent is the current group.

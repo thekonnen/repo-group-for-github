@@ -12,6 +12,7 @@ import { useLogoSrc } from '../logos/logo-store';
 import type { Controller, SaveResult } from '../grouped-view/controller';
 import { useStore } from '../store';
 import { TeamsField } from '../teams/TeamsField';
+import { DeleteGroupDialog } from './DeleteGroupDialog';
 
 const MAX_LISTED = 200;
 
@@ -63,6 +64,7 @@ function Form({ ctl, mode, path, focusLogo }: { ctl: Controller; mode: 'edit' | 
   const [touched, setTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState<{ message: string } | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   // Text still sitting in the rule field when Save is pressed counts too.
   const allRules = [...new Set([...rules, ...splitRules(ruleInput)])];
@@ -129,6 +131,7 @@ function Form({ ctl, mode, path, focusLogo }: { ctl: Controller; mode: 'edit' | 
   const heading = mode === 'edit' ? `Edit group ${titled(model, path.join('/'))}` : path.length ? 'New subgroup' : 'New group';
 
   return (
+    <>
     <Drawer
       title={heading}
       titleId="rg-drawer-title"
@@ -225,7 +228,19 @@ function Form({ ctl, mode, path, focusLogo }: { ctl: Controller; mode: 'edit' | 
         <div><button type="button" class="rg-linkish" onClick={openInYaml}><Icon name="code" size={14} />Edit .github/repo-groups.yml</button></div>
 
         {problem && <p class="rg-error" role="alert">{problem.message}</p>}
+
+        {mode === 'edit' && (
+          <div class="rg-danger-zone" id="rg-danger-zone">
+            <div>
+              <b>Delete this {path.length > 1 ? 'subgroup' : 'group'}</b>
+              <span class="rg-hint">{path.length > 1 ? 'Its repositories stay in the group above.' : 'Its repositories become Ungrouped unless other rules catch them.'}{node?.group.groups.length ? ' Its subgroups are removed too.' : ''}</span>
+            </div>
+            <button type="button" class="rg-btn rg-btn-danger" id="rg-del-open" onClick={() => setConfirmingDelete(true)}>Delete…</button>
+          </div>
+        )}
       </form>
     </Drawer>
+    {confirmingDelete && <DeleteGroupDialog ctl={ctl} path={path} groups={groups} onClose={() => setConfirmingDelete(false)} />}
+    </>
   );
 }

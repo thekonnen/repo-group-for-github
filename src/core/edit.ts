@@ -1,5 +1,5 @@
 import { logoPath } from './logo';
-import { findGroup } from './placement';
+import { findGroup, placement } from './placement';
 import type { Group, TeamTag } from './types';
 
 /** The single change behind Edit group / New group. Re-applied to a fresh file when a commit conflicts (§7). */
@@ -8,11 +8,13 @@ export type Edit =
   | { kind: 'edit'; path: string[]; name: string; title?: string; description: string; match: string[]; logo?: LogoChange; teams?: TeamTag[] }
   | { kind: 'new'; parent: string[]; name: string; title?: string; description: string; match: string[]; logo?: LogoChange; teams?: TeamTag[] }
   /** F9: adds the exact repo name to the match list of an existing group. */
-  | { kind: 'file'; path: string[]; repo: string };
+  | { kind: 'file'; path: string[]; repo: string }
+  /** Removes a group and all its subgroups from the file. No repository is touched: they fall back to the other rules. */
+  | { kind: 'delete'; path: string[] };
 
 /** A logo change (F7): a new 192x192 PNG (base64, committed with the YAML in one commit) or "use the letter". */
 export type LogoChange = { png: string } | { remove: true };
-export const hasPng = (e: Edit): boolean => e.kind !== 'file' && !!e.logo && 'png' in e.logo;
+export const hasPng = (e: Edit): boolean => (e.kind === 'new' || e.kind === 'edit') && !!e.logo && 'png' in e.logo;
 
 /** Trimmed tags, empty slugs dropped, one tag per slug (the last one wins). */
 export function cleanTeams(teams: TeamTag[]): TeamTag[] {
@@ -75,9 +77,30 @@ export function validateDraft(groups: Group[], d: { mode: 'edit' | 'new'; path: 
 
 const clone = (groups: Group[]): Group[] => structuredClone(groups);
 
+/** True when the group or any subgroup satisfies `test`. */
+const any = (g: Group, test: (x: Group) => boolean): boolean => test(g) || g.groups.some((c) => any(c, test));
+
+/** The rules of a group and of all its subgroups, the group's own first. */
+const allRules = (g: Group): string[] => [...g.match, ...g.groups.flatMap(allRules)];
+
 /** Applies an edit to a tree (never mutates the input). Logo, teams and subgroups of an edited group are kept. */
 export function applyEdit(groups: Group[], edit: Edit): { groups: Group[] } | { error: string } {
   const next = clone(groups);
+  if (edit.kind === 'delete') {
+    const parentPath = edit.path.slice(0, -1);
+    const parent = parentPath.length ? findGroup(next, parentPath) : null;
+    const list = parent ? parent.groups : next;
+    const at = list.findIndex((g) => g.name === edit.path[edit.path.length - 1]);
+    if (at < 0) return { error: `The group "${edit.path.join('/')}" no longer exists. Reload the page and try again.` };
+    const [gone] = list.splice(at, 1);
+    // A subgroup's repositories stay in the group above: its rules (and those of its own subgroups) move up.
+    // A top-level group has nothing above, so its repositories become Ungrouped unless another rule catches them.
+    if (parent) {
+      const have = new Set(parent.match.map((m) => m.toLowerCase()));
+      for (const rule of allRules(gone)) if (!have.has(rule.toLowerCase())) (parent.match.push(rule), have.add(rule.toLowerCase()));
+    }
+    return { groups: next };
+  }
   if (edit.kind === 'file') {
     const t = findGroup(next, edit.path);
     if (!t) return { error: `The group "${edit.path.join('/')}" no longer exists. Reload the page and try again.` };
@@ -115,11 +138,12 @@ export function applyEdit(groups: Group[], edit: Edit): { groups: Group[] } | { 
 }
 
 export const editPath = (e: Edit): string =>
-  e.kind === 'file' ? e.path.join('/') : (e.kind === 'new' ? [...e.parent, finalName(e.name)] : [...e.path.slice(0, -1), finalName(e.name)]).join('/');
+  e.kind === 'file' || e.kind === 'delete' ? e.path.join('/') : (e.kind === 'new' ? [...e.parent, finalName(e.name)] : [...e.path.slice(0, -1), finalName(e.name)]).join('/');
 
 /** `chore(repo-groups): edit group infra/dagsrv` (§7). */
 export function commitMessage(e: Edit): string {
   if (e.kind === 'file') return `chore(repo-groups): file ${e.repo} in ${e.path.join('/')}`;
+  if (e.kind === 'delete') return `chore(repo-groups): delete ${e.path.length > 1 ? 'subgroup' : 'group'} ${e.path.join('/')}${e.path.length > 1 ? ' (rules moved to the parent group)' : ''}`;
   if (e.kind === 'new') return `chore(repo-groups): add ${e.parent.length ? 'subgroup' : 'group'} ${editPath(e)}${hasPng(e) ? ' with logo' : ''}`;
   const from = e.path.join('/');
   const to = editPath(e);
@@ -131,4 +155,53 @@ export function commitMessage(e: Edit): string {
 export const editLogoPath = (e: Edit): string | null => (hasPng(e) ? logoPath(editPath(e).split('/')) : null);
 
 /** The new logo PNG (base64) of an edit, if it carries one. */
-export const pngOf = (e: Edit): string | null => (e.kind !== 'file' && e.logo && 'png' in e.logo ? e.logo.png : null);
+export const pngOf = (e: Edit): string | null => ((e.kind === 'new' || e.kind === 'edit') && e.logo && 'png' in e.logo ? e.logo.png : null);
+
+/** What deleting a group does, for the confirmation screen. Pure: it applies the delete and compares where repos land. */
+export interface DeleteImpact {
+  /** Subgroups at any depth that go with it. */
+  subgroups: number;
+  /** Match rules in the group and in its subgroups. */
+  rules: number;
+  /** Rules that move up to the parent group (0 for a top-level group). */
+  movedRules: number;
+  /** The group the repositories stay in ('' = a top-level group: they become Ungrouped). */
+  parentKey: string;
+  /** Repositories that sit in the group or below, today. */
+  repos: number;
+  /** Where those repositories land afterwards: group key ('' = Ungrouped) -> how many. */
+  landing: { key: string; count: number }[];
+  /** The group or a subgroup has team tags (access already granted on GitHub is not revoked). */
+  hasTeams: boolean;
+  /** The group or a subgroup has a logo (the file stays in <org>/.github/logos). */
+  hasLogo: boolean;
+}
+
+export function deleteImpact(groups: Group[], path: string[], repos: { name: string; archived?: boolean }[]): DeleteImpact | null {
+  const g = findGroup(groups, path);
+  const after = applyEdit(groups, { kind: 'delete', path });
+  if (!g || 'error' in after) return null;
+  const count = (x: Group): { subs: number; rules: number } => x.groups.reduce((a, c) => { const r = count(c); return { subs: a.subs + 1 + r.subs, rules: a.rules + r.rules }; }, { subs: 0, rules: x.match.length });
+  const { subs, rules } = count(g);
+  const key = path.join('/');
+  const before = placement(groups, repos);
+  const now = placement(after.groups, repos);
+  const landing = new Map<string, number>();
+  let moved = 0;
+  for (const r of repos) {
+    const was = before[r.name];
+    if (was !== key && !was.startsWith(key + '/')) continue;
+    moved++;
+    landing.set(now[r.name], (landing.get(now[r.name]) ?? 0) + 1);
+  }
+  return {
+    subgroups: subs,
+    rules,
+    movedRules: path.length > 1 ? rules : 0,
+    parentKey: path.slice(0, -1).join('/'),
+    repos: moved,
+    landing: [...landing].map(([k, n]) => ({ key: k, count: n })).sort((a, b) => b.count - a.count),
+    hasTeams: any(g, (x) => x.teams.length > 0),
+    hasLogo: any(g, (x) => !!x.logo),
+  };
+}

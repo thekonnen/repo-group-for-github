@@ -7,6 +7,7 @@ import { ago } from '../../core/time';
 import { allRepos, flatRows, pathTitle, searchRows, SORT_KEYS, SORT_LABEL, treeRows, VIRTUALIZE_AFTER, windowRange, type GroupNode, type Row, type SortKey, type TreeModel } from '../../core/tree';
 import type { RepoInfo } from '../../core/types';
 import { GroupAvatar } from '../logos/GroupAvatar';
+import { RootAvatar } from '../logos/RootAvatar';
 import { Icon } from '../../ui/Icon';
 import { useStore } from '../store';
 import { chipTeams } from '../../core/teams';
@@ -247,7 +248,7 @@ function Header({ ctl, s, node, name, isRoot }: { ctl: Controller; s: State; nod
             <span class="rg-pen"><Icon name="pencil" size={12} /></span>
           </button>
         ) : (
-          <GroupAvatar logos={ctl.logos} name={isRoot ? name : node.group.name} label={name} logo={node.group.logo} cls="rg-big-av" root={isRoot} />
+          isRoot ? <RootAvatar org={s.org} name={name} canChange={!team} fetchLink={ctl.fetchLogoLink} /> : <GroupAvatar logos={ctl.logos} name={node.group.name} label={name} logo={node.group.logo} cls="rg-big-av" />
         )}
         <div style="min-width:0"><h1>{name}</h1><p>{isRoot && team ? `Repositories this team can access, in the groups of ${s.org}` : node.group.description}</p>{!isRoot && <TeamChips org={s.org} teams={chips} active={team} onSync={(slug) => void ctl.teams.openSync({ teams: [slug], groupKey: node.key })} />}</div>
       </div>

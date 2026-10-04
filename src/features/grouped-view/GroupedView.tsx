@@ -13,6 +13,8 @@ import { chipTeams } from '../../core/teams';
 import { MembersPanel } from '../members/MembersPanel';
 import { TeamBanners } from '../teams/TeamBanners';
 import { TeamChips } from '../teams/TeamChips';
+import { dragSource, dropTarget } from './dnd';
+import { RepoMenu } from './RepoMenu';
 import type { Controller, State } from './controller';
 
 const ROW_H = 76;
@@ -335,7 +337,7 @@ function Rows({ ctl, s, rows }: { ctl: Controller; s: State; rows: Row[] }) {
   const slice = virtual ? rows.slice(range.start, range.end) : rows;
   return (
     <div class="rg-rows" ref={ref} style={virtual ? { paddingTop: range.start * ROW_H, paddingBottom: Math.max(0, rows.length - range.end) * ROW_H } : undefined}>
-      {slice.map((r) => (r.kind === 'group' ? <GroupRow key={`g:${r.node.key}`} ctl={ctl} row={r} fixed={virtual} /> : <RepoRow key={`r:${r.repo.name}`} org={s.org} row={r} fixed={virtual} label={ctl.teams.repoLabel(r.repo.name)} />))}
+      {slice.map((r) => (r.kind === 'group' ? <GroupRow key={`g:${r.node.key}`} ctl={ctl} row={r} fixed={virtual} /> : <RepoRow key={`r:${r.repo.name}`} ctl={ctl} org={s.org} row={r} fixed={virtual} label={ctl.teams.repoLabel(r.repo.name)} />))}
     </div>
   );
 }
@@ -346,8 +348,9 @@ function GroupRow({ ctl, row, fixed }: { ctl: Controller; row: Extract<Row, { ki
   const chips = cfg && cfg.exists && cfg.config ? chipTeams(cfg.config.groups, node.path) : [];
   const n = node.total;
   const sub = node.subgroups;
+  const drop = ctl.canMove() ? dropTarget(ctl, node.path) : {};
   return (
-    <div class={`rg-row${fixed ? ' rg-fixed' : ''}`} style={{ '--rg-depth': depth } as any}>
+    <div class={`rg-row${fixed ? ' rg-fixed' : ''}`} style={{ '--rg-depth': depth } as any} {...drop}>
       <button type="button" class="rg-chev" aria-expanded={open} aria-label={`${open ? 'Collapse' : 'Expand'} ${displayName(node.group)}`} onClick={() => ctl.toggleGroup(node.key)}><Icon name="chev" /></button>
       <GroupAvatar logos={ctl.logos} name={node.group.name} label={displayName(node.group)} logo={node.group.logo} cls="rg-av" />
       <div class="rg-row-main">
@@ -369,10 +372,12 @@ function GroupRow({ ctl, row, fixed }: { ctl: Controller; row: Extract<Row, { ki
 }
 
 /** `label` is the team's permission on the team page; otherwise the label shows Public or Private. */
-function RepoRow({ org, row, fixed, label }: { org: string; row: Extract<Row, { kind: 'repo' }>; fixed: boolean; label?: string }) {
+function RepoRow({ ctl, org, row, fixed, label }: { ctl: Controller; org: string; row: Extract<Row, { kind: 'repo' }>; fixed: boolean; label?: string }) {
   const r: RepoInfo = row.repo;
+  const movable = ctl.canMove();
+  const current = ctl.model()?.placed.get(r.name) ?? '';
   return (
-    <div class={`rg-row${fixed ? ' rg-fixed' : ''}`} style={{ '--rg-depth': row.depth } as any}>
+    <div class={`rg-row${fixed ? ' rg-fixed' : ''}`} style={{ '--rg-depth': row.depth } as any} {...(movable ? dragSource(r.name) : {})}>
       <span class="rg-chev-sp" />
       <span class="rg-av rg-av-repo"><Icon name="repo" /></span>
       <div class="rg-row-main">
@@ -390,6 +395,7 @@ function RepoRow({ org, row, fixed, label }: { org: string; row: Extract<Row, { 
           <span>Updated {ago(r.pushedAt)}</span>
         </div>
       </div>
+      {movable && <div class="rg-row-menu"><RepoMenu ctl={ctl} repo={r.name} current={current} /></div>}
     </div>
   );
 }

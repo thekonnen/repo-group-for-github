@@ -320,10 +320,10 @@
 /* Group summary (C6): stars, forks, language mix, repos last pushed per week */
 .rg-root .rg-sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .rg-root .rg-summary { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px 40px; padding: 4px 0; }
-.rg-root .rg-lang { flex: 0 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.rg-root .rg-lang { flex: 0 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .rg-root .rg-lang-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--rg-selected); }
 .rg-root .rg-lang-bar span { min-width: 2px; }
-.rg-root .rg-lang-legend { display: flex; flex-wrap: wrap; gap: 2px 12px; margin: 0; padding: 0; list-style: none; font-size: 12px; }
+.rg-root .rg-lang-legend { display: flex; flex-wrap: wrap; white-space: nowrap; gap: 2px 12px; margin: 0; padding: 0; list-style: none; font-size: 12px; }
 .rg-root .rg-lang-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
 .rg-root .rg-lang-note { font-size: 12px; }
 .rg-root .rg-spark { display: flex; flex-direction: column; gap: 4px; color: var(--rg-accent); }

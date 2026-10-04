@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { browser } from 'wxt/browser';
 import { t } from '../../i18n';
-import { GEMINI_KEYS_URL, llmOrigin, type LlmStatus, type Provider } from '../../background/llm';
+import { ANTHROPIC_DEFAULT_MODEL, GEMINI_KEYS_URL, llmOrigin, type LlmStatus, type Provider } from '../../background/llm';
 import { call } from '../../github/client';
 import { toInfo, useAuth } from '../../ext-pages/use-auth';
 import type { OrgEntry, OrgList } from '../../background/orgs';
@@ -77,8 +77,8 @@ function Token({ auth }: { auth: ReturnType<typeof useAuth> }) {
   );
 }
 
-const PROVIDERS = ['gemini', 'custom'] as const;
-const providerName = (p: Provider) => (p === 'gemini' ? t('optionsAiModeGemini') : t('optionsAiModeCustom'));
+const PROVIDERS = ['gemini', 'anthropic', 'custom'] as const;
+const providerName = (p: Provider) => (p === 'gemini' ? t('optionsAiModeGemini') : p === 'anthropic' ? t('optionsAiModeAnthropic') : t('optionsAiModeCustom'));
 
 function Ai() {
   const [status, setStatus] = useState<LlmStatus | null>(null);
@@ -87,6 +87,7 @@ function Ai() {
   // Kept in state, not in the DOM, so switching the radio never loses what was typed or saved for the other provider.
   const [endpoint, setEndpoint] = useState('');
   const [model, setModel] = useState('');
+  const [aModel, setAModel] = useState('');
   const [key, setKey] = useState('');
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
@@ -95,6 +96,7 @@ function Ai() {
     if (first && s.mode) setMode(s.mode);
     setEndpoint((v) => (first || !v ? s.custom?.baseUrl ?? '' : v));
     setModel((v) => (first || !v ? s.custom?.model ?? '' : v));
+    setAModel((v) => (first || !v ? s.anthropic?.model ?? '' : v));
   };
   useEffect(() => {
     call<LlmStatus>({ type: 'llm:status' }).then((s) => load(s, true)).catch((e) => setError(toInfo(e).message));
@@ -113,14 +115,14 @@ function Ai() {
       // The provider's origin is an optional host permission; the browser only asks inside a click.
       const origin = llmOrigin({ mode, baseUrl: endpoint.trim() || status?.custom?.baseUrl });
       if (origin && !(await browser.permissions.request({ origins: [origin] }))) throw new Error(t('optionsAiDenied'));
-      load(await call<LlmStatus>({ type: 'llm:save', config: { mode, apiKey: key, baseUrl: endpoint, model } }));
+      load(await call<LlmStatus>({ type: 'llm:save', config: { mode, apiKey: key, baseUrl: endpoint, model: mode === 'anthropic' ? aModel : model } }));
       setKey('');
       return t('optionsAiSaved');
     });
   const saved = (p: Provider) => !!status?.[p]?.configured;
   const both = saved('gemini') && saved('custom');
   const configured = !!status?.configured;
-  const keyHint = saved(mode) ? t('optionsAiKeySavedFor') : mode === 'gemini' ? t('optionsAiKeyHint') : t('optionsAiKeyMissingCustom');
+  const keyHint = saved(mode) ? t('optionsAiKeySavedFor') : mode === 'gemini' ? t('optionsAiKeyHint') : mode === 'anthropic' ? '' : t('optionsAiKeyMissingCustom');
   const first = status?.mode;
   const second = first ? PROVIDERS.find((p) => p !== first && saved(p)) : undefined;
   return (
@@ -151,6 +153,12 @@ function Ai() {
             <input id="rg-ai-endpoint" name="endpoint" class="rg-ext-input" type="url" placeholder="https://…/v1" value={endpoint} onInput={(e) => setEndpoint((e.currentTarget as HTMLInputElement).value)} spellcheck={false} />
             <label for="rg-ai-model">{t('optionsAiModel')}</label>
             <input id="rg-ai-model" name="model" class="rg-ext-input" type="text" value={model} onInput={(e) => setModel((e.currentTarget as HTMLInputElement).value)} spellcheck={false} />
+          </>
+        )}
+        {mode === 'anthropic' && (
+          <>
+            <label for="rg-ai-amodel">{t('optionsAiModel')}</label>
+            <input id="rg-ai-amodel" name="amodel" class="rg-ext-input" type="text" placeholder={ANTHROPIC_DEFAULT_MODEL} value={aModel} onInput={(e) => setAModel((e.currentTarget as HTMLInputElement).value)} spellcheck={false} />
           </>
         )}
         <label for="rg-ai-key">{t('optionsAiKeyLabel')}</label>

@@ -4,7 +4,8 @@ import type { Edit } from '../core/edit';
 import type { GrantResult } from '../core/grant';
 import type { PendingRepo } from '../core/newrepo';
 import type { TeamAccess } from '../core/teams';
-import type { Config, Permission, RepoInfo } from '../core/types';
+import type { LabelStateResult } from '../background/labels-data';
+import type { Config, LabelTag, MilestoneTag, Permission, RepoInfo } from '../core/types';
 import type { Provider } from '../background/llm';
 
 /** Content script / popup / options -> background. The token never leaves the background. */
@@ -21,6 +22,8 @@ export type Request =
   | { type: 'org:config'; org: string; cachedOnly?: boolean }
   | { type: 'org:progress'; org: string }
   | { type: 'org:details'; org: string; repos: string[] }
+  | { type: 'org:work-items'; org: string; repos: string[]; depth: number }
+  | { type: 'org:parents'; org: string }
   | { type: 'org:edit'; org: string; edit: Edit }
   | { type: 'org:create-dotgithub'; org: string }
   | { type: 'logos:get'; org: string; srcs: string[] } // F7: logo references of the org file -> data URLs
@@ -33,7 +36,11 @@ export type Request =
   | { type: 'org:apply-yaml'; org: string; text: string; baseSha: string | null; changes: number }
   | { type: 'org:teams'; org: string; force?: boolean }
   | { type: 'team:access'; org: string; slugs: string[]; force?: boolean }
+  | { type: 'team:members'; org: string; slugs: string[]; force?: boolean }
   | { type: 'team:grant'; org: string; team: string; repo: string; permission: Permission }
+  | { type: 'labels:read'; org: string; repos: string[] }
+  | { type: 'labels:add'; org: string; repo: string; label: LabelTag }
+  | { type: 'milestone:add'; org: string; repo: string; milestone: MilestoneTag }
   | { type: 'prefs:get'; org: string }
   | { type: 'prefs:set'; org: string; prefs: Partial<OrgPrefs> }
   | { type: 'orgs:list'; force?: boolean }
@@ -61,6 +68,10 @@ export interface GroupSuggestion {
   margin: number;
   /** Best three local candidates. */
   ranking: { key: string; score: number }[];
+  /** One-line why from the AI (source 'llm'). */
+  reason?: string;
+  /** The AI failed, timed out or was not valid: the best keyword candidate, to offer (never applied on its own). */
+  fallbackKey?: string;
   model?: string;
   /** Which provider answered. */
   provider?: Provider;
@@ -80,6 +91,8 @@ export interface OrgPrefs {
   sort?: 'pushed' | 'name' | 'stars' | 'issues';
   /** Options > "Show grouped view by default". Used when the org has no saved view. Default true. */
   groupedByDefault?: boolean;
+  /** Ungrouped repositories already shown on earlier visits (A6). */
+  unassignedSeen?: { names: string[]; at: number };
 }
 
 /** The org's repo-groups.yml, parsed in the background so the page script stays small. */
@@ -120,4 +133,11 @@ export interface TeamsResult {
   customRoles: Record<string, string> | null;
 }
 
-export type { GrantResult, TeamAccess };
+export type { GrantResult, TeamAccess, LabelStateResult };
+
+/** C3: members of the teams that give access to a group. */
+export interface TeamMembersResult {
+  members: Record<string, { login: string; name?: string | null; avatarUrl?: string }[]>;
+  /** Teams whose members could not be read. forbidden: no Members permission. hidden: team not visible to the user. */
+  unreadable: Record<string, 'forbidden' | 'hidden'>;
+}

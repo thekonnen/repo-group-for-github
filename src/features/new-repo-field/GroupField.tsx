@@ -26,7 +26,7 @@ function Sentence({ d, groups }: { d: Destination; groups: Group[] }) {
 }
 
 const METHOD_LABEL = { keywords: 'Keywords', llm: 'AI' } as const;
-const PROVIDER_SHORT = { gemini: 'Gemini', custom: 'custom endpoint' } as const;
+const PROVIDER_SHORT = { gemini: 'Gemini', anthropic: 'Anthropic', custom: 'custom endpoint' } as const;
 
 /** "model · Gemini", plus ", fallback" when the first provider failed. */
 const answeredBy = (sg: Suggestion): string => [sg.model, sg.provider ? PROVIDER_SHORT[sg.provider] : ''].filter(Boolean).join(' · ') + (sg.fallback ? ', fallback' : '');
@@ -160,6 +160,37 @@ function Methods({ ctl }: { ctl: NrController }) {
   );
 }
 
+/**
+ * "Suggested: infra / dagsrv — why", marked AI or keywords, with Accept. An AI answer is already applied when it
+ * arrives (Accept then reads "Applied"); the keyword stand-in shown when the AI fails or times out is only offered.
+ */
+function SuggestionChip({ ctl }: { ctl: NrController }) {
+  const s = useStore(ctl.store);
+  const sg = s.suggestion;
+  if (!s.canWrite || !sg) return null;
+  const key = sg.status === 'found' ? sg.key : sg.status === 'error' ? sg.fallbackKey : null;
+  if (!key || !findGroup(s.groups, key.split('/'))) return null;
+  const ai = sg.status === 'found' && sg.method === 'llm';
+  const why = ai ? sg.reason : sg.status === 'found' ? 'Closest match on title, keywords and rules.' : 'The AI did not answer; this is the closest keyword match.';
+  const applied = s.pickedKey === key;
+  return (
+    <div class="rg-nr-chip" id="rg-nr-suggestion" role="status" data-source={ai ? 'ai' : 'keywords'}>
+      <span class={'rg-chip-src' + (ai ? ' rg-ai' : '')}>{ai && <Icon name="sparkle" size={11} />}{ai ? 'AI' : 'keywords'}</span>
+      <span class="rg-chip-text">
+        Suggested: <b>{pathLabel(key, s.groups)}</b>
+        {why ? <> <span class="rg-chip-why">— {why}</span></> : null}
+      </span>
+      {applied ? (
+        <span class="rg-hint" id="rg-nr-suggestion-applied">Applied</span>
+      ) : (
+        <button type="button" class="rg-pill" id="rg-nr-accept" onClick={() => ctl.acceptSuggestion()}>
+          Accept
+        </button>
+      )}
+    </div>
+  );
+}
+
 export const ExtTag = () => (
   <span class="rg-ext-tag">
     <i />
@@ -224,6 +255,7 @@ export function GroupField({ ctl }: { ctl: NrController }) {
             </span>
           )}
         </div>
+        <SuggestionChip ctl={ctl} />
         <Methods ctl={ctl} />
       </div>
     </div>

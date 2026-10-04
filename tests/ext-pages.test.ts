@@ -212,12 +212,12 @@ describe('options page: AI providers', () => {
 
   it('keeps the saved endpoint and model when switching to Gemini and back', async () => {
     await open();
-    pickRadio(1);
+    pickRadio(2);
     await vi.waitFor(() => expect((find('#rg-ai-endpoint') as HTMLInputElement).value).toBe('https://llm.example.com/v1'));
     expect((find('#rg-ai-model') as HTMLInputElement).value).toBe('my-model');
     pickRadio(0);
     await vi.waitFor(() => expect(find('#rg-ai-endpoint')).toBeNull());
-    pickRadio(1);
+    pickRadio(2);
     await vi.waitFor(() => expect((find('#rg-ai-endpoint') as HTMLInputElement).value).toBe('https://llm.example.com/v1'));
   });
 

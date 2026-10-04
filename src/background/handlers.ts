@@ -1,7 +1,7 @@
 import { APP_SLUG, GITHUB_CLIENT_ID } from '../config';
 import { loadYamlParser, readConfig } from '../core/yaml-read';
 import type { Config } from '../core/types';
-import type { ConfigResult, ErrorInfo, GroupSuggestion, OrgPrefs, SuggestMethod, OrgSnapshot, Progress, Request, Response, TeamsResult } from '../github/messages';
+import type { ConfigResult, ErrorInfo, GroupSuggestion, OrgPrefs, SuggestMethod, OrgSnapshot, Progress, Request, Response, TeamsResult, TeamMembersResult } from '../github/messages';
 import { createClient, explainTokenRejection, GitHubError, type FetchLike } from './api';
 import { describeToken, loadAuth, pollDeviceFlow, publicAuth, saveAuth, signOut, startDeviceFlow } from './auth';
 import type { KV } from './kv';
@@ -17,11 +17,17 @@ import { listOrgs } from './orgs';
 import { ownerListPath, refreshIndex, type IndexStore } from './repo-index';
 import { refreshActionIndex } from './action-index';
 import { loadDetails } from './details';
+import { loadWorkItems, newWorkCache } from './work-items';
+import { loadParents } from './parents';
+import { loadTeamMembers } from './members-data';
 import { cachedTeamSlugs, grantTeam, loadTeamAccess, loadTeams } from './teams-data';
+import { addLabel, addMilestone, readLabelStates } from './labels-data';
 import { teamSlugs } from '../core/teams';
+import { loadProps, usesProps, withProps } from './props-data';
 import { postOrder } from '../core/placement';
 import { suggest } from '../core/suggest';
-import { askLlm, classifyPrompt, clearLlmConfig, configuredProviders, llmConfigured, llmOrigin, llmStatus, LlmError, loadLlmConfig, parseChoice, parseNewGroup, saveLlmConfig, setLlmAuto, setLlmFallback, type Provider } from './llm';
+import { buildTree } from '../core/tree';
+import { askLlm, classifyPrompt, clearLlmConfig, configuredProviders, llmConfigured, llmOrigin, llmStatus, LlmError, loadLlmConfig, parseSuggestion, saveLlmConfig, setLlmAuto, setLlmFallback, type Provider } from './llm';
 
 export interface Deps {
   fetch: FetchLike;
@@ -47,6 +53,7 @@ export function createHandler(deps: Deps) {
   const client = createClient({ fetch: deps.fetch, getToken: async () => (await loadAuth(deps.kv))?.token ?? null });
   const logos = createLogoService({ client, fetch: deps.fetch, cache: deps.logos ?? memoryLogoCache(), origins: deps.origins });
   const readmes = createReadmeService({ client, cache: deps.logos ?? memoryLogoCache() });
+  const workCache = newWorkCache();
   const FLOW_KEY = 'rg:device-flow';
   // The popup closes as soon as the user opens github.com/login/device, so the pending code lives here
   // and the popup resumes polling with it when it is opened again.
@@ -107,22 +114,32 @@ export function createHandler(deps: Deps) {
     for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0;
     return (h >>> 0).toString(36);
   };
-  type CachedAnswer = { key?: string | null; newGroup?: GroupSuggestion['newGroup']; model?: string; provider?: Provider; fallback?: boolean; none?: string };
+  /** The AI gets 4 seconds: GitHub's form is never held back, and the keyword result stands in. */
+  const AI_TIMEOUT_MS = 4000;
+  type CachedAnswer = { key?: string | null; newGroup?: GroupSuggestion['newGroup']; model?: string; provider?: Provider; fallback?: boolean; none?: string; reason?: string };
   const loadCache = async () => (await deps.kv.get<{ k: string; at: number; v: CachedAnswer }[]>(CACHE_KEY)) ?? [];
 
   /** Asks the AI (cached by name + description + groups, one call at a time per question) and fills `out`. */
-  async function askGroups(cfg: Config, org: string, repo: { name: string; description?: string | null }, out: GroupSuggestion, auto: boolean): Promise<GroupSuggestion> {
-    const choices = postOrder(cfg.groups).map((n) => ({ key: n.key, title: n.group.title, description: n.group.description, keywords: n.group.keywords }));
+  async function askGroups(cfg: Config, org: string, repo: { name: string; description?: string | null }, out: GroupSuggestion, auto: boolean, sha: string | null): Promise<GroupSuggestion> {
+    // A few repository names per group (from this user's own confirmed index) show the AI what really lives there.
+    const placed = buildTree(cfg.groups, (await deps.index.load(org))?.repos ?? []);
+    const samples = (key: string) => (placed.byKey.get(key)?.repos ?? []).slice(0, 4).map((r) => r.name);
+    const choices = postOrder(cfg.groups).map((n) => ({ key: n.key, title: n.group.title, description: n.group.description, keywords: n.group.keywords, rules: n.group.match, samples: samples(n.key) }));
+    const keysOf = choices.map((c) => c.key);
+    // Fallback for every way the AI can fail: the best keyword candidate, offered but never applied on its own.
+    const top = out.ranking[0];
+    const failed = (llmError: string): GroupSuggestion => ({ ...out, source: 'uncertain', key: null, llmError, ...(top && top.score > 0 ? { fallbackKey: top.key } : {}) });
     const prompt = classifyPrompt(choices, repo);
     // The cache is per question AND per way of answering: another primary provider, the fallback switched, or another
     // model must not be served an answer from a different setup.
     const cfgNow = await loadLlmConfig(deps.kv);
     const setup = [cfgNow?.primary, cfgNow?.fallback !== false, configuredProviders(cfgNow).join('+'), cfgNow?.custom?.model, cfgNow?.custom?.baseUrl].join('/');
-    const cacheKey = [org, repo.name.toLowerCase(), repo.description ?? '', hash(JSON.stringify(choices)), hash(setup)].join('|');
+    // (name, description, config sha) + the groups' own text (a local draft or a new sha both start clean) + the AI setup.
+    const cacheKey = [org, repo.name.toLowerCase(), repo.description ?? '', sha ?? '', hash(JSON.stringify(choices.map(({ samples: _s, ...c }) => c))), hash(setup)].join('|');
     const answer = (a: CachedAnswer): GroupSuggestion => {
-      if (a.key) return { ...out, source: 'llm', key: a.key, model: a.model, provider: a.provider, fallback: a.fallback };
-      if (a.newGroup) return { ...out, source: 'uncertain', key: null, model: a.model, provider: a.provider, fallback: a.fallback, newGroup: a.newGroup };
-      return { ...out, source: 'uncertain', key: null, model: a.model, provider: a.provider, fallback: a.fallback, llmError: `The AI found no fitting group (it answered: "${a.none ?? ''}").` };
+      if (a.key) return { ...out, source: 'llm', key: a.key, reason: a.reason, model: a.model, provider: a.provider, fallback: a.fallback };
+      if (a.newGroup) return { ...out, source: 'uncertain', key: null, reason: a.reason, model: a.model, provider: a.provider, fallback: a.fallback, newGroup: a.newGroup };
+      return { ...failed(`The AI found no fitting group${a.reason ? `: ${a.reason}` : '.'}`), model: a.model, provider: a.provider, fallback: a.fallback };
     };
 
     const cached = (await loadCache()).find((e) => e.k === cacheKey && clock() - e.at < CACHE_TTL_MS);
@@ -133,25 +150,33 @@ export function createHandler(deps: Deps) {
       const now = clock();
       while (autoRuns.length && now - autoRuns[0] > 60_000) autoRuns.shift();
       if ((pause && pause > now) || autoRuns.length >= AUTO_PER_MINUTE) {
-        return { ...out, source: 'uncertain', key: null, llmError: 'Automatic AI is paused for a few minutes to protect your quota. Click AI to try now.' };
+        return failed('Automatic AI is paused for a few minutes to protect your quota. Click AI to try now.');
       }
     }
     const running = inflight.get(cacheKey);
     if (running) return running;
 
     const run = (async (): Promise<GroupSuggestion> => {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), AI_TIMEOUT_MS);
       try {
         if (auto) autoRuns.push(clock());
-        const { text, model, provider, fallback } = await askLlm({ ...llmDeps(), maxTries: auto ? 2 : undefined }, prompt);
-        const key = parseChoice(text, choices.map((c) => c.key));
-        const a: CachedAnswer = key ? { key, model, provider, fallback } : { model, provider, fallback, newGroup: parseNewGroup(text) ?? undefined, none: parseNewGroup(text) ? undefined : text.replace(/\s+/g, ' ').slice(0, 80) };
+        const { text, model, provider, fallback } = await askLlm({ ...llmDeps(), maxTries: auto ? 2 : undefined, signal: ctl.signal }, prompt);
+        const parsed = parseSuggestion(text, keysOf);
+        // Anything that is not a valid answer (not JSON, a group that does not exist, ...) is rejected, never guessed at.
+        if (!parsed) return failed('The AI answered in a format the extension does not accept, so it was ignored.');
+        const a: CachedAnswer =
+          parsed.kind === 'group' ? { key: parsed.key, reason: parsed.reason, model, provider, fallback } : parsed.kind === 'new' ? { model, provider, fallback, reason: parsed.reason, newGroup: parsed.proposal } : { model, provider, fallback, reason: parsed.reason, none: '' };
         const list = (await loadCache()).filter((e) => e.k !== cacheKey && clock() - e.at < CACHE_TTL_MS);
         await deps.kv.set(CACHE_KEY, [...list, { k: cacheKey, at: clock(), v: a }].slice(-CACHE_MAX));
         await deps.kv.remove(PAUSE_KEY); // it worked: automatic runs may resume
         return answer(a);
       } catch (e) {
+        if (ctl.signal.aborted) return failed(`The AI did not answer within ${AI_TIMEOUT_MS / 1000} seconds. Showing the keyword result instead.`);
         if (auto) await deps.kv.set(PAUSE_KEY, clock() + PAUSE_MS); // quota or outage: stop asking on our own for a while
-        return { ...out, source: 'uncertain', key: null, llmError: e instanceof Error ? e.message : String(e) }; // an explicit AI request that fails must not look answered
+        return failed(e instanceof Error ? e.message : String(e)); // an explicit AI request that fails must not look answered
+      } finally {
+        clearTimeout(timer);
       }
     })();
     inflight.set(cacheKey, run);
@@ -174,7 +199,21 @@ export function createHandler(deps: Deps) {
     const out: GroupSuggestion = { source: s.source, key: s.key, rule: s.rule, score: s.score, margin: s.margin, ranking: s.ranking.slice(0, 3) };
     if (method === 'keywords') return out;
     if (method !== 'llm' && (s.source !== 'uncertain' || !llmConfigured(await loadLlmConfig(deps.kv)))) return out;
-    return askGroups(cfg, org, repo, out, auto);
+    return askGroups(cfg, org, repo, out, auto, file.sha);
+  }
+
+  /** Custom property values for rules like `prop:client=Acme`. Only orgs whose file has such a rule pay for it; personal accounts skip. */
+  async function joinProps(req: Request, out: any): Promise<any> {
+    if ((req.type !== 'org:cached' && req.type !== 'org:refresh') || !out || !Array.isArray(out.repos)) return out;
+    await fileLoads.get(req.org)?.catch(() => undefined); // the page reads the file in parallel with the index
+    if (!usesProps((await deps.kv.get<OrgFile>(`rg:file:${req.org}`))?.text) || (await isSelf(req.org))) return out;
+    const r = await loadProps(client, deps.kv, req.org, {
+      cacheOnly: req.type === 'org:cached',
+      force: req.type === 'org:refresh' && req.force,
+      now: deps.now,
+      ttlMs: (await loadSettings(deps.kv)).refreshMinutes * 60_000,
+    });
+    return { ...out, repos: withProps(out.repos, r.props), ...(out.meta && r.unavailable ? { meta: { ...out.meta, propsUnavailable: true } } : {}) };
   }
 
   async function handle(req: Request): Promise<unknown> {
@@ -236,6 +275,14 @@ export function createHandler(deps: Deps) {
       }
       case 'org:details':
         return loadDetails(client, deps.kv, req.org, req.repos);
+      case 'org:work-items': {
+        // Only repos of the user's own index: a name the user cannot open is never queried (F15 §5).
+        const idx = await deps.index.load(req.org);
+        const known = new Set((idx?.repos ?? []).map((r) => r.name));
+        return loadWorkItems(client, workCache, req.org, req.repos.filter((n) => known.has(n)), req.depth, { now: deps.now });
+      }
+      case 'org:parents':
+        return loadParents(client, deps.kv, deps.index, req.org);
       case 'org:progress':
         return progress.get(req.org) ?? null;
       case 'org:config': {
@@ -282,8 +329,17 @@ export function createHandler(deps: Deps) {
       case 'team:access':
         if (await isSelf(req.org)) return {};
         return loadTeamAccess(client, deps.kv, req.org, req.slugs, { force: req.force, now: deps.now });
+      case 'team:members':
+        if (await isSelf(req.org)) return { members: {}, unreadable: {} } satisfies TeamMembersResult;
+        return loadTeamMembers(client, deps.kv, req.org, req.slugs, { force: req.force, now: deps.now });
       case 'team:grant':
         return grantTeam(client, deps.kv, req.org, req.team, req.repo, req.permission);
+      case 'labels:read':
+        return readLabelStates(client, req.org, req.repos);
+      case 'labels:add':
+        return addLabel(client, req.org, req.repo, req.label);
+      case 'milestone:add':
+        return addMilestone(client, req.org, req.repo, req.milestone);
       case 'yaml:validate':
         return checkYaml(req.org, req.text, await cachedTeamSlugs(deps.kv, req.org));
       case 'org:apply-yaml':
@@ -355,7 +411,7 @@ export function createHandler(deps: Deps) {
 
   return async (req: Request): Promise<Response> => {
     try {
-      return { ok: true, data: await handle(req) };
+      return { ok: true, data: await joinProps(req, await handle(req)) };
     } catch (e) {
       return { ok: false, error: toErrorInfo(e) };
     }

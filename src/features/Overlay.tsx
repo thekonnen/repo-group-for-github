@@ -2,6 +2,8 @@ import { useStore } from './store';
 import type { Controller } from './grouped-view/controller';
 import { GroupDrawer } from './group-drawer/GroupDrawer';
 import { YamlDrawer } from './yaml-editor/YamlDrawer';
+import { SyncLabelsDrawer } from './labels/SyncLabelsDrawer';
+import { MoveDialog } from './grouped-view/MoveDialog';
 import { SyncDrawer } from './teams/SyncDrawer';
 
 /** Drawers and the toast live in their own root on <body>, away from GitHub's layout. */
@@ -11,7 +13,9 @@ export function Overlay({ ctl }: { ctl: Controller }) {
     <>
       <GroupDrawer ctl={ctl} />
       <SyncDrawer ctl={ctl} />
+      <SyncLabelsDrawer ctl={ctl} />
       <YamlDrawer ctl={ctl} />
+      {s.pendingMove && <MoveDialog ctl={ctl} move={s.pendingMove} />}
       {s.toast && (
         <div class={`rg-toast${s.toast.kind === 'error' ? ' rg-err' : ''}`} role="status">
           <span>{renderCode(s.toast.text)}</span>

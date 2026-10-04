@@ -1,4 +1,5 @@
-import { flatList, placement } from './placement';
+import type { RuleTarget } from './glob';
+import { flatList, placement, sharedPlacement } from './placement';
 import { labelOf } from './permissions';
 import type { Group, RepoInfo } from './types';
 
@@ -20,7 +21,7 @@ const labelsStr = (g: Group) => (g.labels ?? []).map((l) => `${l.name}:${l.color
 const milestonesStr = (g: Group) => (g.milestones ?? []).map((m) => `${m.title}:${m.due_on ?? ''}:${m.description ?? ''}`).join('|');
 const teamsStr = (g: Group) => g.teams.map((t) => `${t.slug}:${t.permission}`).join(', ');
 
-export function diffTrees(a: Group[], b: Group[], repos: Pick<RepoInfo, 'name'>[]): DiffResult {
+export function diffTrees(a: Group[], b: Group[], repos: RuleTarget[]): DiffResult {
   const ga = byKey(a);
   const gb = byKey(b);
   const pa = placement(a, repos);
@@ -39,6 +40,8 @@ export function diffTrees(a: Group[], b: Group[], repos: Pick<RepoInfo, 'name'>[
       items.push({ k: '~', cls: 'chg', text: `Logo of ${k}`, to: nb.logo || 'letter' });
     if (na.match.join('|') !== nb.match.join('|'))
       items.push({ k: '~', cls: 'chg', text: `Rules of ${k}`, to: nb.match.join(', ') || '(none)' });
+    if ((na.shared ?? []).join('|') !== (nb.shared ?? []).join('|'))
+      items.push({ k: '~', cls: 'chg', text: `Shared rules of ${k}`, to: (nb.shared ?? []).join(', ') || '(none)' });
     if (teamsStr(na) !== teamsStr(nb))
       items.push({
         k: '~',
@@ -54,6 +57,16 @@ export function diffTrees(a: Group[], b: Group[], repos: Pick<RepoInfo, 'name'>[
   for (const r of repos) {
     if (pa[r.name] !== pb[r.name])
       items.push({ k: '→', cls: 'mov', text: r.name, to: `${pa[r.name] || 'ungrouped'} → ${pb[r.name] || 'ungrouped'}` });
+  }
+  // A3: repositories whose extra memberships changed (only computed when either file uses `shared`).
+  if ([...ga.values(), ...gb.values()].some((g) => g.shared?.length)) {
+    const sa = sharedPlacement(a, repos).secondary;
+    const sb = sharedPlacement(b, repos).secondary;
+    for (const r of repos) {
+      const x = (sa.get(r.name) ?? []).join(', ');
+      const y = (sb.get(r.name) ?? []).join(', ');
+      if (x !== y) items.push({ k: '~', cls: 'chg', text: `${r.name} also in`, to: y || '(none)' });
+    }
   }
   const ungrouped = repos.filter((r) => !pb[r.name]).length;
   return { items, groups: gb.size, ungrouped };

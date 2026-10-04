@@ -10,4 +10,7 @@ dist/
 # Local agent worktrees
 .claude/worktrees/
 
+# QA testing artifacts (not committed)
+qa/
+
 node_modules

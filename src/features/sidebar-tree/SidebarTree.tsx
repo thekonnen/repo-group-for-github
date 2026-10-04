@@ -3,8 +3,10 @@ import { sideItems } from '../../core/tree';
 import { Icon } from '../../ui/Icon';
 import { useLogoSrc } from '../logos/logo-store';
 import type { Controller } from '../grouped-view/controller';
+import { dropTarget } from '../grouped-view/dnd';
 import { useStore } from '../store';
 import { SidebarTeams } from '../teams/SidebarTeams';
+import { UnassignedBadge } from '../grouped-view/UnassignedNotice';
 
 /** Groups tree below GitHub's own filter list (F2). */
 export function SidebarTree({ ctl }: { ctl: Controller }) {
@@ -12,12 +14,14 @@ export function SidebarTree({ ctl }: { ctl: Controller }) {
   const model = ctl.model();
   if (!model || s.phase !== 'ready' || !model.root.children.length) return null;
   const cur = s.path.join('/');
+  const movable = ctl.canMove();
   return (
     <div class="rg-side">
       <div class="rg-divider" />
       <div class="rg-side-head">
         <span>Groups</span>
         <span class="rg-ext-tag"><i />Repository Group</span>
+        {!ctl.teams.team && s.config?.exists && !s.config.error && <UnassignedBadge ctl={ctl} count={model.root.repos.length} />}
       </div>
       <ul class="rg-nav-list">
         {sideItems(model).map((it) => (
@@ -28,6 +32,7 @@ export function SidebarTree({ ctl }: { ctl: Controller }) {
               style={{ paddingLeft: 8 + it.depth * 16 }}
               aria-current={s.view === 'grouped' && cur === it.key ? 'true' : undefined}
               onClick={() => ctl.go(it.key ? it.key.split('/') : [])}
+              {...(movable ? dropTarget(ctl, it.key ? it.key.split('/') : []) : {})}
             >
               <SideIcon ctl={ctl} folder={!!it.key} logo={it.logo} />
               <span>{it.name}</span>

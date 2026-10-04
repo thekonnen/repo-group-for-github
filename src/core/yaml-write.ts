@@ -14,7 +14,7 @@ export const milestoneToYaml = (m: MilestoneTag): string =>
   `{ title: ${q(m.title)}${m.due_on ? `, due_on: ${q(m.due_on)}` : ''}${m.description ? `, description: ${q(m.description)}` : ''} }`;
 
 /**
- * Canonical writer: order name, title, description, keywords, logo, teams, labels, milestones, match, groups; 2-space indent;
+ * Canonical writer: order name, title, description, keywords, logo, teams, labels, milestones, match, shared, groups; 2-space indent;
  * flow-style lists; leading comment. `personal` omits index and teams (My groups).
  */
 export function writeConfig(cfg: Config, header: string, opts: { personal?: boolean } = {}): string {
@@ -32,6 +32,7 @@ export function writeConfig(cfg: Config, header: string, opts: { personal?: bool
     if (!opts.personal && g.labels?.length) lines.push(`${ind}  labels: [${g.labels.map(labelToYaml).join(', ')}]`);
     if (!opts.personal && g.milestones?.length) lines.push(`${ind}  milestones: [${g.milestones.map(milestoneToYaml).join(', ')}]`);
     if (g.match.length) lines.push(`${ind}  match: [${g.match.map(q).join(', ')}]`);
+    if (g.shared?.length) lines.push(`${ind}  shared: [${g.shared.map(q).join(', ')}]`);
     if (g.groups.length) {
       lines.push(`${ind}  groups:`);
       g.groups.forEach((c) => emit(c, ind + '    '));

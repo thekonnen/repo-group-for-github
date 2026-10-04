@@ -168,3 +168,19 @@ describe('background: read and add (only GET and POST)', () => {
     expect(new Set(f.calls.map((c) => c.method))).toEqual(new Set(['GET', 'POST']));
   });
 });
+
+describe('label color palette', () => {
+  it('offers only valid, unique colors starting with GitHub grey', async () => {
+    const { LABEL_PALETTE, normColor, DEFAULT_LABEL_COLOR } = await import('../src/core/labels');
+    expect(LABEL_PALETTE[0]).toBe(DEFAULT_LABEL_COLOR);
+    expect(LABEL_PALETTE.every((c) => normColor(c) === c)).toBe(true);
+    expect(new Set(LABEL_PALETTE).size).toBe(LABEL_PALETTE.length);
+  });
+  it('picks readable text for the pill', async () => {
+    const { labelTextColor } = await import('../src/core/labels');
+    expect(labelTextColor('ededed')).toBe('#1f2328');
+    expect(labelTextColor('fbca04')).toBe('#1f2328');
+    expect(labelTextColor('b60205')).toBe('#ffffff');
+    expect(labelTextColor('nope')).toBe('#1f2328');
+  });
+});

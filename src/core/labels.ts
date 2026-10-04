@@ -10,6 +10,19 @@ export function normColor(c: string): string | null {
   return /^[0-9a-f]{6}$/.test(v) ? v : null;
 }
 
+/** Colors offered in the label color picker: GitHub's own default label colors, with the grey first. */
+export const LABEL_PALETTE: readonly string[] = [
+  DEFAULT_LABEL_COLOR, 'd73a4a', 'b60205', 'd93f0b', 'fbca04', 'e4e669', '0e8a16', '008672',
+  'a2eeef', '1d76db', '0075ca', '5319e7', '7057ff', 'd876e3', 'f9d0c4', 'c5def5',
+];
+
+/** Text color for a label pill on `hex`: black on light backgrounds, white on dark ones (perceived luminance). */
+export function labelTextColor(hex: string): '#1f2328' | '#ffffff' {
+  const c = normColor(hex) ?? DEFAULT_LABEL_COLOR;
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(c.slice(i, i + 2), 16));
+  return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? '#1f2328' : '#ffffff';
+}
+
 /** `YYYY-MM-DD` or an ISO 8601 timestamp; returns the timestamp the milestones API wants, or null when invalid. */
 export function dueOn(v: string): string | null {
   const t = v.trim();

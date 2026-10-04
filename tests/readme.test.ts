@@ -276,6 +276,20 @@ describe('About tab on the group page', () => {
     await open('#infra', configWith('readmes/missing.md'));
     await vi.waitFor(() => expect($('.rg-about')!.textContent).toContain('This README could not be loaded'));
   });
+  it('tabs can be reordered with Alt+Arrow and the order is saved per org, then reset', async () => {
+    const { call } = await open('#infra', configWith('hello'));
+    const names = () => $$('.rg-tabs .rg-tab').map((t) => t.textContent!.trim());
+    expect(names()[0]).toBe('About');
+    const about = $('.rg-tabs .rg-tab[data-tab="about"]') as HTMLElement;
+    about.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', altKey: true, bubbles: true, cancelable: true }));
+    await vi.waitFor(() => expect(names()[1]).toBe('About'));
+    expect(names()[0]).toContain('Groups and repositories');
+    const saved = call.mock.calls.map((c: any) => c[0]).filter((m: any) => m.type === 'prefs:set' && m.prefs.tabOrder);
+    expect(saved.at(-1).prefs.tabOrder.slice(0, 2)).toEqual(['items', 'about']);
+    (Array.from(document.querySelectorAll('.rg-tabs-reset'))[0] as HTMLElement).click();
+    await vi.waitFor(() => expect(names()[0]).toBe('About'));
+    expect(document.querySelector('.rg-tabs-reset')).toBeNull();
+  });
   it('groups without a README, and the root, open on the list as before', async () => {
     await open('#infra', configWith(undefined));
     expect($$('.rg-tabs .rg-tab').map((t) => t.textContent!.trim()).some((t) => t === 'About')).toBe(false);

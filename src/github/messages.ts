@@ -89,6 +89,8 @@ export interface OrgPrefs {
   expanded: string[];
   /** Order of the "All repositories" tab. */
   sort?: 'pushed' | 'name' | 'stars' | 'issues';
+  /** Order of the group page tabs, by tab id. Ids that are not visible are skipped. */
+  tabOrder?: string[];
   /** Options > "Show grouped view by default". Used when the org has no saved view. Default true. */
   groupedByDefault?: boolean;
   /** Ungrouped repositories already shown on earlier visits (A6). */

@@ -47,6 +47,8 @@ export interface State {
   /** `auto` = the default of the group: About when it has a README, otherwise Groups and repositories. */
   tab: 'auto' | 'about' | 'items' | 'ungrouped' | 'rules' | 'all' | 'work' | 'members';
   sort: SortKey;
+  /** Saved order of the group tabs; empty = the built-in order. */
+  tabOrder: string[];
   query: string;
   access: Access | null;
   /** Separate open issue / PR counts (F14), loaded lazily for small groups. */
@@ -151,6 +153,7 @@ export function createController(org: string, env: Env) {
     expandedTouched: false,
     tab: 'auto',
     sort: 'pushed',
+    tabOrder: [],
     query: '',
     access: null,
     details: {},
@@ -272,6 +275,7 @@ export function createController(org: string, env: Env) {
     const prefs = await env.call<Partial<OrgPrefs>>({ type: 'prefs:get', org: prefsOrg }).catch(() => ({}) as Partial<OrgPrefs>);
     if (prefs.expanded) store.set({ expanded: new Set(prefs.expanded), expandedTouched: true });
     if (prefs.sort && SORT_KEYS.includes(prefs.sort)) store.set({ sort: prefs.sort });
+    if (Array.isArray(prefs.tabOrder)) store.set({ tabOrder: prefs.tabOrder.filter((x) => typeof x === 'string') });
     if (prefs.unassignedSeen) store.set({ seen: prefs.unassignedSeen });
     if (!hasGithubFilter(env.location.search)) {
       // A saved view wins; otherwise Options > "Show grouped view by default" (default on) decides.
@@ -680,6 +684,10 @@ export function createController(org: string, env: Env) {
     setTab: (tab: State['tab']) => store.set({ tab, query: '', selected: [] }),
     /** C1: open issues and PRs of these repos (names from the index), `depth` items per repo and kind. */
     loadWork: (repos: string[], depth: number) => env.call<import('../../background/work-items').WorkResult>({ type: 'org:work-items', org, repos, depth }),
+    setTabOrder(tabOrder: string[]) {
+      store.set({ tabOrder });
+      savePrefs({ tabOrder });
+    },
     setSort(sort: SortKey) {
       store.set({ sort });
       savePrefs({ sort });

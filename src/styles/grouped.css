@@ -63,6 +63,10 @@
 .rg-root .rg-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--rg-border); overflow-x: auto; }
 .rg-root .rg-tab { border: 0; background: transparent; padding: 8px 12px 10px; cursor: pointer; color: var(--rg-muted); position: relative; white-space: nowrap; font-size: 14px; }
 .rg-root .rg-tab:hover { color: var(--rg-fg); }
+.rg-root .rg-tab[draggable="true"] { cursor: grab; }
+.rg-root .rg-tab.rg-tab-drop { box-shadow: inset 3px 0 0 0 var(--rg-accent); }
+.rg-root .rg-tabs-reset { margin-left: auto; align-self: center; flex: none; border: 0; background: transparent; padding: 0 4px; color: var(--rg-accent); font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.rg-root .rg-tabs-reset:hover { text-decoration: underline; }
 .rg-root .rg-tab[aria-selected="true"] { color: var(--rg-fg); font-weight: 600; }
 .rg-root .rg-tab[aria-selected="true"]::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 2px; border-radius: 6px; background: var(--rg-underline); }
 .rg-root .rg-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }

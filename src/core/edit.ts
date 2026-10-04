@@ -12,8 +12,8 @@ export type Edit =
   | { kind: 'file'; path: string[]; repo: string }
   /** Removes a group and all its subgroups from the file. No repository is touched: they fall back to the other rules. */
   | { kind: 'delete'; path: string[] }
-  /** A4: moves a repository to a group ([] = Ungrouped). Exact names only: it never edits patterns. */
-  | { kind: 'move'; repo: string; to: string[] };
+  /** A4: moves repositories to a group ([] = Ungrouped), in one commit. Exact names only: it never edits patterns. */
+  | { kind: 'move'; repos: string[]; to: string[] };
 
 /** A logo change (F7): a new 192x192 PNG (base64, committed with the YAML in one commit) or "use the letter". */
 export type LogoChange = { png: string } | { remove: true };
@@ -129,6 +129,40 @@ export function moveRepo(groups: Group[], repo: string, to: string[]): MoveResul
   return out;
 }
 
+export interface MovePlan {
+  groups: Group[];
+  /** True when at least one repository needs a change in the file. */
+  changed: boolean;
+  /** Repositories that change (these go into the commit). */
+  moved: string[];
+  /** Repositories already placed at the destination: skipped. */
+  already: string[];
+  /** Repositories moved to Ungrouped that a pattern still places in a group. */
+  stillCaught: { repo: string; key: string; rule: string }[];
+}
+
+/** A4: `moveRepo` for several repositories, folded into one tree (one commit). Never mutates the input. */
+export function moveRepos(groups: Group[], repos: string[], to: string[]): MovePlan | { error: string } {
+  const dest = to.join('/');
+  const names = [...new Set(repos)];
+  const now = placement(groups, names.map((name) => ({ name })));
+  const out: MovePlan = { groups: clone(groups), changed: false, moved: [], already: [], stillCaught: [] };
+  if (to.length && !findGroup(groups, to)) return { error: `The group "${dest}" no longer exists. Reload the page and try again.` };
+  for (const repo of names) {
+    if (now[repo] === dest) {
+      out.already.push(repo);
+      continue;
+    }
+    const r = moveRepo(out.groups, repo, to);
+    if ('error' in r) return r;
+    out.groups = r.groups;
+    if (r.changed) out.moved.push(repo);
+    if (r.stillCaught) out.stillCaught.push({ repo, ...r.stillCaught });
+  }
+  out.changed = out.moved.length > 0;
+  return out;
+}
+
 /** Applies an edit to a tree (never mutates the input). Logo, teams and subgroups of an edited group are kept. */
 export function applyEdit(groups: Group[], edit: Edit): { groups: Group[] } | { error: string } {
   const next = clone(groups);
@@ -148,7 +182,7 @@ export function applyEdit(groups: Group[], edit: Edit): { groups: Group[] } | { 
     return { groups: next };
   }
   if (edit.kind === 'move') {
-    const r = moveRepo(groups, edit.repo, edit.to);
+    const r = moveRepos(groups, edit.repos, edit.to);
     return 'error' in r ? r : { groups: r.groups };
   }
   if (edit.kind === 'file') {
@@ -193,7 +227,7 @@ export const editPath = (e: Edit): string =>
 /** `chore(repo-groups): edit group infra/dagsrv` (§7). */
 export function commitMessage(e: Edit): string {
   if (e.kind === 'file') return `chore(repo-groups): file ${e.repo} in ${e.path.join('/')}`;
-  if (e.kind === 'move') return `chore(repo-groups): move ${e.repo} to ${e.to.length ? e.to.join('/') : 'ungrouped'}`;
+  if (e.kind === 'move') return `chore(repo-groups): move ${e.repos.length === 1 ? e.repos[0] : `${e.repos.length} repositories`} to ${e.to.length ? e.to.join('/') : 'ungrouped'}`;
   if (e.kind === 'delete') return `chore(repo-groups): delete ${e.path.length > 1 ? 'subgroup' : 'group'} ${e.path.join('/')}${e.path.length > 1 ? ' (rules moved to the parent group)' : ''}`;
   if (e.kind === 'new') return `chore(repo-groups): add ${e.parent.length ? 'subgroup' : 'group'} ${editPath(e)}${hasPng(e) ? ' with logo' : ''}`;
   const from = e.path.join('/');

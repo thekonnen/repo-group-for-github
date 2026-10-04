@@ -14,7 +14,7 @@ import { MembersPanel } from '../members/MembersPanel';
 import { TeamBanners } from '../teams/TeamBanners';
 import { TeamChips } from '../teams/TeamChips';
 import { dragSource, dropTarget } from './dnd';
-import { RepoMenu } from './RepoMenu';
+import { RepoMenu, SelectionBar } from './RepoMenu';
 import type { Controller, State } from './controller';
 
 const ROW_H = 76;
@@ -109,6 +109,7 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
     );
   }
 
+  const repoNames = rows.flatMap((r) => (r.kind === 'repo' ? [r.repo.name] : []));
   return (
     <div class="rg-view">
       <IndexStatus ctl={ctl} s={s} model={model} />
@@ -160,8 +161,9 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
       ) : (
         <>
           <Toolbar ctl={ctl} s={s} placeholder={`Search in ${name}`} />
+          {ctl.canMove() && <SelectionBar ctl={ctl} selected={s.selected} />}
           <div class="rg-box">
-            <div class="rg-box-head"><span>{head}</span>{tab === 'all' ? <SortSelect ctl={ctl} value={s.sort} /> : <span class="rg-muted">Sort: Last pushed</span>}</div>
+            <div class="rg-box-head"><span class="rg-box-title">{ctl.canMove() && repoNames.length > 0 && <input type="checkbox" class="rg-check" aria-label="Select all repositories in this list" checked={repoNames.every((n) => s.selected.includes(n))} onChange={(e) => ((e.target as HTMLInputElement).checked ? ctl.selectAll(repoNames) : ctl.clearSelection())} />}{head}</span>{tab === 'all' ? <SortSelect ctl={ctl} value={s.sort} /> : <span class="rg-muted">Sort: Last pushed</span>}</div>
             {rows.length ? <Rows ctl={ctl} s={s} rows={rows} /> : <Empty tab={tab} query={s.query} isRoot={isRoot} team={team} />}
           </div>
         </>
@@ -337,7 +339,7 @@ function Rows({ ctl, s, rows }: { ctl: Controller; s: State; rows: Row[] }) {
   const slice = virtual ? rows.slice(range.start, range.end) : rows;
   return (
     <div class="rg-rows" ref={ref} style={virtual ? { paddingTop: range.start * ROW_H, paddingBottom: Math.max(0, rows.length - range.end) * ROW_H } : undefined}>
-      {slice.map((r) => (r.kind === 'group' ? <GroupRow key={`g:${r.node.key}`} ctl={ctl} row={r} fixed={virtual} /> : <RepoRow key={`r:${r.repo.name}`} ctl={ctl} org={s.org} row={r} fixed={virtual} label={ctl.teams.repoLabel(r.repo.name)} />))}
+      {slice.map((r) => (r.kind === 'group' ? <GroupRow key={`g:${r.node.key}`} ctl={ctl} row={r} fixed={virtual} /> : <RepoRow key={`r:${r.repo.name}`} ctl={ctl} org={s.org} row={r} selected={s.selected.includes(r.repo.name)} fixed={virtual} label={ctl.teams.repoLabel(r.repo.name)} />))}
     </div>
   );
 }
@@ -372,12 +374,12 @@ function GroupRow({ ctl, row, fixed }: { ctl: Controller; row: Extract<Row, { ki
 }
 
 /** `label` is the team's permission on the team page; otherwise the label shows Public or Private. */
-function RepoRow({ ctl, org, row, fixed, label }: { ctl: Controller; org: string; row: Extract<Row, { kind: 'repo' }>; fixed: boolean; label?: string }) {
+function RepoRow({ ctl, org, row, fixed, label, selected }: { ctl: Controller; org: string; row: Extract<Row, { kind: 'repo' }>; fixed: boolean; label?: string; selected: boolean }) {
   const r: RepoInfo = row.repo;
   const movable = ctl.canMove();
   const current = ctl.model()?.placed.get(r.name) ?? '';
   return (
-    <div class={`rg-row${fixed ? ' rg-fixed' : ''}`} style={{ '--rg-depth': row.depth } as any} {...(movable ? dragSource(r.name) : {})}>
+    <div class={`rg-row${fixed ? ' rg-fixed' : ''}`} style={{ '--rg-depth': row.depth } as any} data-selected={selected ? 'true' : undefined}>
       <span class="rg-chev-sp" />
       <span class="rg-av rg-av-repo"><Icon name="repo" /></span>
       <div class="rg-row-main">
@@ -395,7 +397,13 @@ function RepoRow({ ctl, org, row, fixed, label }: { ctl: Controller; org: string
           <span>Updated {ago(r.pushedAt)}</span>
         </div>
       </div>
-      {movable && <div class="rg-row-menu"><RepoMenu ctl={ctl} repo={r.name} current={current} /></div>}
+      {movable && (
+        <div class="rg-row-menu">
+          <input type="checkbox" class="rg-check" aria-label={`Select ${r.name}`} checked={selected} onChange={() => ctl.toggleSelect(r.name)} />
+          <span class="rg-grip" role="img" aria-label={`Drag ${r.name} to a group`} title="Drag to a group" {...dragSource(() => ctl.store.get().selected, r.name)}><Icon name="grip" /></span>
+          <RepoMenu ctl={ctl} repo={r.name} current={current} />
+        </div>
+      )}
     </div>
   );
 }

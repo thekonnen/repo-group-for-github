@@ -16,6 +16,7 @@ import { listOrgs } from './orgs';
 import { ownerListPath, refreshIndex, type IndexStore } from './repo-index';
 import { refreshActionIndex } from './action-index';
 import { loadDetails } from './details';
+import { loadParents } from './parents';
 import { cachedTeamSlugs, grantTeam, loadTeamAccess, loadTeams } from './teams-data';
 import { teamSlugs } from '../core/teams';
 import { postOrder } from '../core/placement';
@@ -234,6 +235,8 @@ export function createHandler(deps: Deps) {
       }
       case 'org:details':
         return loadDetails(client, deps.kv, req.org, req.repos);
+      case 'org:parents':
+        return loadParents(client, deps.kv, deps.index, req.org);
       case 'org:progress':
         return progress.get(req.org) ?? null;
       case 'org:config': {

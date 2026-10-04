@@ -65,6 +65,8 @@ function SignInEmpty({ ctl, s }: { ctl: Controller; s: State }) {
   );
 }
 
+const tab0 = (s: State, isRoot: boolean) => (s.tab === 'ungrouped' && !isRoot ? 'items' : s.tab);
+
 function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel }) {
   const node = (s.path.length && model.byKey.get(s.path.join('/'))) || model.root;
   const isRoot = node === model.root;
@@ -72,6 +74,7 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
   const name = isRoot ? ctl.teams.label ?? s.org : displayName(node.group);
   const ungrouped = model.root.repos;
   const cfg = s.config;
+  const forkProps = !team && s.access?.canWriteOrg && tab0(s, isRoot) === 'ungrouped' ? ctl.forkProposals() : [];
 
   useSlashFocus();
   const scope = node.total <= DETAILS_MAX_REPOS ? allRepos(node) : [];
@@ -93,7 +96,7 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
     head = plural(rows.length, 'repository', 'repositories');
   } else if (tab === 'ungrouped') {
     rows = ungrouped.map((repo) => ({ kind: 'repo' as const, repo, depth: 0 }));
-    head = <>{plural(ungrouped.length, 'ungrouped repository', 'ungrouped repositories')} <span class="rg-muted">· no group rule matches these yet</span></>;
+    head = <>{plural(ungrouped.length, 'ungrouped repository', 'ungrouped repositories')} <span class="rg-muted">· no group rule matches these yet</span>{forkProps.length > 0 && <button type="button" class="rg-btn rg-btn-sm" style="margin-left:12px" title={`Proposes ${plural(forkProps.length, 'group', 'groups')} with the rule fork-of:<owner>. You review it before anything is saved.`} onClick={() => ctl.openForkDraft()}><Icon name="fork" />Auto-group forks ({forkProps.length})</button>}</>;
   } else {
     rows = treeRows(node, s.expanded);
     const kids = node.children.length;

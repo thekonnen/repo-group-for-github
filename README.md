@@ -36,6 +36,10 @@ Permissions: Metadata (read), Contents (read & write), Issues (read), Pull reque
 
 Open `github.com/<you>?tab=repositories` while signed in as that user: the grouped view replaces the list (your own profile only). Groups live in `<you>/.github/repo-groups.yml`, which the extension offers to create as a private repository the first time. Teams do not exist on personal accounts, so the Teams field is hidden. The GitHub App must be installed on your account with access to all repositories to see private ones.
 
+## Forks grouped by upstream (`fork-of:`)
+
+Forks of one project often sit loose with generic names. A match rule `fork-of:<owner>` catches every fork whose upstream is owned by `<owner>` (`fork-of:macfuse`); `fork-of:<owner>/<repo>` catches forks of one upstream repository. Without `*` it ranks like an exact name, with `*` like a pattern (§5.3). The upstream is read lazily with GraphQL (forks only, 50 per query), cached, and stored in the local index. In the **Ungrouped** tab, **Auto-group forks** proposes one group per upstream owner with 2 or more ungrouped forks and opens the YAML editor with that draft; nothing is saved until you click **Apply and commit**. Works on personal accounts and organizations.
+
 ## Optional: pre-built index for very large organizations (`index: action`)
 
 By default each member builds the repository index with their own API calls (about 34 requests the first time for 3,400 repositories). An organization can instead let a scheduled workflow write `repo-index.json` into `<org>/.github`:

@@ -5,6 +5,7 @@ import type { Access } from '../../core/access';
 import { editLogoPath, finalName, pngOf, type Edit } from '../../core/edit';
 import type { Group } from '../../core/types';
 import { writeConfig } from '../../core/yaml-write';
+import { proposeForkGroups, withForkGroups, type ForkProposal } from '../../core/fork-groups';
 import type { RepoInfo } from '../../core/types';
 import { defaultExpanded, memoTree, SORT_KEYS, type SortKey, type TreeModel } from '../../core/tree';
 import { hasGithubFilter } from '../../github/route';
@@ -154,6 +155,7 @@ export function createController(org: string, env: Env) {
     if (snap) store.set({ repos: snap.repos, meta: snap.meta, indexVersion: store.get().indexVersion + 1 });
     if (cfg) store.set({ config: cfg });
     applyDefaults();
+    void ensureParents();
     return !!snap;
   }
 
@@ -182,6 +184,7 @@ export function createController(org: string, env: Env) {
     }
     await cfgP;
     applyDefaults();
+    void ensureParents();
   }
 
   async function init() {
@@ -285,6 +288,31 @@ export function createController(org: string, env: Env) {
     }
   }
 
+  let parentsFor = -1;
+  /** Fork upstreams (A5): asks the background once per index version when some fork has no parent yet. Never throws. */
+  async function ensureParents() {
+    const s = store.get();
+    if (s.phase !== 'ready' || parentsFor === s.indexVersion || !s.repos.some((r) => r.fork && r.parent === undefined)) return;
+    parentsFor = s.indexVersion;
+    try {
+      const map = await env.call<Record<string, string | null>>({ type: 'org:parents', org });
+      if (disposed || !map) return;
+      const cur = store.get();
+      let changed = false;
+      const repos = cur.repos.map((r) => {
+        if (!r.fork || r.parent !== undefined || !(r.name in map)) return r;
+        changed = true;
+        return { ...r, parent: map[r.name] };
+      });
+      if (changed) {
+        parentsFor = cur.indexVersion + 1;
+        store.set({ repos, indexVersion: cur.indexVersion + 1 });
+      }
+    } catch {
+      /* fork-of rules just wait for the next visit */
+    }
+  }
+
   async function startSignIn() {
     try {
       const d = await env.call<SignIn & { expiresIn: number }>({ type: 'auth:start' });
@@ -334,6 +362,20 @@ export function createController(org: string, env: Env) {
     init,
     refresh,
     ensureDetails,
+    /** A5: one proposed group per upstream owner with 2+ ungrouped forks. Nothing is saved. */
+    forkProposals(): ForkProposal[] {
+      const s = store.get();
+      const cfg = s.config && s.config.exists && s.config.config ? s.config.config : null;
+      return proposeForkGroups(cfg ? cfg.groups : [], s.repos);
+    },
+    /** A5: opens the YAML editor with the proposed groups added, for review. The user confirms with Apply and commit. */
+    openForkDraft() {
+      const s = store.get();
+      const cfg = s.config && s.config.exists && s.config.config ? s.config.config : { version: 1, index: 'api' as const, groups: [] as Group[] };
+      const proposals = proposeForkGroups(cfg.groups, s.repos);
+      if (!proposals.length) return;
+      store.set({ drawer: null, yaml: { text: writeConfig({ ...cfg, groups: withForkGroups(cfg.groups, proposals) }, `${org}/.github/repo-groups.yml`) } });
+    },
     startSignIn,
     openVerification: (s: SignIn) => env.open(`${s.verificationUri}?user_code=${encodeURIComponent(s.userCode)}`),
     dispose() {

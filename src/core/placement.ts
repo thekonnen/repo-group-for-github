@@ -1,4 +1,4 @@
-import { globRe, isExact, matches } from './glob';
+import { isExact, matchesRepo, ruleHits, type RuleTarget } from './glob';
 import type { Group, RepoInfo } from './types';
 
 /** A group plus its path, e.g. ['infra', 'dagsrv']. */
@@ -41,28 +41,27 @@ export function flatList(groups: Group[], depth = 0, parent: string[] = [], out:
   return out;
 }
 
-/** Exact names win; otherwise the first pattern hit in post-order (deepest wins). */
-export function pickIn(order: Node[], name: string): Node | null {
-  const n = name.toLowerCase();
-  return (
-    order.find((x) => x.group.match.some((r) => isExact(r) && r.toLowerCase() === n)) ??
-    order.find((x) => matches(x.group.match, name)) ??
-    null
-  );
+const target = (t: string | RuleTarget): RuleTarget => (typeof t === 'string' ? { name: t } : t);
+
+/** Exact names win (and exact `fork-of:` rules); otherwise the first pattern hit in post-order (deepest wins). */
+export function pickIn(order: Node[], repo: string | RuleTarget): Node | null {
+  const t = target(repo);
+  const n = t.name.toLowerCase();
+  const exact = (r: string) => isExact(r) && (r.toLowerCase() === n || ruleHits(r, t));
+  return order.find((x) => x.group.match.some(exact)) ?? order.find((x) => matchesRepo(x.group.match, t)) ?? null;
 }
 
-/** The rule of `group` that catches `name` (exact first). */
-export function ruleFor(group: Group, name: string): string | undefined {
-  const n = name.toLowerCase();
-  return (
-    group.match.find((r) => isExact(r) && r.toLowerCase() === n) ?? group.match.find((r) => globRe(r).test(name))
-  );
+/** The rule of `group` that catches the repo (exact first). */
+export function ruleFor(group: Group, repo: string | RuleTarget): string | undefined {
+  const t = target(repo);
+  const n = t.name.toLowerCase();
+  return group.match.find((r) => isExact(r) && (r.toLowerCase() === n || ruleHits(r, t))) ?? group.match.find((r) => ruleHits(r, t));
 }
 
 /** repo name -> group key ('' = ungrouped). */
-export function placement(groups: Group[], repos: Pick<RepoInfo, 'name'>[]): Record<string, string> {
+export function placement(groups: Group[], repos: Pick<RepoInfo, 'name' | 'fork' | 'parent'>[]): Record<string, string> {
   const order = postOrder(groups);
   const out: Record<string, string> = {};
-  for (const r of repos) out[r.name] = pickIn(order, r.name)?.key ?? '';
+  for (const r of repos) out[r.name] = pickIn(order, r)?.key ?? '';
   return out;
 }

@@ -34,7 +34,7 @@ export function withinInterval(meta: Pick<IndexMeta, 'lastIncrementalSync'> | nu
 }
 
 /** Cache keys in storage.local. Auth (rg:auth), prefs (rg:prefs:*), settings and the pending flow are never listed. */
-const CACHE_PREFIXES = ['rg:file:', 'rg:teams:', 'rg:config:', 'rg:orgs', 'rg:details:'];
+const CACHE_PREFIXES = ['rg:file:', 'rg:teams:', 'rg:config:', 'rg:orgs', 'rg:details:', 'rg:parents:'];
 
 /** Removes the repo indexes and every org file / teams / org-list cache. Never touches the token, prefs or settings. */
 export async function clearCache(kv: KV, index: IndexStore, logos?: { clear?(): Promise<void> }): Promise<{ removed: number }> {

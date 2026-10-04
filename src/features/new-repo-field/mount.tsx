@@ -70,6 +70,7 @@ export async function mountNewRepo(urlOrg: string | null, env?: Partial<NewRepoE
   const refresh = () => {
     void ctl.setOrg(resolveOrg());
     ctl.setName(readRepoName(found));
+    ctl.setDescription(found.description.value ?? '');
   };
 
   // A fresh page load means an earlier submit that left us here had failed: forget it.

@@ -12,6 +12,8 @@ import { chipTeams } from '../../core/teams';
 import { TeamBanners } from '../teams/TeamBanners';
 import { TeamChips } from '../teams/TeamChips';
 import type { Controller, State } from './controller';
+import { UnassignedNotice, ungroupedTabLabel } from './UnassignedNotice';
+import { t } from '../../i18n';
 
 const ROW_H = 76;
 const plural = (n: number, one: string, many: string) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
@@ -127,6 +129,7 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
         <div class="rg-banner rg-banner-warn" role="alert"><span class="rg-grow"><b>repo-groups.yml has a problem:</b> {cfg.error}. Showing every repository as ungrouped.</span></div>
       )}
       <TeamBanners ctl={ctl} />
+      {isRoot && !team && tab !== 'ungrouped' && cfg?.exists && !cfg.error && <UnassignedNotice ctl={ctl} count={ungrouped.length} newCount={ungrouped.filter((r) => s.newUngrouped.includes(r.name)).length} />}
       <Crumbs ctl={ctl} s={s} model={model} node={node} />
       <Header ctl={ctl} s={s} node={node} name={name} isRoot={isRoot} />
       <div class="rg-stats">
@@ -144,7 +147,7 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
       </div>
       <div class="rg-tabs" role="tablist">
         <Tab ctl={ctl} id="items" current={tab} label="Groups and repositories" />
-        {isRoot ? <Tab ctl={ctl} id="ungrouped" current={tab} label="Ungrouped" count={ungrouped.length} /> : <Tab ctl={ctl} id="rules" current={tab} label="Match rules" count={node.group.match.length} />}
+        {isRoot ? <Tab ctl={ctl} id="ungrouped" current={tab} label={ungroupedTabLabel()} count={ungrouped.length} /> : <Tab ctl={ctl} id="rules" current={tab} label="Match rules" count={node.group.match.length} />}
         <Tab ctl={ctl} id="all" current={tab} label="All repositories" count={node.total} />
       </div>
       {tab === 'rules' && !s.query ? (
@@ -329,7 +332,7 @@ function Rows({ ctl, s, rows }: { ctl: Controller; s: State; rows: Row[] }) {
   const slice = virtual ? rows.slice(range.start, range.end) : rows;
   return (
     <div class="rg-rows" ref={ref} style={virtual ? { paddingTop: range.start * ROW_H, paddingBottom: Math.max(0, rows.length - range.end) * ROW_H } : undefined}>
-      {slice.map((r) => (r.kind === 'group' ? <GroupRow key={`g:${r.node.key}`} ctl={ctl} row={r} fixed={virtual} /> : <RepoRow key={`r:${r.repo.name}`} org={s.org} row={r} fixed={virtual} label={ctl.teams.repoLabel(r.repo.name)} />))}
+      {slice.map((r) => (r.kind === 'group' ? <GroupRow key={`g:${r.node.key}`} ctl={ctl} row={r} fixed={virtual} /> : <RepoRow key={`r:${r.repo.name}`} org={s.org} row={r} fixed={virtual} label={ctl.teams.repoLabel(r.repo.name)} isNew={s.newUngrouped.includes(r.repo.name) && ctl.model()?.placed.get(r.repo.name) === ''} />))}
     </div>
   );
 }
@@ -363,7 +366,7 @@ function GroupRow({ ctl, row, fixed }: { ctl: Controller; row: Extract<Row, { ki
 }
 
 /** `label` is the team's permission on the team page; otherwise the label shows Public or Private. */
-function RepoRow({ org, row, fixed, label }: { org: string; row: Extract<Row, { kind: 'repo' }>; fixed: boolean; label?: string }) {
+function RepoRow({ org, row, fixed, label, isNew }: { org: string; row: Extract<Row, { kind: 'repo' }>; fixed: boolean; label?: string; isNew?: boolean }) {
   const r: RepoInfo = row.repo;
   return (
     <div class={`rg-row${fixed ? ' rg-fixed' : ''}`} style={{ '--rg-depth': row.depth } as any}>
@@ -374,6 +377,7 @@ function RepoRow({ org, row, fixed, label }: { org: string; row: Extract<Row, { 
           <a href={repoUrl(org, r.name)}>{row.prefix && <span class="rg-path-pre">{row.prefix}</span>}{r.name}</a>
           <span class="rg-label">{label ?? (r.private ? 'Private' : 'Public')}</span>
           {r.fork && <span class="rg-label">Fork</span>}
+          {isNew && <span class="rg-label rg-new" title={t('unassignedNewTitle')}>{t('unassignedNewLabel')}</span>}
         </div>
         {r.description && <p class="rg-desc">{r.description}</p>}
         <div class="rg-meta">

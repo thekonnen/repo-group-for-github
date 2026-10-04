@@ -11,6 +11,7 @@ import { hasGithubFilter } from '../../github/route';
 import { CallError, type Call } from '../../github/client';
 import type { ConfigResult, ErrorInfo, OrgPrefs, OrgSnapshot, Progress } from '../../github/messages';
 import { DETAILS_MAX_REPOS, type DetailsMap } from '../../core/details';
+import { visitUngrouped, type SeenUngrouped } from '../../core/unassigned';
 import { createLogoStore } from '../logos/logo-store';
 import { createStore, type Store } from '../store';
 import { createTeamsController } from '../teams/teams-controller';
@@ -44,7 +45,11 @@ export interface State {
   /** Separate open issue / PR counts (F14), loaded lazily for small groups. */
   details: DetailsMap;
   drawer: { mode: 'edit' | 'new'; path: string[]; focus?: 'logo' } | null;
-  yaml: { text: string } | null;
+  yaml: { text: string; scope?: 'ungrouped' } | null;
+  /** Ungrouped repositories already shown on earlier visits (A6), and the ones that are new since then. */
+  seen: SeenUngrouped | null;
+  newUngrouped: string[];
+  unassignedDismissed: boolean;
   toast: { text: string; kind: 'ok' | 'error' } | null;
 }
 
@@ -80,6 +85,15 @@ export type Controller = ReturnType<typeof createController>;
 
 const infoOf = (e: unknown): ErrorInfo => (e instanceof CallError ? e.info : { kind: 'other', message: e instanceof Error ? e.message : String(e) });
 
+const dismissKey = (org: string) => `rg:unassigned-dismissed:${org}`;
+function readDismissed(org: string): boolean {
+  try {
+    return sessionStorage.getItem(dismissKey(org)) === '1';
+  } catch {
+    return false;
+  }
+}
+
 export function createController(org: string, env: Env) {
   // The team page keeps its own view preferences, apart from the org page.
   const prefsOrg = env.team ? `${org}/teams/${env.team}` : org;
@@ -105,6 +119,9 @@ export function createController(org: string, env: Env) {
     details: {},
     drawer: null,
     yaml: null,
+    seen: null,
+    newUngrouped: [],
+    unassignedDismissed: readDismissed(org),
     toast: null,
   });
   const teams = createTeamsController({ org, team: env.team, teamName: env.teamName, call: env.call, store, afterAccess: () => applyDefaults() });
@@ -182,12 +199,25 @@ export function createController(org: string, env: Env) {
     }
     await cfgP;
     applyDefaults();
+    noteUngrouped();
+  }
+
+  /** After a refresh: flag ungrouped repositories not seen on earlier visits, then remember the current set (A6, no API calls). */
+  function noteUngrouped() {
+    const s = store.get();
+    const m = model();
+    if (env.team || s.phase !== 'ready' || s.refresh.state !== 'idle' || !m || !s.meta) return;
+    if (s.config?.exists === false || (s.config?.exists && s.config.error)) return; // every repo is "ungrouped" only because there is no usable file
+    const v = visitUngrouped(s.seen, s.newUngrouped, m.root.repos.map((r) => r.name), Date.now());
+    store.set({ seen: v.seen, newUngrouped: v.newNames });
+    savePrefs({ unassignedSeen: v.seen });
   }
 
   async function init() {
     const prefs = await env.call<Partial<OrgPrefs>>({ type: 'prefs:get', org: prefsOrg }).catch(() => ({}) as Partial<OrgPrefs>);
     if (prefs.expanded) store.set({ expanded: new Set(prefs.expanded), expandedTouched: true });
     if (prefs.sort && SORT_KEYS.includes(prefs.sort)) store.set({ sort: prefs.sort });
+    if (prefs.unassignedSeen) store.set({ seen: prefs.unassignedSeen });
     if (!hasGithubFilter(env.location.search)) {
       // A saved view wins; otherwise Options > "Show grouped view by default" (default on) decides.
       const view = prefs.view ?? (prefs.groupedByDefault === false ? 'list' : undefined);
@@ -344,8 +374,21 @@ export function createController(org: string, env: Env) {
     },
     save,
     savedText,
-    openYaml(text?: string) {
-      store.set({ drawer: null, yaml: { text: text ?? savedText() } });
+    openYaml(text?: string, scope?: 'ungrouped') {
+      store.set({ drawer: null, yaml: { text: text ?? savedText(), scope } });
+    },
+    /** A6 callout: hide it for this browser session. */
+    dismissUnassigned() {
+      try {
+        sessionStorage.setItem(dismissKey(org), '1');
+      } catch {}
+      store.set({ unassignedDismissed: true });
+    },
+    /** A6: go to the top level and open the Ungrouped tab. */
+    reviewUngrouped() {
+      const hash = buildHash({ layer: 'org', path: [] });
+      env.history.pushState(null, '', env.location.pathname + env.location.search + hash);
+      store.set({ path: [], tab: 'ungrouped', query: '', view: 'grouped' });
     },
     closeYaml: () => store.set({ yaml: null }),
     async validateYaml(text: string): Promise<YamlCheck> {

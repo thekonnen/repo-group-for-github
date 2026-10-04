@@ -5,6 +5,7 @@ import { useLogoSrc } from '../logos/logo-store';
 import type { Controller } from '../grouped-view/controller';
 import { useStore } from '../store';
 import { SidebarTeams } from '../teams/SidebarTeams';
+import { UnassignedBadge } from '../grouped-view/UnassignedNotice';
 
 /** Groups tree below GitHub's own filter list (F2). */
 export function SidebarTree({ ctl }: { ctl: Controller }) {
@@ -18,6 +19,7 @@ export function SidebarTree({ ctl }: { ctl: Controller }) {
       <div class="rg-side-head">
         <span>Groups</span>
         <span class="rg-ext-tag"><i />Repository Group</span>
+        {!ctl.teams.team && s.config?.exists && !s.config.error && <UnassignedBadge ctl={ctl} count={model.root.repos.length} />}
       </div>
       <ul class="rg-nav-list">
         {sideItems(model).map((it) => (

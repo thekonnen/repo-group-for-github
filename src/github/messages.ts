@@ -79,6 +79,8 @@ export interface OrgPrefs {
   sort?: 'pushed' | 'name' | 'stars' | 'issues';
   /** Options > "Show grouped view by default". Used when the org has no saved view. Default true. */
   groupedByDefault?: boolean;
+  /** Ungrouped repositories already shown on earlier visits (A6). */
+  unassignedSeen?: { names: string[]; at: number };
 }
 
 /** The org's repo-groups.yml, parsed in the background so the page script stays small. */

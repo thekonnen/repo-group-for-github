@@ -358,3 +358,9 @@
 .rg-root .rg-shared-hint { font-size: 12px; display: none; }
 .rg-root .rg-row:hover .rg-shared-hint, .rg-root .rg-row:focus-within .rg-shared-hint { display: inline; }
 .rg-root .rg-drop-copy::after { content: 'Also list here'; margin-left: auto; font-size: 12px; color: var(--rg-accent-fg, inherit); }
+.rg-root .rg-linked { background: var(--rg-bg-subtle); box-shadow: inset 3px 0 0 0 transparent; border-left: 3px dashed var(--rg-border); }
+.rg-root .rg-av-link { color: var(--rg-accent-fg, var(--rg-muted)); border-style: dashed; }
+.rg-root .rg-link-chip { display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; height: 20px; border: 1px dashed var(--rg-border); border-radius: 999px; background: transparent; color: var(--rg-muted); font: inherit; font-size: 12px; cursor: pointer; }
+.rg-root .rg-link-chip:hover { color: var(--rg-accent-fg, inherit); border-color: var(--rg-accent-fg, var(--rg-border)); }
+.rg-root .rg-unlink-text { display: none; }
+.rg-root .rg-row:hover .rg-unlink-text, .rg-root .rg-unlink:focus-visible .rg-unlink-text { display: inline; margin-left: 4px; }

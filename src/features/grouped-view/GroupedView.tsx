@@ -342,7 +342,7 @@ function Rows({ ctl, s, rows }: { ctl: Controller; s: State; rows: Row[] }) {
   const slice = virtual ? rows.slice(range.start, range.end) : rows;
   return (
     <div class="rg-rows" ref={ref} style={virtual ? { paddingTop: range.start * ROW_H, paddingBottom: Math.max(0, rows.length - range.end) * ROW_H } : undefined}>
-      {slice.map((r, i) => (r.kind === 'group' ? <GroupRow key={`g:${r.node.key}`} ctl={ctl} row={r} fixed={virtual} /> : <RepoRow key={`r:${virtual ? range.start + i : i}:${r.repo.name}`} ctl={ctl} org={s.org} row={r} selected={r.also === undefined && s.selected.includes(r.repo.name)} fixed={virtual} label={ctl.teams.repoLabel(r.repo.name)} also={r.also === undefined ? undefined : pathTitle(ctl.model()!, r.also)} />))}
+      {slice.map((r, i) => (r.kind === 'group' ? <GroupRow key={`g:${r.node.key}`} ctl={ctl} row={r} fixed={virtual} /> : <RepoRow key={`r:${virtual ? range.start + i : i}:${r.repo.name}`} ctl={ctl} org={s.org} row={r} selected={r.also === undefined && s.selected.includes(r.repo.name)} fixed={virtual} label={ctl.teams.repoLabel(r.repo.name)} />))}
     </div>
   );
 }
@@ -377,20 +377,28 @@ function GroupRow({ ctl, row, fixed }: { ctl: Controller; row: Extract<Row, { ki
 }
 
 /** `label` is the team's permission on the team page; otherwise the label shows Public or Private. */
-function RepoRow({ ctl, org, row, fixed, label, selected, also }: { ctl: Controller; org: string; row: Extract<Row, { kind: 'repo' }>; fixed: boolean; label?: string; selected: boolean; also?: string }) {
+function RepoRow({ ctl, org, row, fixed, label, selected }: { ctl: Controller; org: string; row: Extract<Row, { kind: 'repo' }>; fixed: boolean; label?: string; selected: boolean }) {
   const r: RepoInfo = row.repo;
   const movable = ctl.canMove();
   const current = ctl.model()?.placed.get(r.name) ?? '';
+  // A3: a linked row is listed here through a shared rule; the repo lives (is "linked from") elsewhere.
+  const linked = row.also !== undefined;
+  const from = linked ? pathTitle(ctl.model()!, row.also!) : '';
+  const listedIn = linked && row.in ? pathTitle(ctl.model()!, row.in) : '';
   return (
-    <div class={`rg-row${fixed ? ' rg-fixed' : ''}`} style={{ '--rg-depth': row.depth } as any} data-selected={selected ? 'true' : undefined}>
+    <div class={`rg-row${fixed ? ' rg-fixed' : ''}${linked ? ' rg-linked' : ''}`} style={{ '--rg-depth': row.depth } as any} data-selected={selected ? 'true' : undefined}>
       <span class="rg-chev-sp" />
-      <span class="rg-av rg-av-repo"><Icon name="repo" /></span>
+      <span class={`rg-av rg-av-repo${linked ? ' rg-av-link' : ''}`} {...(linked ? { title: `Linked from ${from}. Remove the link here, or move it from there.` } : {})}><Icon name={linked ? 'link' : 'repo'} /></span>
       <div class="rg-row-main">
         <div class="rg-row-title">
           <a href={repoUrl(org, r.name)}>{row.prefix && <span class="rg-path-pre">{row.prefix}</span>}{r.name}</a>
           <span class="rg-label">{label ?? (r.private ? 'Private' : 'Public')}</span>
           {r.fork && <span class="rg-label">Fork</span>}
-          {also !== undefined && <span class="rg-also rg-muted" title={`Listed here through a shared rule. Lives in ${also}. Move it from there.`}>also in {also}</span>}
+          {linked && (
+            <button type="button" class="rg-also rg-link-chip" title={`Linked from ${from}. Remove the link here, or move it from there.`} onClick={() => ctl.goOriginal(row.also!)}>
+              <Icon name="link" size={12} />linked from {from}
+            </button>
+          )}
         </div>
         {r.description && <p class="rg-desc">{r.description}</p>}
         <div class="rg-meta">
@@ -401,12 +409,21 @@ function RepoRow({ ctl, org, row, fixed, label, selected, also }: { ctl: Control
           <span>Updated {ago(r.pushedAt)}</span>
         </div>
       </div>
-      {movable && also !== undefined && (
-        <div class="rg-row-menu rg-row-menu-shared" title={`Lives in ${also}. Move it from there.`}>
-          <span class="rg-muted rg-shared-hint">Lives in {also}. Move it from there.</span>
+      {movable && linked && (
+        <div class="rg-row-menu rg-row-menu-shared">
+          <button
+            type="button"
+            class="rg-btn rg-btn-sm rg-unlink"
+            title={`Remove link to ${r.name} from ${listedIn || 'this group'}`}
+            aria-label={`Remove link to ${r.name} from ${listedIn || 'this group'}`}
+            disabled={!row.in}
+            onClick={() => row.in && ctl.stageUnshare([r.name], row.in.split('/'))}
+          >
+            <Icon name="unlink" size={14} /><span class="rg-unlink-text">Remove link</span>
+          </button>
         </div>
       )}
-      {movable && also === undefined && (
+      {movable && !linked && (
         <div class="rg-row-menu">
           <input type="checkbox" class="rg-check" aria-label={`Select ${r.name}`} checked={selected} onChange={() => ctl.toggleSelect(r.name)} />
           <span class="rg-grip" role="img" aria-label={`Drag ${r.name} to a group`} title="Drag to a group" {...dragSource(() => ctl.store.get().selected, r.name)}><Icon name="grip" /></span>

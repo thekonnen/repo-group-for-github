@@ -110,8 +110,8 @@ export function pathTitle(model: TreeModel, key: string): string {
 
 export type Row =
   | { kind: 'group'; node: GroupNode; depth: number; open: boolean }
-  /** `also` (A3): this row is a shared membership; it holds the key of the repo's primary group ('' = Ungrouped). */
-  | { kind: 'repo'; repo: RepoInfo; depth: number; prefix?: string; also?: string };
+  /** `also` (A3): this row is a shared membership; it holds the key of the repo's primary group ('' = Ungrouped). `in` is the group that lists it. */
+  | { kind: 'repo'; repo: RepoInfo; depth: number; prefix?: string; also?: string; in?: string };
 
 /** Visible rows of a group: its subgroups (expandable inline) first, then the repos placed directly in it. */
 export function treeRows(node: GroupNode, expanded: ReadonlySet<string>, depth = 0): Row[] {
@@ -122,7 +122,7 @@ export function treeRows(node: GroupNode, expanded: ReadonlySet<string>, depth =
     if (open) out.push(...treeRows(c, expanded, depth + 1));
   }
   for (const r of node.repos) out.push({ kind: 'repo', repo: r, depth });
-  for (const r of node.shared) out.push({ kind: 'repo', repo: r, depth, also: node.sharedFrom.get(r.name) ?? '' });
+  for (const r of node.shared) out.push({ kind: 'repo', repo: r, depth, also: node.sharedFrom.get(r.name) ?? '', in: node.key });
   return out;
 }
 
@@ -144,7 +144,7 @@ export function searchRows(model: TreeModel, node: GroupNode, query: string): Ro
       // A3: only reachable here through a shared rule. Show where it is listed here, and where it lives.
       const here = (model.secondary.get(repo.name) ?? []).find(under) ?? node.key;
       const rel = here ? titled(here.split('/'), node.path.length) : [];
-      return { kind: 'repo' as const, repo, depth: 0, prefix: rel.length ? rel.join(' / ') + ' / ' : undefined, also: key };
+      return { kind: 'repo' as const, repo, depth: 0, prefix: rel.length ? rel.join(' / ') + ' / ' : undefined, also: key, in: here };
     }
     const parts = key ? key.split('/') : [];
     const rel = titled(parts, node.path.length);

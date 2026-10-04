@@ -85,7 +85,7 @@ groups:
 
 `lib-core` stays in `platform` (its primary group, used for ungrouped detection, team access and Sync access) and is also listed in `payments` with an "also in Platform" label. It is counted once in every total. `shared` takes the same rule kinds as `match` (names, `*` patterns, `topic:`, `prop:`, `fork-of:`). Files without `shared` behave exactly as before.
 
-In the grouped view, **Send to…** and drag & drop *move* a repository (change its home); **Also list in…** (row menu, selection bar, or Alt/Option-drag) only adds an extra listing. Shared rows are read-only hints: move them from their home group.
+In the grouped view, **Send to…** and drag & drop *move* a repository (change its home); **Also list in…** (row menu, selection bar, or Alt/Option-drag) only adds an extra listing. A shared row is drawn as a link (link icon, dashed look, a "linked from <home>" chip that opens the original). It cannot be moved or selected; use its **Remove link** button to stop listing it in that group (the repository and its home are untouched). If a shared rule, not a name, lists it, Remove link points you to Edit group instead.
 
 ## Optional: weekly pull request that proposes a reorganization
 

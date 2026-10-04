@@ -7,7 +7,7 @@ import { findGroup } from '../src/core/placement';
 import { mountOrgRepos, type Mounted } from '../src/features/mount';
 import { DRAG_TYPE } from '../src/features/grouped-view/dnd';
 import { example } from './fixtures';
-import { fakeCall, repos as baseRepos } from './page-helpers';
+import { fakeCall, memberAccess, repos as baseRepos } from './page-helpers';
 
 const body = readFileSync(join(process.cwd(), 'tests/fixtures/org-repos.html'), 'utf8').replace(/<!--[\s\S]*?-->/, '');
 let mounted: Mounted | null = null;
@@ -85,12 +85,11 @@ describe('shared rows (A3)', () => {
   it('show where the repo lives and have no checkbox, drag handle or menu', async () => {
     await open('#ai');
     const shared = rowOf('dagsrv');
-    expect(shared.textContent).toContain('also in infra / dagsrv');
+    expect(shared.textContent).toContain('linked from infra / dagsrv');
     expect(shared.querySelector('.rg-check')).toBeNull();
     expect(shared.querySelector('.rg-grip')).toBeNull();
     expect(shared.querySelector('.rg-kebab')).toBeNull();
-    expect(shared.textContent).toContain('Lives in');
-    expect(shared.textContent).toContain('Move it from there.');
+    expect(shared.querySelector('.rg-link-chip')!.getAttribute('title')).toBe('Linked from infra / dagsrv. Remove the link here, or move it from there.');
     // A primary row of the same page keeps all three.
     const own = rowOf('oroute');
     expect(own.querySelector('.rg-check')).toBeTruthy();
@@ -278,5 +277,115 @@ describe('Move with shared memberships (A3)', () => {
     pick(l2, 'infra').click();
     await vi.waitFor(() => expect(dialog()).toBeTruthy());
     expect(dialog()!.textContent).not.toContain('Team access targets');
+  });
+});
+
+const linkButton = (repo: string) => rowOf(repo).querySelector('.rg-unlink') as HTMLButtonElement | null;
+
+describe('linked rows (A3)', () => {
+  it('show the link icon, a distinct look and a "linked from" chip that opens the original', async () => {
+    await open('#ai');
+    const row = rowOf('dagsrv');
+    expect(row.classList.contains('rg-linked')).toBe(true);
+    expect(row.querySelector('.rg-av-link svg')).toBeTruthy();
+    expect(rowOf('oroute').classList.contains('rg-linked')).toBe(false);
+    expect(rowOf('oroute').querySelector('.rg-av-link')).toBeNull();
+    (row.querySelector('.rg-link-chip') as HTMLElement).click();
+    await vi.waitFor(() => expect(window.location.hash).toBe('#infra/dagsrv'));
+    await vi.waitFor(() => expect(rowOf('dagsrv').classList.contains('rg-linked')).toBe(false)); // the real member
+  });
+
+  it('the chip of an ungrouped original opens the Ungrouped tab', async () => {
+    const cfg = example();
+    findGroup(cfg.groups, ['ai'])!.shared = ['keep_alive_job'];
+    await open('#ai', { config: { exists: true, sha: 's', config: cfg, warnings: [] } });
+    expect(rowOf('keep_alive_job').querySelector('.rg-link-chip')!.textContent).toContain('linked from Ungrouped');
+    (rowOf('keep_alive_job').querySelector('.rg-link-chip') as HTMLElement).click();
+    await new Promise((r) => setTimeout(r, 50));
+    expect($('[role=tab][aria-selected=true]')?.textContent).toContain('Ungrouped');
+  });
+
+  it('"Remove link" is only there for people who can write the org file', async () => {
+    await open('#ai');
+    const b = linkButton('dagsrv')!;
+    expect(b.getAttribute('aria-label')).toBe('Remove link to dagsrv from ai');
+    expect(b.textContent).toContain('Remove link');
+    mounted?.dispose();
+    document.documentElement.innerHTML = body;
+    await open('#ai', { access: memberAccess });
+    expect(linkButton('dagsrv')).toBeNull();
+    expect(rowOf('dagsrv').querySelector('.rg-link-chip')).toBeTruthy(); // the link itself is still visible
+  });
+
+  it('Cancel and Esc commit nothing; OK sends exactly one unshare edit and the home is untouched', async () => {
+    const seen: any[] = [];
+    const fc = await open('#ai', { edit: server(seen) });
+    linkButton('dagsrv')!.click();
+    await vi.waitFor(() => expect(dialog()).toBeTruthy());
+    expect(dialog()!.getAttribute('role')).toBe('alertdialog');
+    expect($('#rg-mv-title')!.textContent).toBe('Remove link from thekonnen / ai');
+    expect(dialog()!.textContent).toContain('dagsrv stays in infra / dagsrv; it just stops being listed here.');
+    ($('#rg-mv-cancel') as HTMLElement).click();
+    await vi.waitFor(() => expect(dialog()).toBeNull());
+    linkButton('dagsrv')!.click();
+    await vi.waitFor(() => expect(dialog()).toBeTruthy());
+    dialog()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await vi.waitFor(() => expect(dialog()).toBeNull());
+    expect(fc.log.some((r) => r.type === 'org:edit')).toBe(false);
+    linkButton('dagsrv')!.click();
+    await vi.waitFor(() => expect($('#rg-mv-ok')).toBeTruthy());
+    expect($('#rg-mv-ok')!.textContent).toBe('OK, commit to repo-groups.yml');
+    ($('#rg-mv-ok') as HTMLElement).click();
+    await vi.waitFor(() => expect(toast()).toContain('Stopped listing dagsrv in ai'));
+    expect(edits(fc)).toHaveLength(1);
+    expect(edits(fc)[0]).toMatchObject({ kind: 'unshare', repos: ['dagsrv'], from: ['ai'] });
+    const after = applyEdit(sharedConfig().groups, edits(fc)[0]) as any;
+    expect(findGroup(after.groups, ['ai'])!.shared).toBeUndefined();
+    expect(findGroup(after.groups, ['infra', 'dagsrv'])!.match).toEqual(['dagsrv', 'dags-*', 'kite-dagsrv']);
+    await vi.waitFor(() => expect($$('.rg-root[data-rg="view"] .rg-row').some((r) => r.classList.contains('rg-linked'))).toBe(false));
+  });
+
+  it('a failed commit keeps the dialog open with the error inline', async () => {
+    const fc = await open('#ai', {
+      edit: () => {
+        throw new Error('You cannot write to thekonnen/.github.');
+      },
+    });
+    linkButton('dagsrv')!.click();
+    await vi.waitFor(() => expect($('#rg-mv-ok')).toBeTruthy());
+    ($('#rg-mv-ok') as HTMLElement).click();
+    await vi.waitFor(() => expect(dialog()!.querySelector('.rg-error')?.textContent).toContain('You cannot write'));
+    expect(toast()).toBe('');
+    expect(edits(fc)).toHaveLength(1);
+  });
+
+  it('a link that only comes from a rule explains it and offers Edit group instead of OK', async () => {
+    const cfg = example();
+    findGroup(cfg.groups, ['ai'])!.shared = ['topic:backend'];
+    const list: any[] = baseRepos.map((r) => (r.name === 'dagsrv' ? { ...r, topics: ['backend'] } : r));
+    const fc = await open('#ai', { repos: list, config: { exists: true, sha: 's', config: cfg, warnings: [] } });
+    linkButton('dagsrv')!.click();
+    await vi.waitFor(() => expect(dialog()).toBeTruthy());
+    expect(dialog()!.textContent).toContain('dagsrv is listed here by the shared rule `topic:backend` of ai. Remove or narrow that rule in Edit group.');
+    expect($('#rg-mv-ok')).toBeNull();
+    ($('#rg-mv-edit') as HTMLElement).click();
+    await vi.waitFor(() => expect($('#rg-f-shared')).toBeTruthy());
+    expect(dialog()).toBeNull();
+    expect(fc.log.some((r) => r.type === 'org:edit')).toBe(false);
+  });
+
+  it('an exact entry plus a rule: OK removes the entry and the dialog warns about the rule', async () => {
+    const cfg = example();
+    findGroup(cfg.groups, ['ai'])!.shared = ['dagsrv', 'topic:backend'];
+    const list: any[] = baseRepos.map((r) => (r.name === 'dagsrv' ? { ...r, topics: ['backend'] } : r));
+    const seen: any[] = [];
+    const fc = await open('#ai', { repos: list, config: { exists: true, sha: 's', config: cfg, warnings: [] }, edit: server(seen) });
+    linkButton('dagsrv')!.click();
+    await vi.waitFor(() => expect($('#rg-mv-ok')).toBeTruthy());
+    expect(dialog()!.textContent).toContain('`topic:backend`');
+    expect(dialog()!.textContent).toContain('still lists it');
+    ($('#rg-mv-ok') as HTMLElement).click();
+    await vi.waitFor(() => expect(edits(fc)).toHaveLength(1));
+    expect(edits(fc)[0]).toMatchObject({ kind: 'unshare', from: ['ai'] });
   });
 });

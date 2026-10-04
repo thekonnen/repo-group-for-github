@@ -15,7 +15,9 @@ export type Edit =
   /** A4: moves repositories to a group ([] = Ungrouped), in one commit. Exact names only: it never edits patterns. */
   | { kind: 'move'; repos: string[]; to: string[]; /** The index records of `repos`, so topic:, prop: and fork-of: rules are honored when the edit is re-applied. */ targets?: RuleTarget[]; /** Ungrouped moves: also remove the exact names from the `shared` lists that list the repo. */ dropShared?: boolean }
   /** A3: also lists repositories in a group (adds the exact name to its `shared`) without changing their home. */
-  | { kind: 'share'; repos: string[]; to: string[]; targets?: RuleTarget[] };
+  | { kind: 'share'; repos: string[]; to: string[]; targets?: RuleTarget[] }
+  /** A3: stops listing repositories in a group: removes their exact names from its `shared`. The home group is never touched. */
+  | { kind: 'unshare'; repos: string[]; from: string[]; targets?: RuleTarget[] };
 
 /** A logo change (F7): a new 192x192 PNG (base64, committed with the YAML in one commit) or "use the letter". */
 export type LogoChange = { png: string } | { remove: true };
@@ -257,6 +259,38 @@ export function shareRepos(groups: Group[], repos: RepoRef[], to: string[]): Sha
   return out;
 }
 
+export interface UnsharePlan {
+  groups: Group[];
+  /** True when at least one exact name was removed. */
+  changed: boolean;
+  /** Repositories whose exact name was removed from `from.shared` (these go into the commit). */
+  removed: string[];
+  /** Repositories `from` has no exact entry for (listed only through a rule, or not listed at all). */
+  notLinked: string[];
+  /** Repositories `from` still lists through a `shared` rule (pattern, topic:, prop:, fork-of:, or a wildcard): not removable automatically. */
+  stillShared: { repo: string; rule: string }[];
+}
+
+/**
+ * A3: "Remove link". Removes the EXACT repo name (case-insensitive) from the `shared` list of `from` (the key is dropped
+ * when the list becomes empty). Never touches match rules or the home group. Rules of `shared` that still catch a repo
+ * are reported in `stillShared`: they have to be edited in the group.
+ */
+export function unshareRepos(groups: Group[], repos: RepoRef[], from: string[]): UnsharePlan | { error: string } {
+  const next = clone(groups);
+  const g = from.length ? findGroup(next, from) : null;
+  if (!g) return { error: `The group "${from.join('/')}" no longer exists. Reload the page and try again.` };
+  const out: UnsharePlan = { groups: next, changed: false, removed: [], notLinked: [], stillShared: [] };
+  for (const ref of uniqueRefs(repos)) {
+    const name = nameOf(ref);
+    if (dropSharedName(g, name)) out.removed.push(name);
+    else out.notLinked.push(name);
+    for (const rule of (g.shared ?? []).filter((r) => matchesRepo([r], targetOf(ref)))) out.stillShared.push({ repo: name, rule });
+  }
+  out.changed = out.removed.length > 0;
+  return out;
+}
+
 /** Applies an edit to a tree (never mutates the input). Logo, teams and subgroups of an edited group are kept. */
 export function applyEdit(groups: Group[], edit: Edit): { groups: Group[] } | { error: string } {
   const next = clone(groups);
@@ -277,6 +311,10 @@ export function applyEdit(groups: Group[], edit: Edit): { groups: Group[] } | { 
   }
   if (edit.kind === 'move') {
     const r = moveRepos(groups, edit.targets ?? edit.repos, edit.to, { dropShared: edit.dropShared });
+    return 'error' in r ? r : { groups: r.groups };
+  }
+  if (edit.kind === 'unshare') {
+    const r = unshareRepos(groups, edit.targets ?? edit.repos, edit.from);
     return 'error' in r ? r : { groups: r.groups };
   }
   if (edit.kind === 'share') {
@@ -326,11 +364,12 @@ export function applyEdit(groups: Group[], edit: Edit): { groups: Group[] } | { 
 }
 
 export const editPath = (e: Edit): string =>
-  e.kind === 'move' || e.kind === 'share' ? keyOf(e.to) : e.kind === 'file' || e.kind === 'delete' ? e.path.join('/') : (e.kind === 'new' ? [...e.parent, finalName(e.name)] : [...e.path.slice(0, -1), finalName(e.name)]).join('/');
+  e.kind === 'unshare' ? keyOf(e.from) : e.kind === 'move' || e.kind === 'share' ? keyOf(e.to) : e.kind === 'file' || e.kind === 'delete' ? e.path.join('/') : (e.kind === 'new' ? [...e.parent, finalName(e.name)] : [...e.path.slice(0, -1), finalName(e.name)]).join('/');
 
 /** `chore(repo-groups): edit group infra/dagsrv` (§7). */
 export function commitMessage(e: Edit): string {
   if (e.kind === 'file') return `chore(repo-groups): file ${e.repo} in ${e.path.join('/')}`;
+  if (e.kind === 'unshare') return `chore(repo-groups): stop listing ${e.repos.length === 1 ? e.repos[0] : `${e.repos.length} repositories`} in ${e.from.join('/')}`;
   if (e.kind === 'share') return `chore(repo-groups): also list ${e.repos.length === 1 ? e.repos[0] : `${e.repos.length} repositories`} in ${e.to.join('/')}`;
   if (e.kind === 'move') return `chore(repo-groups): move ${e.repos.length === 1 ? e.repos[0] : `${e.repos.length} repositories`} to ${e.to.length ? e.to.join('/') : 'ungrouped'}`;
   if (e.kind === 'delete') return `chore(repo-groups): delete ${e.path.length > 1 ? 'subgroup' : 'group'} ${e.path.join('/')}${e.path.length > 1 ? ' (rules moved to the parent group)' : ''}`;

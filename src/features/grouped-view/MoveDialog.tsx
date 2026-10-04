@@ -48,16 +48,22 @@ export function MoveDialog({ ctl, move }: { ctl: Controller; move: PendingMove }
   const n = plan.moved.length;
   const canCommit = n > 0 && !plan.error;
   const share = move.mode === 'share';
+  const unshare = move.mode === 'unshare';
+  const isMove = move.mode === 'move';
+  // Remove link: repos kept in `to.shared` only by a rule cannot be unlinked here; the group has to be edited.
+  const ruleOnly = plan.linkedBy.filter((x) => !plan.moved.includes(x.repo));
+  const ruleAlso = plan.linkedBy.filter((x) => plan.moved.includes(x.repo));
+  const needsEdit = unshare && n === 0 && ruleOnly.length > 0 && !plan.error;
   const what = plural(n, 'repository', 'repositories');
   const skipped = (names: string[]) => `${names.slice(0, SHOWN).join(', ')}${names.length > SHOWN ? `, +${names.length - SHOWN} more` : ''}`;
   // A3: groups that still list a repository sent to Ungrouped. Exact-name entries can be removed; rules only warn.
   const exactShared = plan.stillShared.filter((x) => x.exact);
   const ruleShared = plan.stillShared.filter((x) => !x.exact);
-  const droppable = !share && !to.length ? exactShared.length : 0;
+  const droppable = isMove && !to.length ? exactShared.length : 0;
   // Informational: the target team access follows the home group. A move grants and removes nothing by itself.
   const groups = s.config && s.config.exists && s.config.config ? s.config.config.groups : [];
   const teamLines = new Map<string, number>();
-  if (!share && n > 0)
+  if (isMove && n > 0)
     for (const repo of plan.moved)
       for (const c of teamTargetChanges(groups, model?.placed.get(repo) ?? '', key))
         {
@@ -67,7 +73,7 @@ export function MoveDialog({ ctl, move }: { ctl: Controller; move: PendingMove }
 
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null;
-    const target = box.current?.querySelector<HTMLElement>('#rg-mv-ok') ?? box.current?.querySelector<HTMLElement>('#rg-mv-cancel');
+    const target = box.current?.querySelector<HTMLElement>('#rg-mv-ok, #rg-mv-edit') ?? box.current?.querySelector<HTMLElement>('#rg-mv-cancel');
     target?.focus();
     return () => opener?.isConnected && opener.focus?.();
   }, []);
@@ -100,7 +106,7 @@ export function MoveDialog({ ctl, move }: { ctl: Controller; move: PendingMove }
     <div class="rg-dialog-overlay" onMouseDown={(e) => e.target === e.currentTarget && cancel()}>
       <div class="rg-dialog" role="alertdialog" aria-modal="true" aria-labelledby="rg-mv-title" aria-describedby="rg-mv-body" ref={box} onKeyDown={onKey}>
         <div class="rg-dialog-head">
-          <h2 id="rg-mv-title">{share ? (n > 0 || plan.error ? `Also list ${what} in ${dest}` : `Also list in ${dest}`) : n > 0 || plan.error ? `Move ${what} to ${dest}` : `Move to ${dest}`}</h2>
+          <h2 id="rg-mv-title">{unshare ? `Remove link from ${dest}` : share ? (n > 0 || plan.error ? `Also list ${what} in ${dest}` : `Also list in ${dest}`) : n > 0 || plan.error ? `Move ${what} to ${dest}` : `Move to ${dest}`}</h2>
           <button type="button" class="rg-chev" aria-label="Close" disabled={busy} onClick={cancel}><Icon name="x" /></button>
         </div>
         <div class="rg-dialog-body" id="rg-mv-body">
@@ -108,7 +114,10 @@ export function MoveDialog({ ctl, move }: { ctl: Controller; move: PendingMove }
           {n > 0 && (
             <>
               <p>
-                {share ? (
+                {unshare ? (
+                  n === 1 ? <><code>{plan.moved[0]}</code> stays in <b>{titled(model, model?.placed.get(plan.moved[0]) ?? '')}</b>; it just stops being listed here.</>
+                  : <>These repositories stay where they are; they just stop being listed here.</>
+                ) : share ? (
                   n === 1 ? <>Its home stays in <b>{titled(model, model?.placed.get(plan.moved[0]) ?? '')}</b>; it will be listed here too, by exact name in the shared list of <b>{titled(model, key)}</b>.</>
                   : <>Their homes stay where they are; they will be listed here too, by exact name in the shared list of <b>{titled(model, key)}</b>.</>
                 ) : to.length
@@ -118,6 +127,18 @@ export function MoveDialog({ ctl, move }: { ctl: Controller; move: PendingMove }
               {list(plan.moved)}
             </>
           )}
+          {unshare && ruleOnly.length > 0 && (
+            <p class={`rg-mv-note${n > 0 ? ' rg-mv-warn' : ''}`} role="status">
+              {n > 0 ? <b>A shared rule still lists {ruleOnly.length === 1 ? 'this repository' : 'these repositories'}. </b> : null}
+              {ruleOnly.slice(0, SHOWN).map((c) => `${c.repo} is listed here by the shared rule \`${c.rule}\` of ${titled(model, key)}`).join('; ')}. Remove or narrow that rule in Edit group.
+            </p>
+          )}
+          {unshare && ruleAlso.length > 0 && n > 0 && ruleOnly.length === 0 && (
+            <p class="rg-mv-note rg-mv-warn" role="status">A shared rule still lists it: {ruleAlso.map((c) => `\`${c.rule}\``).join(', ')}. Edit the group to release it.</p>
+          )}
+          {unshare && n === 0 && ruleOnly.length === 0 && !plan.error && (
+            <p class="rg-mv-note" role="status">{plan.already.length === 1 ? `${plan.already[0]} is` : 'These repositories are'} not linked here by name. There is nothing to commit.</p>
+          )}
           {share && plan.already.length > 0 && (
             <p class="rg-mv-note" role="status">Already listed in {titled(model, key)}, skipped: {skipped(plan.already)}.</p>
           )}
@@ -125,12 +146,12 @@ export function MoveDialog({ ctl, move }: { ctl: Controller; move: PendingMove }
             <p class="rg-mv-note" role="status">Already live in {titled(model, key)} or below it, skipped: {skipped(plan.redundant)}.</p>
           )}
           {share && n === 0 && !plan.error && <p class="rg-mv-note" role="status">There is nothing to commit.</p>}
-          {!share && plan.wasListed.length > 0 && (
+          {isMove && plan.wasListed.length > 0 && (
             <p class="rg-mv-note" role="status">
               Already listed here through a shared rule. Moving makes {plan.wasListed.length === 1 ? 'it' : 'them'} live here: {skipped(plan.wasListed)}.
             </p>
           )}
-          {!share && teamLines.size > 0 && (
+          {isMove && teamLines.size > 0 && (
             <div class="rg-mv-note" role="status">
               <b>Team access targets change.</b> Nothing is granted or removed by a move; Sync access uses the new target.
               <ul class="rg-mv-list">
@@ -138,7 +159,7 @@ export function MoveDialog({ ctl, move }: { ctl: Controller; move: PendingMove }
               </ul>
             </div>
           )}
-          {!share && plan.already.length > 0 && (
+          {isMove && plan.already.length > 0 && (
             <p class="rg-mv-note" role="status">
               {n === 0 && !plan.stillCaught.length
                 ? `${plan.already.length === 1 ? `${plan.already[0]} is` : `All ${plan.already.length} selected repositories are`} already in ${key ? titled(model, key) : 'Ungrouped'}. There is nothing to commit.`
@@ -158,7 +179,7 @@ export function MoveDialog({ ctl, move }: { ctl: Controller; move: PendingMove }
               Also stop listing {droppable === 1 && plan.moved.length === 1 ? 'it' : 'them'} in groups that share {droppable === 1 && plan.moved.length === 1 ? 'it' : 'them'} ({droppable})
             </label>
           )}
-          {!share && ruleShared.length > 0 && (
+          {isMove && ruleShared.length > 0 && (
             <p class="rg-mv-note rg-mv-warn" role="status">
               <b>A shared rule still lists {ruleShared.length === 1 ? 'this repository' : 'these repositories'}.</b>{' '}
               {ruleShared.slice(0, SHOWN).map((c) => `${c.repo} in ${titled(model, c.key)} (rule ${c.rule})`).join('; ')}
@@ -169,6 +190,9 @@ export function MoveDialog({ ctl, move }: { ctl: Controller; move: PendingMove }
         </div>
         <div class="rg-dialog-foot">
           <button type="button" class="rg-btn" id="rg-mv-cancel" disabled={busy} onClick={cancel}>{canCommit ? 'Cancel' : 'Close'}</button>
+          {needsEdit && (
+            <button type="button" class="rg-btn rg-btn-primary" id="rg-mv-edit" onClick={() => (ctl.cancelMove(), ctl.openDrawer('edit', to, 'shared'))}>Edit group</button>
+          )}
           {canCommit && (
             <button type="button" class="rg-btn rg-btn-primary" id="rg-mv-ok" disabled={busy} onClick={() => void confirm()}>
               {busy ? 'Committing…' : 'OK, commit to repo-groups.yml'}

@@ -31,10 +31,10 @@ export function GroupDrawer({ ctl }: { ctl: Controller }) {
   const s = useStore(ctl.store);
   const d = s.drawer;
   if (!d) return null;
-  return <Form key={`${d.mode}:${d.path.join('/')}`} ctl={ctl} mode={d.mode} path={d.path} focusLogo={d.focus === 'logo'} />;
+  return <Form key={`${d.mode}:${d.path.join('/')}`} ctl={ctl} mode={d.mode} path={d.path} focus={d.focus} />;
 }
 
-function Form({ ctl, mode, path, focusLogo }: { ctl: Controller; mode: 'edit' | 'new'; path: string[]; focusLogo: boolean }) {
+function Form({ ctl, mode, path, focus }: { ctl: Controller; mode: 'edit' | 'new'; path: string[]; focus?: 'logo' | 'shared' }) {
   const s = ctl.store.get();
   const model = ctl.model()!;
   const groups = s.config && s.config.exists && s.config.config ? s.config.config.groups : [];
@@ -149,7 +149,7 @@ function Form({ ctl, mode, path, focusLogo }: { ctl: Controller; mode: 'edit' | 
       title={heading}
       titleId="rg-drawer-title"
       onClose={() => ctl.closeDrawer()}
-      focus={focusLogo ? '#rg-logo-upload' : '#rg-f-name'}
+      focus={focus === 'logo' ? '#rg-logo-upload' : focus === 'shared' ? '#rg-f-shared' : '#rg-f-name'}
       footer={
         <>
           <span class="rg-grow">Saved as a commit to <code>{s.org}/.github</code>, created as private if it does not exist. Everyone in the organization sees the change.</span>

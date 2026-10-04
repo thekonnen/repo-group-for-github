@@ -2,7 +2,7 @@ import { ago } from '../../core/time';
 import { buildHash, parseHash } from '../../core/layers';
 import type { IndexMeta } from '../../core/index-sync';
 import type { Access } from '../../core/access';
-import { editLogoPath, finalName, moveRepos as planMoves, shareRepos as planShares, pngOf, type Edit, type MovePlan } from '../../core/edit';
+import { editLogoPath, finalName, moveRepos as planMoves, shareRepos as planShares, unshareRepos as planUnshares, pngOf, type Edit, type MovePlan } from '../../core/edit';
 import type { Group } from '../../core/types';
 import { writeConfig } from '../../core/yaml-write';
 import { proposeForkGroups, withForkGroups, type ForkProposal } from '../../core/fork-groups';
@@ -45,7 +45,7 @@ export interface State {
   access: Access | null;
   /** Separate open issue / PR counts (F14), loaded lazily for small groups. */
   details: DetailsMap;
-  drawer: { mode: 'edit' | 'new'; path: string[]; focus?: 'logo' } | null;
+  drawer: { mode: 'edit' | 'new'; path: string[]; focus?: 'logo' | 'shared' } | null;
   yaml: { text: string } | null;
   toast: { text: string; kind: 'ok' | 'error' } | null;
   /** A4: repositories ticked in the list. Cleared after a commit and when the group, tab or search changes. */
@@ -56,12 +56,13 @@ export interface State {
 
 export interface PendingMove {
   /** `move` changes the home group; `share` (A3, "Also list in…") only adds an extra listing. */
-  mode: 'move' | 'share';
+  mode: 'move' | 'share' | 'unshare';
   /** The repositories that were asked for (including the ones already there). */
   repos: string[];
+  /** Destination of a move/share; for `unshare` the group the link is removed from. */
   to: string[];
   /** What the commit would do (`moved` = the names that change, for both modes); `error` when the destination is gone. */
-  plan: Pick<MovePlan, 'moved' | 'already' | 'stillCaught' | 'wasListed' | 'stillShared'> & { redundant: string[]; error?: string };
+  plan: Pick<MovePlan, 'moved' | 'already' | 'stillCaught' | 'wasListed' | 'stillShared'> & { redundant: string[]; /** unshare: shared rules that still list a repo (cannot be removed automatically) */ linkedBy: { repo: string; rule: string }[]; error?: string };
   /** Ungrouped moves: also stop listing the repositories in groups that share them by exact name. */
   dropShared: boolean;
 }
@@ -301,7 +302,7 @@ export function createController(org: string, env: Env) {
       return r ? { name, fork: r.fork, parent: r.parent, topics: r.topics, props: r.props } : { name };
     });
   };
-  const emptyPlan = { moved: [], already: [], stillCaught: [], wasListed: [], stillShared: [], redundant: [] };
+  const emptyPlan = { moved: [], already: [], stillCaught: [], wasListed: [], stillShared: [], redundant: [], linkedBy: [] };
 
   /**
    * A4: stages a move of one or more repositories to a group ([] = Ungrouped) and opens the confirmation. Nothing is
@@ -313,7 +314,7 @@ export function createController(org: string, env: Env) {
     if (!groups || !repos.length) return;
     const plan = planMoves(groups, targetsOf(repos), to);
     store.set({
-      pendingMove: { mode: 'move', repos: [...new Set(repos)], to, dropShared: true, plan: 'error' in plan ? { ...emptyPlan, error: plan.error } : { ...plan, redundant: [] } },
+      pendingMove: { mode: 'move', repos: [...new Set(repos)], to, dropShared: true, plan: 'error' in plan ? { ...emptyPlan, error: plan.error } : { ...plan, redundant: [], linkedBy: [] } },
     });
   }
 
@@ -334,6 +335,23 @@ export function createController(org: string, env: Env) {
     });
   }
 
+  /** A3: stages "Remove link": the repositories stop being listed in `from`. Their home is never touched. Nothing is committed here. */
+  function stageUnshare(repos: string[], from: string[]) {
+    const s = store.get();
+    const groups = s.config && s.config.exists && s.config.config ? s.config.config.groups : null;
+    if (!groups || !repos.length) return;
+    const plan = planUnshares(groups, targetsOf(repos), from);
+    store.set({
+      pendingMove: {
+        mode: 'unshare',
+        repos: [...new Set(repos)],
+        to: from,
+        dropShared: false,
+        plan: 'error' in plan ? { ...emptyPlan, error: plan.error } : { ...emptyPlan, moved: plan.removed, already: plan.notLinked, linkedBy: plan.stillShared },
+      },
+    });
+  }
+
   /**
    * A4: the OK of the confirmation: one commit for every repository that changes. The toast only appears after the commit
    * succeeded; on failure the message goes back to the dialog, which stays open. A conflict is re-applied once by the
@@ -349,7 +367,9 @@ export function createController(org: string, env: Env) {
     const targets = targetsOf(p.plan.moved);
     const where = `committed to ${org}/.github/repo-groups.yml`;
     const r =
-      p.mode === 'share'
+      p.mode === 'unshare'
+        ? await save({ kind: 'unshare', repos: p.plan.moved, from: p.to, targets }, false, `Stopped listing ${what} in ${destLabel(p.to)} · ${where}`)
+        : p.mode === 'share'
         ? await save({ kind: 'share', repos: p.plan.moved, to: p.to, targets }, false, `Also listed ${what} in ${destLabel(p.to)} · ${where}`)
         : await save(
             { kind: 'move', repos: p.plan.moved, to: p.to, targets, ...(!p.to.length && p.dropShared ? { dropShared: true } : {}) },
@@ -478,6 +498,12 @@ export function createController(org: string, env: Env) {
     save,
     stageMove,
     stageShare,
+    stageUnshare,
+    /** A3: opens the original of a linked row: its home group, or the Ungrouped tab. */
+    goOriginal(key: string) {
+      if (key) this.go(key.split('/'));
+      else (this.go([]), this.setTab('ungrouped'));
+    },
     setDropShared(on: boolean) {
       const p = store.get().pendingMove;
       if (p) store.set({ pendingMove: { ...p, dropShared: on } });
@@ -536,7 +562,7 @@ export function createController(org: string, env: Env) {
           : { exists: false };
       store.set({ config, indexVersion: before.indexVersion + 1 });
     },
-    openDrawer: (mode: 'edit' | 'new', path: string[], focus?: 'logo') => store.set({ drawer: { mode, path, ...(focus ? { focus } : {}) } }),
+    openDrawer: (mode: 'edit' | 'new', path: string[], focus?: 'logo' | 'shared') => store.set({ drawer: { mode, path, ...(focus ? { focus } : {}) } }),
     closeDrawer: () => store.set({ drawer: null }),
     dismissToast: () => (clearTimeout(toastTimer), store.set({ toast: null })),
     /** Hash changes (also back/forward): #infra/dagsrv. */
@@ -545,7 +571,10 @@ export function createController(org: string, env: Env) {
       const path = r.layer === 'org' ? r.path : [];
       const m = model();
       const known = !m || !path.length || m.byKey.has(path.join('/'));
-      store.set({ path: known ? path : [], tab: 'items', query: '', selected: [] });
+      const next = known ? path : [];
+      // Same group (for example a pushState from `go` echoed back as a hash change): keep the tab the person chose.
+      if (next.join('/') === store.get().path.join('/')) return;
+      store.set({ path: next, tab: 'items', query: '', selected: [] });
     },
     go(path: string[]) {
       const hash = buildHash({ layer: 'org', path });

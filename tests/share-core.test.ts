@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { load } from './fixtures';
 import { readConfig } from '../src/core/yaml-read';
-import { applyEdit, commitMessage, editPath, moveRepo, moveRepos, shareRepos } from '../src/core/edit';
+import { writeConfig } from '../src/core/yaml-write';
+import { applyEdit, commitMessage, editPath, moveRepo, moveRepos, shareRepos, unshareRepos } from '../src/core/edit';
 import { findGroup, sharedPlacement } from '../src/core/placement';
 import { buildTree } from '../src/core/tree';
 import { teamTargetChanges } from '../src/core/teams';
@@ -199,5 +200,57 @@ describe('A3 teamTargetChanges', () => {
     expect(teamTargetChanges(groups(), '', 'platform')).toEqual([{ slug: 'plat_team', from: undefined, to: 'push' }]);
     expect(teamTargetChanges(groups(), 'payments', 'payments/web')).toEqual([]);
     expect(teamTargetChanges(groups(), 'docs', 'docs')).toEqual([]);
+  });
+});
+
+describe('A3 unshareRepos ("Remove link")', () => {
+  it('removes the exact name from the shared list of the group, case-insensitively, and leaves the rest', () => {
+    const g = groups();
+    const p = ok(unshareRepos(g, ['LIB-Core'], ['payments']));
+    expect(p.removed).toEqual(['LIB-Core']);
+    expect(p.changed).toBe(true);
+    expect(findGroup(p.groups, ['payments'])!.shared).toEqual(['topic:backend', 'prop:client=Acme', 'fork-of:macfuse']);
+    expect(findGroup(p.groups, ['payments'])!.match).toEqual(['pay-*']);
+    expect(findGroup(p.groups, ['platform'])!.match).toEqual(['lib-core', 'plat-*']); // the home is untouched
+    expect(findGroup(g, ['payments'])!.shared).toContain('lib-core'); // input untouched
+  });
+  it('deletes the shared key when the list becomes empty (canonical output)', () => {
+    const p = ok(unshareRepos(groups(), ['pay-api'], ['payments', 'web']));
+    expect('shared' in findGroup(p.groups, ['payments', 'web'])!).toBe(false);
+    expect(writeConfig({ version: 1, index: 'api', groups: p.groups }, 'h')).not.toContain('shared: ["pay-api"]');
+  });
+  it('rule-only: notLinked and stillShared, nothing to commit', () => {
+    const api = repos.find((r) => r.name === 'api-svc')!;
+    const p = ok(unshareRepos(groups(), [api], ['payments']));
+    expect(p.changed).toBe(false);
+    expect(p.removed).toEqual([]);
+    expect(p.notLinked).toEqual(['api-svc']);
+    expect(p.stillShared).toEqual([{ repo: 'api-svc', rule: 'topic:backend' }]);
+    expect(p.groups).toEqual(groups());
+  });
+  it('exact entry and a rule both: removes the exact one and reports the rule', () => {
+    const g = groups();
+    findGroup(g, ['payments'])!.shared!.push('api-svc');
+    const api = repos.find((r) => r.name === 'api-svc')!;
+    const p = ok(unshareRepos(g, [api], ['payments']));
+    expect(p.removed).toEqual(['api-svc']);
+    expect(p.stillShared).toEqual([{ repo: 'api-svc', rule: 'topic:backend' }]);
+    expect(findGroup(p.groups, ['payments'])!.shared).not.toContain('api-svc');
+  });
+  it('no-op for a repo that is not listed at all, and an error for a missing group', () => {
+    const p = ok(unshareRepos(groups(), ['plat-x'], ['payments']));
+    expect(p.changed).toBe(false);
+    expect(p.notLinked).toEqual(['plat-x']);
+    expect(p.stillShared).toEqual([]);
+    expect('error' in unshareRepos(groups(), ['x'], ['nope'])).toBe(true);
+    expect('error' in unshareRepos(groups(), ['x'], [])).toBe(true);
+  });
+  it('is an Edit: applyEdit, editPath and the commit message', () => {
+    const e = { kind: 'unshare' as const, repos: ['lib-core'], from: ['docs'] };
+    const r = ok(applyEdit(groups(), e)) as { groups: ReturnType<typeof groups> };
+    expect(findGroup(r.groups, ['docs'])!.shared).toEqual(['solo']);
+    expect(editPath(e)).toBe('docs');
+    expect(commitMessage(e)).toBe('chore(repo-groups): stop listing lib-core in docs');
+    expect(commitMessage({ ...e, repos: ['a', 'b'], from: ['payments', 'web'] })).toBe('chore(repo-groups): stop listing 2 repositories in payments/web');
   });
 });

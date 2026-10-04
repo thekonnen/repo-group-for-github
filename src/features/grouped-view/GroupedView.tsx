@@ -19,7 +19,7 @@ import { RepoMenu, SelectionBar } from './RepoMenu';
 import type { Controller, State } from './controller';
 import { UnassignedNotice, ungroupedTabLabel } from './UnassignedNotice';
 import { t } from '../../i18n';
-import { WorkPanel } from './WorkPanel';
+import { WorkPanel, prefetchWork } from './WorkPanel';
 
 const ROW_H = 76;
 const plural = (n: number, one: string, many: string) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
@@ -90,6 +90,9 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
   useEffect(() => {
     if (s.phase === 'ready' && scope.length) void ctl.ensureDetails(scope.map((r) => r.name));
   }, [scopeKey, s.phase]);
+  useEffect(() => {
+    if (s.phase === 'ready') prefetchWork(s.org, allRepos(node).map((r) => r.name), ctl.loadWork);
+  }, [scopeKey, s.phase, s.org]);
   const split = detailTotals(scope, s.details);
 
   const hasMembers = !isRoot && !team; // C3: the Members tab is for group pages of the org page

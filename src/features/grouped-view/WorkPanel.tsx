@@ -11,6 +11,7 @@ import {
   WORK_DEPTH_STEP,
   WORK_MAX_REPOS,
   WORK_PAGE,
+  WORK_TTL_MS,
   workCounts,
   type WorkItem,
   type WorkKind,
@@ -18,6 +19,24 @@ import {
 } from '../../core/work-items';
 import { Icon } from '../../ui/Icon';
 import { CallError } from '../../github/client';
+
+/** Last result per (org, repos): the tab opens with it at once and refreshes behind it (stale-while-revalidate). */
+const seen = new Map<string, { map: WorkMap; depth: number; at: number }>();
+const inflight = new Map<string, Promise<void>>();
+const wkey = (org: string, repos: string[]) => `${org}\n${repos.join('\n')}`;
+
+/** Fills the cache before the tab is opened. Safe to call often: one request per group while it is fresh. */
+export function prefetchWork(org: string, repos: string[], load: (repos: string[], depth: number) => Promise<WorkResult>): void {
+  if (!repos.length || repos.length > WORK_MAX_REPOS) return;
+  const k = wkey(org, repos);
+  const hit = seen.get(k);
+  if ((hit && Date.now() - hit.at < WORK_TTL_MS) || inflight.has(k)) return;
+  const p = load(repos, WORK_DEPTH_STEP)
+    .then((res) => void seen.set(k, { map: res.repos, depth: WORK_DEPTH_STEP, at: Date.now() }))
+    .catch(() => {})
+    .finally(() => void inflight.delete(k));
+  inflight.set(k, p);
+}
 
 const KINDS: [WorkKind, string][] = [['all', 'All'], ['issue', 'Issues'], ['pr', 'Pull requests']];
 const plural = (n: number, one: string, many: string) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
@@ -28,8 +47,9 @@ const plural = (n: number, one: string, many: string) => `${n.toLocaleString()} 
  */
 export function WorkPanel({ org, name, repos, query, load }: { org: string; name: string; repos: string[]; query: string; load: (repos: string[], depth: number) => Promise<WorkResult> }) {
   const tooBig = repos.length > WORK_MAX_REPOS;
-  const [map, setMap] = useState<WorkMap>({});
-  const [depth, setDepth] = useState(WORK_DEPTH_STEP);
+  const k0 = wkey(org, repos);
+  const [map, setMap] = useState<WorkMap>(() => seen.get(k0)?.map ?? {});
+  const [depth, setDepth] = useState(() => seen.get(k0)?.depth ?? WORK_DEPTH_STEP);
   const [shown, setShown] = useState(WORK_PAGE);
   const [kind, setKind] = useState<WorkKind>('all');
   const [busy, setBusy] = useState(false);
@@ -45,7 +65,11 @@ export function WorkPanel({ org, name, repos, query, load }: { org: string; name
     try {
       const res = await load(names, d);
       if (id !== run.current) return; // the group changed meanwhile
-      setMap((m) => (merge ? { ...m, ...res.repos } : res.repos));
+      setMap((m) => {
+        const next = merge ? { ...m, ...res.repos } : res.repos;
+        seen.set(wkey(org, repos), { map: next, depth: d, at: Date.now() });
+        return next;
+      });
       setDepth(d);
       setPaused(res.paused ? res.paused.resumeAt : undefined);
     } catch (e) {
@@ -56,13 +80,15 @@ export function WorkPanel({ org, name, repos, query, load }: { org: string; name
   };
 
   useEffect(() => {
-    setMap({});
+    const hit = seen.get(wkey(org, repos));
+    setMap(hit?.map ?? {});
     setShown(WORK_PAGE);
-    setDepth(WORK_DEPTH_STEP);
+    setDepth(hit?.depth ?? WORK_DEPTH_STEP);
     setPaused(undefined);
-    if (!tooBig && repos.length) void fetchDepth(repos, WORK_DEPTH_STEP, false);
+    const fresh = hit && Date.now() - hit.at < WORK_TTL_MS;
+    if (!tooBig && repos.length && !fresh) void fetchDepth(repos, hit?.depth ?? WORK_DEPTH_STEP, false);
     return () => void run.current++;
-  }, [key]);
+  }, [key, org]);
 
   const merged = useMemo(() => mergeWork(map), [map]);
   const items = useMemo(() => filterWork(merged.items, kind, query), [merged, kind, query]);

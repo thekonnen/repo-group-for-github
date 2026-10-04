@@ -105,7 +105,7 @@ describe('diff and AI prompt', () => {
   });
   it('tells the AI to keep every readme untouched', () => {
     expect(AI_PROMPT_TEMPLATE).toContain('Keep every "readme" value exactly as it is');
-    expect(AI_PROMPT_TEMPLATE).toContain('logo, readme, teams, match, shared, groups');
+    expect(AI_PROMPT_TEMPLATE).toContain('logo, readme, teams, match, shared, pinned, sort, groups');
   });
 });
 

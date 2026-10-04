@@ -5,6 +5,8 @@ export interface TeamTag {
   permission: Permission;
 }
 
+/** Order of a group's repositories (C5). Absent = Last pushed. */
+export type GroupSort = 'pushed' | 'name' | 'stars' | 'issues';
 /** A default issue label of a group (C2). `color` is 6 hex digits without "#"; absent = the default color. */
 export interface LabelTag {
   name: string;
@@ -36,6 +38,10 @@ export interface Group {
   /** Default milestones (C2). Same inheritance as labels. */
   milestones?: MilestoneTag[];
   match: string[];
+  /** Exact repo names shown first, in this order, in the group's repo list (C5). Only repos placed in the group count. */
+  pinned?: string[];
+  /** Default order of the group's repos (C5). Absent = Last pushed. */
+  sort?: GroupSort;
   /**
    * Optional (A3). Rules that ALSO list a repository in this group, on top of its primary placement. They never change
    * where a repo is placed (ungrouped detection, team access and counts of "grouped" use the primary placement only).

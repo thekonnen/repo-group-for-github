@@ -48,7 +48,7 @@ export function friendly(e: unknown, org: string): never {
  * Applies one edit to the latest repo-groups.yml and commits it. On a sha conflict (409/422) the file is fetched
  * again and the same edit is re-applied, once (§7).
  */
-export async function commitEdit(client: Client, kv: KV, org: string, edit: Edit): Promise<EditResult> {
+export async function commitEdit(client: Client, kv: KV, org: string, edit: Edit, repos?: { name: string; archived?: boolean }[]): Promise<EditResult> {
   const load = await loadYamlParser();
   for (let attempt = 0; ; attempt++) {
     const fresh = await fetchFresh(client, org);
@@ -60,7 +60,7 @@ export async function commitEdit(client: Client, kv: KV, org: string, edit: Edit
       if (!r.config) throw new EditError(`repo-groups.yml has a problem, so nothing was changed: ${r.error}. Fix the file on GitHub first.`);
       base = r.config;
     }
-    const applied = applyEdit(base.groups, edit);
+    const applied = applyEdit(base.groups, edit, repos);
     if ('error' in applied) throw new EditError(applied.error);
     const next: Config = { ...base, groups: applied.groups };
     const text = writeConfig(next, `${org}/.github/repo-groups.yml`);

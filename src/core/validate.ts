@@ -3,6 +3,7 @@ import { dueOn, labelKey, normColor } from './labels';
 import { forkTarget, isForkRule, isPropRule, isTopicRule, parsePropRule, topicOf } from './glob';
 import { PERMISSIONS } from './permissions';
 import { readReadme } from './readme';
+import { isSortKey, SORT_KEYS } from './sort';
 import type { Config, Group, LabelTag, MilestoneTag, TeamTag } from './types';
 
 export interface ValidationResult {
@@ -192,6 +193,15 @@ export function configFromObject(obj: unknown, opts: ValidateOptions = {}): Vali
       const words = (keywords as string[]).map((k) => k.trim()).filter(Boolean);
       const teams = parseTeams(name, raw.teams);
       if (!teams) return;
+      if (raw.pinned != null && (!Array.isArray(raw.pinned) || raw.pinned.some((m) => typeof m !== 'string'))) {
+        err = `"${name}": pinned must be a list of repository names.`;
+        return;
+      }
+      const pinned = [...new Set(((raw.pinned ?? []) as string[]).map((m) => m.trim()).filter(Boolean))];
+      if (raw.sort != null && !isSortKey(raw.sort)) {
+        err = `"${name}": sort must be one of ${SORT_KEYS.join(', ')}.`;
+        return;
+      }
       const readme = readReadme(name, org, raw.readme);
       if ('error' in readme) {
         err = readme.error;
@@ -221,6 +231,8 @@ export function configFromObject(obj: unknown, opts: ValidateOptions = {}): Vali
         ...(labels.length ? { labels } : {}),
         ...(milestones.length ? { milestones } : {}),
         match: (match as string[]).flatMap(splitRules),
+        ...(pinned.length ? { pinned } : {}),
+        ...(isSortKey(raw.sort) ? { sort: raw.sort } : {}),
         ...(sharedRules.length ? { shared: sharedRules } : {}),
         groups,
       });

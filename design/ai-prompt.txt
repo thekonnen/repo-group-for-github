@@ -16,7 +16,7 @@ Task:
 
 Output rules:
 - Answer with ONLY the complete YAML inside one ```yaml block. No explanations before or after.
-- Keep the format: version, then groups -> name, title, description, logo, readme, teams, match, shared, groups (nested subgroups).
+- Keep the format: version, then groups -> name, title, description, logo, readme, teams, match, shared, pinned, sort, groups (nested subgroups).
 - name: the slug. Short and lowercase; letters, numbers, "-", "_" or "."; unique among siblings.
 - title: optional display name for people (capitals, spaces and accents allowed, for example "Grupo: Competição"). Keep every "title" exactly as it is, on the same group. Add one only when the slug alone reads badly.
 - Use at most 3 levels. Prefer 3 to 9 groups per level. Avoid a group with a single repository unless it clearly stands alone.
@@ -27,5 +27,6 @@ Output rules:
 - Keep every "logo" value exactly as it is, on the same group.
 - Keep every "readme" value exactly as it is, on the same group (a path or a multi-line text). Never write, shorten or translate a README.
 - Keep every "teams" value exactly as it is. If you merge or rename a group, carry its teams to the group that replaces it. Never invent team names.
+- Keep every "pinned" and "sort" value exactly as it is, on the same group. If you merge or rename a group, carry them to the group that replaces it. Never invent pinned names.
 - match: a rule "topic:NAME" (for example "topic:kubernetes", or "topic:ml-*") puts every repository that has that GitHub topic in the group. Each repository in the list shows its "topics". Use topic rules when a topic clearly defines the group. Topic rules rank like name rules: without * they count as exact, with * as patterns.
 - Do not include the "repositories" list in your answer.

@@ -7,7 +7,8 @@ import type { Group } from '../../core/types';
 import { writeConfig } from '../../core/yaml-write';
 import { proposeForkGroups, withForkGroups, type ForkProposal } from '../../core/fork-groups';
 import type { RepoInfo } from '../../core/types';
-import { defaultExpanded, memoTree, SORT_KEYS, type SortKey, type TreeModel } from '../../core/tree';
+import { defaultExpanded, memoTree, SORT_KEYS, type GroupNode, type SortKey, type TreeModel } from '../../core/tree';
+import { isSortKey, orderRepos } from '../../core/sort';
 import { hasGithubFilter } from '../../github/route';
 import { CallError, type Call } from '../../github/client';
 import type { ConfigResult, ErrorInfo, OrgPrefs, OrgSnapshot, Progress } from '../../github/messages';
@@ -47,6 +48,8 @@ export interface State {
   /** `auto` = the default of the group: About when it has a README, otherwise Groups and repositories. */
   tab: 'auto' | 'about' | 'items' | 'ungrouped' | 'rules' | 'all' | 'work' | 'members';
   sort: SortKey;
+  /** C5: local view override of a group's order, by group key (people who cannot edit the org file). */
+  groupSort: Record<string, SortKey>;
   /** Saved order of the group tabs; empty = the built-in order. */
   tabOrder: string[];
   query: string;
@@ -153,6 +156,7 @@ export function createController(org: string, env: Env) {
     expandedTouched: false,
     tab: 'auto',
     sort: 'pushed',
+    groupSort: {},
     tabOrder: [],
     query: '',
     access: null,
@@ -275,6 +279,9 @@ export function createController(org: string, env: Env) {
     const prefs = await env.call<Partial<OrgPrefs>>({ type: 'prefs:get', org: prefsOrg }).catch(() => ({}) as Partial<OrgPrefs>);
     if (prefs.expanded) store.set({ expanded: new Set(prefs.expanded), expandedTouched: true });
     if (prefs.sort && SORT_KEYS.includes(prefs.sort)) store.set({ sort: prefs.sort });
+    if (prefs.groupSort && typeof prefs.groupSort === 'object') {
+      store.set({ groupSort: Object.fromEntries(Object.entries(prefs.groupSort).filter(([, v]) => isSortKey(v))) as Record<string, SortKey> });
+    }
     if (Array.isArray(prefs.tabOrder)) store.set({ tabOrder: prefs.tabOrder.filter((x) => typeof x === 'string') });
     if (prefs.unassignedSeen) store.set({ seen: prefs.unassignedSeen });
     if (!hasGithubFilter(env.location.search)) {
@@ -360,6 +367,14 @@ export function createController(org: string, env: Env) {
     } catch (e) {
       return { ok: false, message: infoOf(e).message };
     }
+  }
+
+  function setLocalSort(key: string, sort: SortKey | null) {
+    const next = { ...store.get().groupSort };
+    if (sort) next[key] = sort;
+    else delete next[key];
+    store.set({ groupSort: next });
+    savePrefs({ groupSort: next });
   }
 
   const destLabel = (to: string[]) => (to.length ? to.join(' / ') : 'Ungrouped');
@@ -531,6 +546,11 @@ export function createController(org: string, env: Env) {
     return writeConfig(cfg, `${org}/.github/repo-groups.yml`);
   }
 
+  /** C5: pins and the group sort are written by people who can write the org file, on the org page (not the team page). */
+  const canEditOrder = () => !!store.get().access?.canWriteOrg && !env.team;
+  /** The order in effect for a group: the person's local override, else the group's `sort:`, else Last pushed. */
+  const sortOf = (node: GroupNode): SortKey => store.get().groupSort[node.key] ?? node.group.sort ?? 'pushed';
+
   return {
     store,
     teams,
@@ -693,6 +713,29 @@ export function createController(org: string, env: Env) {
       savePrefs({ sort });
     },
     setQuery: (query: string) => store.set(query === store.get().query ? { query } : { query, selected: [] }),
+    canEditOrder,
+    sortOf,
+    /** The group's repos with a local sort override applied (pins stay on top); the tree already holds the file's order. */
+    orderOf(node: GroupNode): RepoInfo[] {
+      const o = store.get().groupSort[node.key];
+      return o && o !== (node.group.sort ?? 'pushed') ? orderRepos(node.repos, o, node.pins).list : node.repos;
+    },
+    /** Editors write `sort:` to repo-groups.yml; everyone else gets a local view override, kept per org and group. */
+    async setGroupSort(node: GroupNode, sort: SortKey): Promise<void> {
+      if (canEditOrder()) {
+        const r = await save({ kind: 'sort', path: node.path, sort });
+        if (!r.ok) showToast(r.message, 'error');
+        else if (store.get().groupSort[node.key]) setLocalSort(node.key, null);
+        return;
+      }
+      setLocalSort(node.key, sort);
+    },
+    /** "Pin to top of <group>" / "Unpin" from the repo row menu. `key` is the group the repo is placed in. */
+    async setPin(key: string, repo: string, pinned: boolean): Promise<void> {
+      if (!key || !canEditOrder()) return;
+      const r = await save({ kind: 'pin', path: key.split('/'), repo, pinned });
+      if (!r.ok) showToast(r.message, 'error');
+    },
     updatedText: (meta: IndexMeta | null) => (meta?.lastIncrementalSync ? ago(meta.lastIncrementalSync) : ''),
   };
 }

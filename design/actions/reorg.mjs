@@ -232,6 +232,21 @@ function readReadme(name, org, raw) {
 	return { value: cleanReadme(raw) };
 }
 //#endregion
+//#region src/core/sort.ts
+var SORT_KEYS = [
+	"pushed",
+	"name",
+	"stars",
+	"issues"
+];
+var SORT_LABEL = {
+	pushed: "Last pushed",
+	name: "Name",
+	stars: "Stars",
+	issues: "Open issues & PRs"
+};
+var isSortKey = (v) => typeof v === "string" && SORT_KEYS.includes(v);
+//#endregion
 //#region src/core/edit.ts
 /**
 * "dag, dagsrv;dags" -> three rules. Repository names cannot contain commas or spaces, so splitting a rule on them
@@ -434,6 +449,15 @@ function configFromObject(obj, opts = {}) {
 			const words = keywords.map((k) => k.trim()).filter(Boolean);
 			const teams = parseTeams(name, raw.teams);
 			if (!teams) return;
+			if (raw.pinned != null && (!Array.isArray(raw.pinned) || raw.pinned.some((m) => typeof m !== "string"))) {
+				err = `"${name}": pinned must be a list of repository names.`;
+				return;
+			}
+			const pinned = [...new Set((raw.pinned ?? []).map((m) => m.trim()).filter(Boolean))];
+			if (raw.sort != null && !isSortKey(raw.sort)) {
+				err = `"${name}": sort must be one of ${SORT_KEYS.join(", ")}.`;
+				return;
+			}
 			const readme = readReadme(name, org, raw.readme);
 			if ("error" in readme) {
 				err = readme.error;
@@ -463,6 +487,8 @@ function configFromObject(obj, opts = {}) {
 				...labels.length ? { labels } : {},
 				...milestones.length ? { milestones } : {},
 				match: match.flatMap(splitRules),
+				...pinned.length ? { pinned } : {},
+				...isSortKey(raw.sort) ? { sort: raw.sort } : {},
 				...sharedRules.length ? { shared: sharedRules } : {},
 				groups
 			});
@@ -3889,7 +3915,7 @@ var teamToYaml = (t) => t.permission === "push" ? q(t.slug) : `{ slug: ${q(t.slu
 var labelToYaml = (l) => !l.color && !l.description ? q(l.name) : `{ name: ${q(l.name)}${l.color ? `, color: ${q(l.color)}` : ""}${l.description ? `, description: ${q(l.description)}` : ""} }`;
 var milestoneToYaml = (m) => `{ title: ${q(m.title)}${m.due_on ? `, due_on: ${q(m.due_on)}` : ""}${m.description ? `, description: ${q(m.description)}` : ""} }`;
 /**
-* Canonical writer: order name, title, description, keywords, logo, readme, teams, labels, milestones, match, shared, groups; 2-space indent;
+* Canonical writer: order name, title, description, keywords, logo, readme, teams, labels, milestones, match, shared, pinned, sort, groups; 2-space indent;
 * flow-style lists; leading comment. `personal` omits index and teams (My groups).
 */
 function writeConfig(cfg, header, opts = {}) {
@@ -3909,6 +3935,8 @@ function writeConfig(cfg, header, opts = {}) {
 		if (!opts.personal && g.milestones?.length) lines.push(`${ind}  milestones: [${g.milestones.map(milestoneToYaml).join(", ")}]`);
 		if (g.match.length) lines.push(`${ind}  match: [${g.match.map(q).join(", ")}]`);
 		if (g.shared?.length) lines.push(`${ind}  shared: [${g.shared.map(q).join(", ")}]`);
+		if (g.pinned?.length) lines.push(`${ind}  pinned: [${g.pinned.map(q).join(", ")}]`);
+		if (g.sort) lines.push(`${ind}  sort: ${g.sort}`);
 		if (g.groups.length) {
 			lines.push(`${ind}  groups:`);
 			g.groups.forEach((c) => emit(c, ind + "    "));
@@ -3973,6 +4001,18 @@ function diffTrees(a, b, repos) {
 			cls: "chg",
 			text: `Rules of ${k}`,
 			to: nb.match.join(", ") || "(none)"
+		});
+		if ((na.pinned ?? []).join("|") !== (nb.pinned ?? []).join("|")) items.push({
+			k: "~",
+			cls: "chg",
+			text: `Pinned of ${k}`,
+			to: (nb.pinned ?? []).join(", ") || "(none)"
+		});
+		if ((na.sort ?? "") !== (nb.sort ?? "")) items.push({
+			k: "~",
+			cls: "chg",
+			text: `Sort of ${k}`,
+			to: nb.sort ? SORT_LABEL[nb.sort] : "default (Last pushed)"
 		});
 		if ((na.shared ?? []).join("|") !== (nb.shared ?? []).join("|")) items.push({
 			k: "~",

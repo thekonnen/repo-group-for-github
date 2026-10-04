@@ -89,6 +89,8 @@ export interface OrgPrefs {
   expanded: string[];
   /** Order of the "All repositories" tab. */
   sort?: 'pushed' | 'name' | 'stars' | 'issues';
+  /** Local view override of a group's order (C5), by group key. Used by people who cannot edit the org file. */
+  groupSort?: Record<string, 'pushed' | 'name' | 'stars' | 'issues'>;
   /** Order of the group page tabs, by tab id. Ids that are not visible are skipped. */
   tabOrder?: string[];
   /** Options > "Show grouped view by default". Used when the org has no saved view. Default true. */

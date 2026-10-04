@@ -3,7 +3,8 @@ import { logoPath } from './logo';
 import { findGroup, flatList, keyOf, pickIn, placement, postOrder, ruleFor, sharedPlacement } from './placement';
 import { labelKey } from './labels';
 import { cleanReadme, isSafeReadmePath, readmeFilePath, type ReadmeChange } from './readme';
-import type { Group, LabelTag, MilestoneTag, TeamTag } from './types';
+import { prunePins, type SortKey } from './sort';
+import type { Group, LabelTag, MilestoneTag, RepoInfo, TeamTag } from './types';
 
 /** The single change behind Edit group / New group. Re-applied to a fresh file when a commit conflicts (§7). */
 export type Edit =
@@ -14,6 +15,10 @@ export type Edit =
   | { kind: 'file'; path: string[]; repo: string }
   /** Removes a group and all its subgroups from the file. No repository is touched: they fall back to the other rules. */
   | { kind: 'delete'; path: string[] }
+  /** C5: pins (appends to the end of `pinned`) or unpins a repo in a group. The repo must be placed in that group. */
+  | { kind: 'pin'; path: string[]; repo: string; pinned: boolean }
+  /** C5: sets the default order of a group's repos; `null` removes `sort:` (back to Last pushed). */
+  | { kind: 'sort'; path: string[]; sort: SortKey | null }
   /** A4: moves repositories to a group ([] = Ungrouped), in one commit. Exact names only: it never edits patterns. */
   | { kind: 'move'; repos: string[]; to: string[]; /** The index records of `repos`, so topic:, prop: and fork-of: rules are honored when the edit is re-applied. */ targets?: RuleTarget[]; /** Ungrouped moves: also remove the exact names from the `shared` lists that list the repo. */ dropShared?: boolean }
   /** A3: also lists repositories in a group (adds the exact name to its `shared`) without changing their home. */
@@ -339,8 +344,30 @@ export function unshareRepos(groups: Group[], repos: RepoRef[], from: string[]):
 }
 
 /** Applies an edit to a tree (never mutates the input). Logo, teams and subgroups of an edited group are kept. */
-export function applyEdit(groups: Group[], edit: Edit): { groups: Group[] } | { error: string } {
+export function applyEdit(groups: Group[], edit: Edit, repos?: Pick<RepoInfo, 'name' | 'archived'>[]): { groups: Group[] } | { error: string } {
   const next = clone(groups);
+  if (edit.kind === 'pin' || edit.kind === 'sort') {
+    const t = findGroup(next, edit.path);
+    if (!t) return { error: `The group "${edit.path.join('/')}" no longer exists. Reload the page and try again.` };
+    const visible = repos?.filter((r) => !r.archived);
+    if (edit.kind === 'sort') {
+      if (edit.sort && edit.sort !== 'pushed') t.sort = edit.sort;
+      else delete t.sort;
+    } else {
+      const lower = edit.repo.toLowerCase();
+      const rest = (t.pinned ?? []).filter((p) => p.toLowerCase() !== lower);
+      if (edit.pinned) {
+        // Pins only apply to the repo's primary placement: refuse to pin one that another group holds.
+        if (visible && placement(next, visible)[visible.find((r) => r.name.toLowerCase() === lower)?.name ?? ''] !== edit.path.join('/'))
+          return { error: `"${edit.repo}" is not in ${edit.path.join('/')} (another group or rule places it). Reload the page and try again.` };
+        rest.push(edit.repo);
+      }
+      if (rest.length) t.pinned = rest;
+      else delete t.pinned;
+    }
+    // Stale pins (repo renamed, deleted, archived or moved to another group) go away with this write.
+    return { groups: visible?.length ? prunePins(next, visible) : next };
+  }
   if (edit.kind === 'delete') {
     const parentPath = edit.path.slice(0, -1);
     const parent = parentPath.length ? findGroup(next, parentPath) : null;
@@ -428,10 +455,12 @@ export function applyEdit(groups: Group[], edit: Edit): { groups: Group[] } | { 
 }
 
 export const editPath = (e: Edit): string =>
-  e.kind === 'unshare' ? keyOf(e.from) : e.kind === 'move' || e.kind === 'share' ? keyOf(e.to) : e.kind === 'file' || e.kind === 'delete' ? e.path.join('/') : (e.kind === 'new' ? [...e.parent, finalName(e.name)] : [...e.path.slice(0, -1), finalName(e.name)]).join('/');
+  e.kind === 'unshare' ? keyOf(e.from) : e.kind === 'move' || e.kind === 'share' ? keyOf(e.to) : e.kind === 'file' || e.kind === 'delete' || e.kind === 'pin' || e.kind === 'sort' ? e.path.join('/') : (e.kind === 'new' ? [...e.parent, finalName(e.name)] : [...e.path.slice(0, -1), finalName(e.name)]).join('/');
 
 /** `chore(repo-groups): edit group infra/dagsrv` (§7). */
 export function commitMessage(e: Edit): string {
+  if (e.kind === 'pin') return `chore(repo-groups): ${e.pinned ? 'pin' : 'unpin'} ${e.repo} in ${e.path.join('/')}`;
+  if (e.kind === 'sort') return `chore(repo-groups): ${e.sort && e.sort !== 'pushed' ? `sort ${e.path.join('/')} by ${e.sort}` : `reset sort of ${e.path.join('/')}`}`;
   if (e.kind === 'file') return `chore(repo-groups): file ${e.repo} in ${e.path.join('/')}`;
   if (e.kind === 'unshare') return `chore(repo-groups): stop listing ${e.repos.length === 1 ? e.repos[0] : `${e.repos.length} repositories`} in ${e.from.join('/')}`;
   if (e.kind === 'share') return `chore(repo-groups): also list ${e.repos.length === 1 ? e.repos[0] : `${e.repos.length} repositories`} in ${e.to.join('/')}`;

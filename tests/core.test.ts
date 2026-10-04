@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { example, EXAMPLE, load, REPOS } from './fixtures';
-import { globRe, matches, normName } from '../src/core/glob';
+import { globRe, matches, normName, ruleLabel } from '../src/core/glob';
 import { findGroup, placement, pickIn, postOrder, ruleFor } from '../src/core/placement';
 import { readConfig, stripFences } from '../src/core/yaml-read';
 import { writeConfig } from '../src/core/yaml-write';
@@ -21,6 +21,31 @@ describe('glob', () => {
   it('normalizes repository names like GitHub', () => {
     expect(normName('  my repo!! name ')).toBe('my-repo-name');
     expect(normName('ok_name.v1')).toBe('ok_name.v1');
+  });
+});
+
+describe('topic rules', () => {
+  const c = read('groups:\n  - name: a\n    match: ["topic:ML"]\n  - name: b\n    match: ["topic:ml-*"]\n    groups:\n      - name: c\n        match: ["topic:ml-vision"]\n').config!;
+  it('matches topics case-insensitively, exact beats glob', () => {
+    const r = (name: string, topics: string[]) => placement(c.groups, [{ name, topics }])[name];
+    expect(r('x', ['ml'])).toBe('a');
+    expect(r('x', ['ml-nlp'])).toBe('b');
+    expect(r('x', ['ml-vision', 'ml'])).toBe('a');
+    expect(r('x', ['ml-vision'])).toBe('b/c');
+    expect(r('x', ['web'])).toBe('');
+    expect(r('x', [])).toBe('');
+  });
+  it('is not matched by repo names, and ruleFor reports the rule', () => {
+    expect(matches(['topic:ml'], 'ml')).toBe(false);
+    expect(matches(['topic:'], 'x', ['x'])).toBe(false);
+    expect(ruleFor(c.groups[1], 'x', ['ml-nlp'])).toBe('topic:ml-*');
+    expect(ruleLabel('topic:ml')).toBe('topic: ml');
+  });
+  it('rejects an empty topic and keeps topics in the AI context', () => {
+    expect(read('groups:\n  - name: a\n    match: ["topic:"]\n').error).toMatch(/needs a topic name/);
+    const t = aiText('o', 'groups: []', [{ name: 'r', topics: ['a', 'b'] }]);
+    expect(t).toContain('    topics: ["a", "b"]');
+    expect(t).toContain('topic:NAME');
   });
 });
 

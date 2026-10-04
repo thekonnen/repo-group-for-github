@@ -33,7 +33,7 @@ describe('property rules (core)', () => {
     expect(propHit('prop:team=da*', { team: 'ml' })).toBe(false);
     expect(propHit('prop:team=da*', undefined)).toBe(false);
     expect(propHit('prop:client', { client: 'x' })).toBe(false);
-    expect(matches(['prop:client=Acme'], 'whatever', { client: 'Acme' })).toBe(true);
+    expect(matches(['prop:client=Acme'], 'whatever', undefined, { client: 'Acme' })).toBe(true);
     expect(matches(['prop:client=Acme'], 'whatever')).toBe(false);
   });
   const cfg = read(`groups:
@@ -49,14 +49,14 @@ describe('property rules (core)', () => {
   const order = postOrder(cfg.groups);
   it('keeps the §5.3 precedence: exact-style beats pattern-style, deepest pattern wins', () => {
     // exact-style property rule beats a name pattern in another group
-    expect(pickIn(order, 'acme-web', { client: 'Acme' })?.key).toBe('clients/acme');
+    expect(pickIn(order, 'acme-web', undefined, { client: 'Acme' })?.key).toBe('clients/acme');
     // an exact name beats a property pattern
-    expect(pickIn(order, 'special', { team: 'data' })?.key).toBe('data');
-    expect(pickIn(order, 'x', { team: 'data' })?.key).toBe('data');
+    expect(pickIn(order, 'special', undefined, { team: 'data' })?.key).toBe('data');
+    expect(pickIn(order, 'x', undefined, { team: 'data' })?.key).toBe('data');
     // no props: falls back to name rules / ungrouped
     expect(pickIn(order, 'acme-web')?.key).toBe('names');
     expect(pickIn(order, 'other')).toBeNull();
-    expect(ruleFor(cfg.groups[0].groups[0], 'x', { client: 'acme' })).toBe('prop:client=Acme');
+    expect(ruleFor(cfg.groups[0].groups[0], 'x', undefined, { client: 'acme' })).toBe('prop:client=Acme');
   });
   it('placement uses repo props', () => {
     const p = placement(cfg.groups, [{ name: 'a', props: { client: 'Acme' } }, { name: 'b' }]);
@@ -166,5 +166,22 @@ describe('handler joins props', () => {
     expect(r.ok).toBe(true);
     expect(r.data.meta.propsUnavailable).toBe(true);
     expect(r.data.repos.every((x: any) => !x.props)).toBe(true);
+  });
+});
+
+describe('prop: and topic: rules together', () => {
+  const cfg = read('groups:\n  - name: acme\n    match: ["prop:client=Acme"]\n  - name: backend\n    match: ["topic:backend"]\n  - name: names\n    match: ["legacy-*"]\n').config!;
+  const order = postOrder(cfg.groups);
+  it('both kinds place a repo, and the label of each reads naturally', () => {
+    expect(pickIn(order, 'x', ['backend'], undefined)?.key).toBe('backend');
+    expect(pickIn(order, 'x', undefined, { client: 'Acme' })?.key).toBe('acme');
+    expect(pickIn(order, 'legacy-api', ['frontend'], { client: 'other' })?.key).toBe('names');
+    expect(pickIn(order, 'x', ['frontend'], { client: 'other' })).toBeNull();
+    expect(ruleLabel('topic:backend')).toBe('topic: backend');
+    expect(ruleLabel('prop:client=Acme')).toBe('client: Acme');
+  });
+  it('a repo with both facts follows the first group in post-order among exact-style hits', () => {
+    expect(pickIn(order, 'x', ['backend'], { client: 'Acme' })?.key).toBe('acme');
+    expect(placement(cfg.groups, [{ name: 'x', topics: ['backend'], props: { client: 'Acme' } }]).x).toBe('acme');
   });
 });

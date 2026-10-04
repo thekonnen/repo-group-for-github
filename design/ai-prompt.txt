@@ -1,7 +1,7 @@
 # Prompt copied by "Copy prompt for AI" / "Copy prompt for AI + YML"
 # {{org}} is replaced by the organization login at runtime.
 # "+ YML" appends: a blank line, "Current file and repositories:", then a ```yaml block with the
-# current repo-groups.yml followed by a read-only `repositories:` list (name, description, language, and custom properties when the org has them).
+# current repo-groups.yml followed by a read-only `repositories:` list (name, description, language, topics, and custom properties when the org has them).
 # When the user picks a Scope other than "All repositories" (F14), the `repositories:` list only holds
 # the repos in that scope, and this line is added right after the Task list:
 #   Only classify the repositories listed. Keep every other group exactly as it is.
@@ -9,7 +9,7 @@
 You are a software architect organizing the GitHub repositories of the "{{org}}" organization into groups and subgroups, the way GitLab organizes projects.
 
 Task:
-1. Read every repository in the "repositories" list (name, description, language).
+1. Read every repository in the "repositories" list (name, description, language, topics).
 2. Classify each one by what it does: product or business domain, platform/infrastructure service, deployment or config of a third-party tool, data and automation, libraries and tooling, docs, experiments or archived work.
 3. Build a clear hierarchy from that classification. Reuse and improve the current groups when they make sense; merge, split, rename or remove them when that makes the structure clearer.
 4. Put every repository in exactly one group using "match" rules. A fork or upstream copy (for example "llm-proxy") belongs in the same group as the deployment that uses it (for example "kite-llm-proxy").
@@ -25,4 +25,5 @@ Output rules:
 - description: one short sentence, up to about 80 characters, saying what the group holds.
 - Keep every "logo" value exactly as it is, on the same group.
 - Keep every "teams" value exactly as it is. If you merge or rename a group, carry its teams to the group that replaces it. Never invent team names.
+- match: a rule "topic:NAME" (for example "topic:kubernetes", or "topic:ml-*") puts every repository that has that GitHub topic in the group. Each repository in the list shows its "topics". Use topic rules when a topic clearly defines the group. Topic rules rank like name rules: without * they count as exact, with * as patterns.
 - Do not include the "repositories" list in your answer.

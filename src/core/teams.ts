@@ -44,7 +44,7 @@ export type TeamAccess = Record<string, Record<string, Permission>>; // slug -> 
  */
 export function syncPlan(
   groups: Group[],
-  repos: Pick<RepoInfo, 'name' | 'archived' | 'props'>[],
+  repos: Pick<RepoInfo, 'name' | 'archived' | 'topics' | 'props'>[],
   access: TeamAccess,
   teamSlug?: string,
   customBase?: Record<string, string>,
@@ -53,7 +53,7 @@ export function syncPlan(
   const rows: SyncRow[] = [];
   for (const repo of repos) {
     if (repo.archived) continue;
-    const node = pickIn(order, repo.name, repo.props);
+    const node = pickIn(order, repo.name, repo.topics, repo.props);
     if (!node) continue;
     const eff = effectiveTeams(groups, node.path);
     for (const [slug, target] of Object.entries(eff)) {
@@ -71,7 +71,7 @@ export function syncPlan(
 /** Repos a team can access that sit in groups not tagged for it (informational banner). */
 export function untaggedAccess(
   groups: Group[],
-  repos: Pick<RepoInfo, 'name' | 'props'>[],
+  repos: Pick<RepoInfo, 'name' | 'topics' | 'props'>[],
   access: TeamAccess,
   teamSlug: string,
 ): string[] {
@@ -80,7 +80,7 @@ export function untaggedAccess(
   return Object.keys(access[teamSlug] ?? {}).filter((name) => {
     const repo = byName.get(name);
     if (!repo) return false;
-    const node = pickIn(order, name, repo.props);
+    const node = pickIn(order, name, repo.topics, repo.props);
     return !node || !(teamSlug in effectiveTeams(groups, node.path));
   });
 }

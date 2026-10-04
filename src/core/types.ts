@@ -38,6 +38,8 @@ export interface RepoInfo {
   stars?: number;
   forks?: number;
   openIssuesAndPrs?: number;
+  /** GitHub topics, lowercase. Matched by `topic:` rules. */
+  topics?: string[];
   viewerIsAdmin?: boolean;
   /** Org custom property values, joined in by the background worker (never stored in the index). */
   props?: Record<string, string | string[]>;

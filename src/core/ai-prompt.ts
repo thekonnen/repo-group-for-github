@@ -22,12 +22,13 @@ export function aiPrompt(org: string, opts: { scoped?: boolean } = {}): string {
   return text;
 }
 
-export function repositoriesContext(repos: Pick<RepoInfo, 'name' | 'description' | 'language' | 'props'>[]): string {
+export function repositoriesContext(repos: Pick<RepoInfo, 'name' | 'description' | 'language' | 'topics' | 'props'>[]): string {
   const lines = ['repositories:  # read-only context, ignored when pasted back'];
   for (const r of repos) {
     lines.push(`  - name: ${r.name}`);
     if (r.description) lines.push(`    description: ${q(r.description)}`);
     if (r.language) lines.push(`    language: ${r.language}`);
+    if (r.topics?.length) lines.push(`    topics: [${r.topics.map(q).join(', ')}]`);
     const props = Object.entries(r.props ?? {});
     if (props.length) lines.push(`    properties: { ${props.map(([k, v]) => `${q(k)}: ${Array.isArray(v) ? `[${v.map(q).join(', ')}]` : q(v)}`).join(', ')} }`);
   }
@@ -35,7 +36,7 @@ export function repositoriesContext(repos: Pick<RepoInfo, 'name' | 'description'
 }
 
 /** "Copy prompt for AI + YML" payload. */
-export function aiText(org: string, yamlText: string, repos: Pick<RepoInfo, 'name' | 'description' | 'language' | 'props'>[], scoped = false): string {
+export function aiText(org: string, yamlText: string, repos: Pick<RepoInfo, 'name' | 'description' | 'language' | 'topics' | 'props'>[], scoped = false): string {
   return (
     aiPrompt(org, { scoped }) +
     '\n\nCurrent file and repositories:\n\n```yaml\n' +

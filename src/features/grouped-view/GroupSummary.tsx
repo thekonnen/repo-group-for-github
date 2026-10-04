@@ -42,7 +42,7 @@ export function GroupSummary({ node }: { node: GroupNode }) {
       )}
       <div class="rg-spark" aria-hidden="true">
         <svg width={SW} height={SH} viewBox={`0 0 ${SW} ${SH}`}>
-          <title>{t('summarySparkNote')}</title>
+          <title>{t('summarySparkHover')}</title>
           <defs>
             <linearGradient id={`${uid}-g`} x1="0" x2="1" y1="0" y2="0">
               <stop offset="0" stop-color="currentColor" stop-opacity="0.25" />
@@ -53,7 +53,6 @@ export function GroupSummary({ node }: { node: GroupNode }) {
             </mask>
           </defs>
           <rect x="0" y="0" width={SW} height={SH} style={`stroke:none;fill:url(#${uid}-g);mask:url(#${uid}-m)`} />
-          {s.weekly.map((n, i) => <rect key={i} x={i * step - step / 2} y="0" width={step} height={SH} fill="transparent"><title>{n}</title></rect>)}
         </svg>
         <span class="rg-muted rg-spark-label">{t('summarySparkTitle')}</span>
       </div>

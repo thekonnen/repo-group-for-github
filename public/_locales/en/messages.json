@@ -401,6 +401,9 @@
   "summarySparkNote": {
     "message": "Last 12 weeks, from each repository's latest push. Not commit activity."
   },
+  "summarySparkHover": {
+    "message": "Past year of activity"
+  },
   "summaryAltText": {
     "message": "$REPOS$ repositories, $STARS$ stars, $FORKS$ forks. Languages by repository count: $LANGS$. $RECENT$ pushed in the last 30 days. Repositories last pushed per week over the last 12 weeks, oldest first: $WEEKS$.",
     "placeholders": {

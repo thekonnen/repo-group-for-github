@@ -39,4 +39,6 @@ export interface RepoInfo {
   forks?: number;
   openIssuesAndPrs?: number;
   viewerIsAdmin?: boolean;
+  /** Org custom property values, joined in by the background worker (never stored in the index). */
+  props?: Record<string, string | string[]>;
 }

@@ -30,7 +30,13 @@ Open it, then on the form:
 6. Set the Client ID and slug in `src/config.ts`.
 7. **Install App** on each account or org with **All repositories**.
 
-Permissions: Metadata (read), Contents (read & write), Issues (read), Pull requests (read), Administration (read & write), Organization Members (read). Details in [docs/github-app.md](docs/github-app.md).
+Permissions: Metadata (read), Contents (read & write), Issues (read), Pull requests (read), Administration (read & write), Organization Members (read), Organization Custom properties (read, only for `prop:` rules; an owner must accept it on an existing install). Details in [docs/github-app.md](docs/github-app.md).
+
+## Custom property rules (organizations)
+
+A group can take repositories by an organization custom property instead of the name: `match: ["prop:client=Acme"]` puts every repository whose `client` property is `Acme` in the group. The value accepts `*` (`prop:team=da*`), property names and values ignore case, and a multi-select property matches when any of its values does. Precedence is the same as for names: a rule without `*` counts as exact, one with `*` as a pattern; the deepest group wins. The group page shows these rules as "client: Acme". Values with spaces are not supported yet (use `*` for the space, `prop:client=Acme*Corp`).
+
+The properties are read with `GET /orgs/{org}/properties/values`, only when the org file has a `prop:` rule, and cached with the refresh interval. They need the App permission **Organization → Custom properties: Read**. Without it (or before an owner accepts the update) nothing breaks: those rules match nothing and the Match rules tab shows a hint. Personal accounts have no custom properties and skip this.
 
 ## Personal account
 

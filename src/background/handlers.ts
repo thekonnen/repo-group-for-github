@@ -18,6 +18,7 @@ import { refreshActionIndex } from './action-index';
 import { loadDetails } from './details';
 import { cachedTeamSlugs, grantTeam, loadTeamAccess, loadTeams } from './teams-data';
 import { teamSlugs } from '../core/teams';
+import { loadProps, usesProps, withProps } from './props-data';
 import { postOrder } from '../core/placement';
 import { suggest } from '../core/suggest';
 import { askLlm, classifyPrompt, clearLlmConfig, configuredProviders, llmConfigured, llmOrigin, llmStatus, LlmError, loadLlmConfig, parseChoice, parseNewGroup, saveLlmConfig, setLlmAuto, setLlmFallback, type Provider } from './llm';
@@ -173,6 +174,20 @@ export function createHandler(deps: Deps) {
     if (method === 'keywords') return out;
     if (method !== 'llm' && (s.source !== 'uncertain' || !llmConfigured(await loadLlmConfig(deps.kv)))) return out;
     return askGroups(cfg, org, repo, out, auto);
+  }
+
+  /** Custom property values for rules like `prop:client=Acme`. Only orgs whose file has such a rule pay for it; personal accounts skip. */
+  async function joinProps(req: Request, out: any): Promise<any> {
+    if ((req.type !== 'org:cached' && req.type !== 'org:refresh') || !out || !Array.isArray(out.repos)) return out;
+    await fileLoads.get(req.org)?.catch(() => undefined); // the page reads the file in parallel with the index
+    if (!usesProps((await deps.kv.get<OrgFile>(`rg:file:${req.org}`))?.text) || (await isSelf(req.org))) return out;
+    const r = await loadProps(client, deps.kv, req.org, {
+      cacheOnly: req.type === 'org:cached',
+      force: req.type === 'org:refresh' && req.force,
+      now: deps.now,
+      ttlMs: (await loadSettings(deps.kv)).refreshMinutes * 60_000,
+    });
+    return { ...out, repos: withProps(out.repos, r.props), ...(out.meta && r.unavailable ? { meta: { ...out.meta, propsUnavailable: true } } : {}) };
   }
 
   async function handle(req: Request): Promise<unknown> {
@@ -349,7 +364,7 @@ export function createHandler(deps: Deps) {
 
   return async (req: Request): Promise<Response> => {
     try {
-      return { ok: true, data: await handle(req) };
+      return { ok: true, data: await joinProps(req, await handle(req)) };
     } catch (e) {
       return { ok: false, error: toErrorInfo(e) };
     }

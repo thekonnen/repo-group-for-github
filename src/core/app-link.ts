@@ -7,6 +7,7 @@ export const APP_PERMISSIONS = {
   pull_requests: 'read', // open counts
   administration: 'write', // F12: add teams to repositories (the sensitive one)
   members: 'read', // organization permission: list teams and their repositories
+  organization_custom_properties: 'read', // organization permission: `prop:` rules (custom property values of repositories)
 } as const;
 
 export interface AppLinkOptions {

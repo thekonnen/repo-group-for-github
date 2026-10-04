@@ -378,12 +378,6 @@
   "agentCtxFallback": {
     "message": "The browser refused the clipboard. Press Ctrl+C or ⌘C to copy."
   },
-  "summaryStars": {
-    "message": "Stars"
-  },
-  "summaryForks": {
-    "message": "Forks"
-  },
   "summaryLanguages": {
     "message": "Languages"
   },

@@ -19,6 +19,7 @@ import { dragSource, dropTarget } from './dnd';
 import { RepoMenu, SelectionBar } from './RepoMenu';
 import type { Controller, State } from './controller';
 import { GroupSummary } from './GroupSummary';
+import { groupStats } from '../../core/group-stats';
 import { UnassignedNotice, ungroupedTabLabel } from './UnassignedNotice';
 import { t } from '../../i18n';
 import { WorkPanel, prefetchWork } from './WorkPanel';
@@ -160,6 +161,7 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
           <Stat label="Open issues & PRs" value={node.issues.toLocaleString()} onOpen={() => ctl.setTab('work')} />
         )}
         <Stat label="Last push" value={ago(node.latest)} />
+        <Stat label={t('summaryPushed30d')} value={groupStats(node).pushed30d.toLocaleString()} />
       </div>
       <GroupSummary node={node} />
       <div class="rg-tabs" role="tablist">

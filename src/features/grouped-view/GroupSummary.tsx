@@ -2,7 +2,7 @@ import { groupStats, WEEKS } from '../../core/group-stats';
 import type { GroupNode } from '../../core/tree';
 import { t } from '../../i18n';
 
-/** Aggregate summary under the stats row: stars, forks, language mix and repos-last-pushed-per-week (F1/C6). Recursive, from the index only. */
+/** Aggregate summary under the stats row: language mix and repos-last-pushed-per-week (F1/C6). Recursive, from the index only. */
 export function GroupSummary({ node }: { node: GroupNode }) {
   const s = groupStats(node);
   if (!s.repos) return null;
@@ -15,11 +15,6 @@ export function GroupSummary({ node }: { node: GroupNode }) {
   return (
     <section class="rg-summary" aria-label={t('summaryLanguages')}>
       <p class="rg-sr-only">{alt}</p>
-      <div class="rg-summary-nums" aria-hidden="true">
-        <div class="rg-stat"><span>{t('summaryStars')}</span><b>{s.stars.toLocaleString()}</b></div>
-        <div class="rg-stat"><span>{t('summaryForks')}</span><b>{s.forks.toLocaleString()}</b></div>
-        <div class="rg-stat"><span>{t('summaryPushed30d')}</span><b>{s.pushed30d.toLocaleString()}</b></div>
-      </div>
       {s.languages.length > 0 && (
         <div class="rg-lang" aria-hidden="true">
           <div class="rg-lang-bar">

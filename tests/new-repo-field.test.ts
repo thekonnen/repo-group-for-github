@@ -565,6 +565,40 @@ describe('new group from the AI and AI by default', () => {
     expect($('#rg-nr-picker')!.textContent).toContain('infra / dagsrv');
   });
 
+  it('D2: shows "Suggested: group - why" marked AI, applied, and sends the description', async () => {
+    const b = backend({ suggest: () => ({ source: 'llm', key: 'infra/dagsrv', reason: 'DAG server code', score: 0, margin: 0, ranking: [] }) });
+    const f = await open(undefined, { extra: b.extra });
+    await ready();
+    await vi.waitFor(() => expect(f.log.some((r) => r.type === 'llm:status')).toBe(true));
+    const desc = document.querySelector('input[name="repository[description]"]') as HTMLInputElement;
+    desc.value = 'Runs DAGs';
+    type('zzz-brand-new');
+    leave();
+    await vi.waitFor(() => expect($('#rg-nr-suggestion')).toBeTruthy());
+    const chip = $('#rg-nr-suggestion')!;
+    expect(chip.getAttribute('data-source')).toBe('ai');
+    expect(chip.textContent).toContain('AI');
+    expect(chip.textContent).toContain('Suggested: infra / dagsrv');
+    expect(chip.textContent).toContain('DAG server code');
+    expect($('#rg-nr-suggestion-applied')).toBeTruthy();
+    expect(aiCalls(f)[0].repo).toMatchObject({ name: 'zzz-brand-new', description: 'Runs DAGs' });
+  });
+
+  it('D2: when the AI fails, the keyword candidate is offered with Accept, not applied until accepted', async () => {
+    const b = backend({ suggest: () => ({ source: 'uncertain', key: null, score: 0.1, margin: 0, ranking: [{ key: 'infra/dagsrv', score: 0.1 }], llmError: 'The AI did not answer within 4 seconds.', fallbackKey: 'infra/dagsrv' }) });
+    const f = await open(undefined, { extra: b.extra });
+    await ready();
+    await vi.waitFor(() => expect(f.log.some((r) => r.type === 'llm:status')).toBe(true));
+    type('zzz-brand-new');
+    leave();
+    await vi.waitFor(() => expect($('#rg-nr-accept')).toBeTruthy());
+    expect($('#rg-nr-suggestion')!.getAttribute('data-source')).toBe('keywords');
+    expect($('#rg-nr-picker')!.textContent).not.toContain('infra / dagsrv');
+    ($('#rg-nr-accept') as HTMLButtonElement).click();
+    await vi.waitFor(() => expect($('#rg-nr-picker')!.textContent).toContain('infra / dagsrv'));
+    expect($('#rg-nr-accept')).toBeNull();
+  });
+
   it('also asks after a pause in typing (2.5 s), once', async () => {
     const b = backend({ suggest: () => ({ source: 'llm', key: 'infra/dagsrv', score: 0, margin: 0, ranking: [] }) });
     const f = await open(undefined, { extra: b.extra });

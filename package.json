@@ -12,7 +12,9 @@
     "postinstall": "wxt prepare",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "size": "node scripts/check-size.mjs"
+    "size": "node scripts/check-size.mjs",
+    "build:action": "node scripts/build-action.mjs",
+    "build:cli": "vite build -c packages/cli/vite.config.ts"
   },
   "dependencies": {
     "js-yaml": "^5.4.2",

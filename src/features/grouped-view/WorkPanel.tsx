@@ -21,9 +21,15 @@ import { Icon } from '../../ui/Icon';
 import { CallError } from '../../github/client';
 
 /** Last result per (org, repos): the tab opens with it at once and refreshes behind it (stale-while-revalidate). */
-const seen = new Map<string, { map: WorkMap; depth: number; at: number }>();
+const seen = new Map<string, { map: WorkMap; depth: number; at: number; paused?: number | null }>();
 const inflight = new Map<string, Promise<void>>();
 const wkey = (org: string, repos: string[]) => `${org}\n${repos.join('\n')}`;
+
+/** Empties the cache (tests share the module between cases). */
+export function clearWorkCache(): void {
+  seen.clear();
+  inflight.clear();
+}
 
 /** Fills the cache before the tab is opened. Safe to call often: one request per group while it is fresh. */
 export function prefetchWork(org: string, repos: string[], load: (repos: string[], depth: number) => Promise<WorkResult>): void {
@@ -32,7 +38,7 @@ export function prefetchWork(org: string, repos: string[], load: (repos: string[
   const hit = seen.get(k);
   if ((hit && Date.now() - hit.at < WORK_TTL_MS) || inflight.has(k)) return;
   const p = load(repos, WORK_DEPTH_STEP)
-    .then((res) => void seen.set(k, { map: res.repos, depth: WORK_DEPTH_STEP, at: Date.now() }))
+    .then((res) => void seen.set(k, { map: res.repos, depth: WORK_DEPTH_STEP, at: Date.now(), paused: res.paused ? res.paused.resumeAt : undefined }))
     .catch(() => {})
     .finally(() => void inflight.delete(k));
   inflight.set(k, p);
@@ -54,8 +60,9 @@ export function WorkPanel({ org, name, repos, query, load }: { org: string; name
   const [kind, setKind] = useState<WorkKind>('all');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [paused, setPaused] = useState<number | null | undefined>(undefined);
+  const [paused, setPaused] = useState<number | null | undefined>(() => seen.get(k0)?.paused);
   const run = useRef(0);
+  const started = useRef<string | null>(null); // the key whose state was seeded in the initial render
   const key = repos.join('\n');
 
   const fetchDepth = async (names: string[], d: number, merge: boolean) => {
@@ -67,7 +74,7 @@ export function WorkPanel({ org, name, repos, query, load }: { org: string; name
       if (id !== run.current) return; // the group changed meanwhile
       setMap((m) => {
         const next = merge ? { ...m, ...res.repos } : res.repos;
-        seen.set(wkey(org, repos), { map: next, depth: d, at: Date.now() });
+        seen.set(wkey(org, repos), { map: next, depth: d, at: Date.now(), paused: res.paused ? res.paused.resumeAt : undefined });
         return next;
       });
       setDepth(d);
@@ -81,10 +88,14 @@ export function WorkPanel({ org, name, repos, query, load }: { org: string; name
 
   useEffect(() => {
     const hit = seen.get(wkey(org, repos));
-    setMap(hit?.map ?? {});
-    setShown(WORK_PAGE);
-    setDepth(hit?.depth ?? WORK_DEPTH_STEP);
-    setPaused(undefined);
+    // First run: the initial render already holds the cached state; resetting it would undo a click made before this effect ran.
+    if (started.current !== null || !hit) {
+      setMap(hit?.map ?? {});
+      setShown(WORK_PAGE);
+      setDepth(hit?.depth ?? WORK_DEPTH_STEP);
+      setPaused(hit?.paused);
+    }
+    started.current = wkey(org, repos);
     const fresh = hit && Date.now() - hit.at < WORK_TTL_MS;
     if (!tooBig && repos.length && !fresh) void fetchDepth(repos, hit?.depth ?? WORK_DEPTH_STEP, false);
     return () => void run.current++;
@@ -112,7 +123,6 @@ export function WorkPanel({ org, name, repos, query, load }: { org: string; name
       </div>
     );
   }
-
   const resume = paused != null ? new Date(paused).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'later';
   return (
     <div class="rg-box">

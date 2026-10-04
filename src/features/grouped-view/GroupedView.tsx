@@ -14,6 +14,7 @@ import { chipTeams } from '../../core/teams';
 import { MembersPanel } from '../members/MembersPanel';
 import { TeamBanners } from '../teams/TeamBanners';
 import { TeamChips } from '../teams/TeamChips';
+import { AgentContextMenu } from './AgentContextMenu';
 import { dragSource, dropTarget } from './dnd';
 import { RepoMenu, SelectionBar } from './RepoMenu';
 import type { Controller, State } from './controller';
@@ -262,6 +263,7 @@ function Header({ ctl, s, node, name, isRoot }: { ctl: Controller; s: State; nod
         {canEdit && <button type="button" class="rg-btn" onClick={() => ctl.openYaml()}><Icon name="code" />Edit YAML</button>}
         {canEdit && !isRoot && <button type="button" class="rg-btn" onClick={() => ctl.openDrawer('edit', node.path)}><Icon name="pencil" />Edit group</button>}
         {canEdit && <button type="button" class="rg-btn" onClick={() => ctl.openDrawer('new', node.path)}><Icon name="folder" />{isRoot ? 'New group' : 'New subgroup'}</button>}
+        {!team && <AgentContextMenu org={s.org} node={node} teams={cfg && cfg.exists && cfg.config ? chipTeams(cfg.config.groups, node.path).map((c) => c.slug) : []} />}
         {!team && <a class="rg-btn rg-btn-primary" href={s.access?.personal ? `https://github.com/new?owner=${encodeURIComponent(s.org)}${q ? '&' + q.slice(1) : ''}` : `https://github.com/organizations/${s.org}/repositories/new${q}`}>New repository</a>}
       </div>
     </div>

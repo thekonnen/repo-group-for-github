@@ -340,5 +340,42 @@
   },
   "tabUngroupedMy": {
     "message": "Not in My groups"
+  },
+  "agentCtxMenu": {
+    "message": "Context for agents"
+  },
+  "agentCtxCopy": {
+    "message": "Copy context for agents"
+  },
+  "agentCtxDownload": {
+    "message": "Download .md"
+  },
+  "agentCtxSnippet": {
+    "message": "Copy AGENTS.md snippet"
+  },
+  "agentCtxCopied": {
+    "message": "Copied. Paste it into your agent."
+  },
+  "agentCtxSnippetCopied": {
+    "message": "Copied. Paste it into AGENTS.md or CLAUDE.md."
+  },
+  "agentCtxDownloaded": {
+    "message": "Downloaded $FILE$",
+    "placeholders": {
+      "file": {
+        "content": "$1"
+      }
+    }
+  },
+  "agentCtxOmitted": {
+    "message": "$N$ repositories were left out to keep it short.",
+    "placeholders": {
+      "n": {
+        "content": "$1"
+      }
+    }
+  },
+  "agentCtxFallback": {
+    "message": "The browser refused the clipboard. Press Ctrl+C or ⌘C to copy."
   }
 }

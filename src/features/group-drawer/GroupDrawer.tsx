@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { applyEdit, cleanTeams, displayName, finalName, slugify, slugName, splitRules, validateDraft, type Edit } from '../../core/edit';
-import { matches, ruleLabel } from '../../core/glob';
+import { matchesRepo, ruleLabel } from '../../core/glob';
 import { effectiveTeams } from '../../core/teams';
 import { byPush, nodeAt, type TreeModel } from '../../core/tree';
 import type { TeamTag } from '../../core/types';
@@ -95,7 +95,7 @@ function Form({ ctl, mode, path, focusLogo }: { ctl: Controller; mode: 'edit' | 
     setRuleInput('');
   };
 
-  const hits = useMemo(() => s.repos.filter((r) => !r.archived && allRules.length && matches(allRules, r.name, r.topics, r.props)).sort(byPush), [s.repos, ruleInput, rules]);
+  const hits = useMemo(() => s.repos.filter((r) => !r.archived && allRules.length && matchesRepo(allRules, r)).sort(byPush), [s.repos, ruleInput, rules]);
   const here = mode === 'edit' ? path.join('/') : null;
 
   const logoChange = logo.kind === 'png' ? { png: logo.png } : logo.kind === 'remove' ? { remove: true as const } : undefined;

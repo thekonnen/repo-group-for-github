@@ -18,7 +18,7 @@ export interface DiffResult {
 const byKey = (groups: Group[]) => new Map(flatList(groups).map((n) => [n.key, n.group]));
 const teamsStr = (g: Group) => g.teams.map((t) => `${t.slug}:${t.permission}`).join(', ');
 
-export function diffTrees(a: Group[], b: Group[], repos: Pick<RepoInfo, 'name'>[]): DiffResult {
+export function diffTrees(a: Group[], b: Group[], repos: Pick<RepoInfo, 'name' | 'fork' | 'parent'>[]): DiffResult {
   const ga = byKey(a);
   const gb = byKey(b);
   const pa = placement(a, repos);

@@ -42,6 +42,10 @@ The properties are read with `GET /orgs/{org}/properties/values`, only when the 
 
 Open `github.com/<you>?tab=repositories` while signed in as that user: the grouped view replaces the list (your own profile only). Groups live in `<you>/.github/repo-groups.yml`, which the extension offers to create as a private repository the first time. Teams do not exist on personal accounts, so the Teams field is hidden. The GitHub App must be installed on your account with access to all repositories to see private ones.
 
+## Forks grouped by upstream (`fork-of:`)
+
+Forks of one project often sit loose with generic names. A match rule `fork-of:<owner>` catches every fork whose upstream is owned by `<owner>` (`fork-of:macfuse`); `fork-of:<owner>/<repo>` catches forks of one upstream repository. Without `*` it ranks like an exact name, with `*` like a pattern (§5.3). The upstream is read lazily with GraphQL (forks only, 50 per query), cached, and stored in the local index. In the **Ungrouped** tab, **Auto-group forks** proposes one group per upstream owner with 2 or more ungrouped forks and opens the YAML editor with that draft; nothing is saved until you click **Apply and commit**. Works on personal accounts and organizations.
+
 ## Group by GitHub topic
 
 A match rule `topic:<name>` puts every repository that has that GitHub topic in the group, so new repositories file themselves when they are tagged:

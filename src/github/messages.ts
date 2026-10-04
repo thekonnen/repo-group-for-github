@@ -21,6 +21,7 @@ export type Request =
   | { type: 'org:config'; org: string; cachedOnly?: boolean }
   | { type: 'org:progress'; org: string }
   | { type: 'org:details'; org: string; repos: string[] }
+  | { type: 'org:parents'; org: string }
   | { type: 'org:edit'; org: string; edit: Edit }
   | { type: 'org:create-dotgithub'; org: string }
   | { type: 'logos:get'; org: string; srcs: string[] } // F7: logo references of the org file -> data URLs

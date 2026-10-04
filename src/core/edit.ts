@@ -262,7 +262,7 @@ export interface DeleteImpact {
   hasLogo: boolean;
 }
 
-export function deleteImpact(groups: Group[], path: string[], repos: { name: string; archived?: boolean }[]): DeleteImpact | null {
+export function deleteImpact(groups: Group[], path: string[], repos: { name: string; archived?: boolean; fork?: boolean; parent?: string | null }[]): DeleteImpact | null {
   const g = findGroup(groups, path);
   const after = applyEdit(groups, { kind: 'delete', path });
   if (!g || 'error' in after) return null;

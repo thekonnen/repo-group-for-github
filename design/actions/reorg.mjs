@@ -68,6 +68,7 @@ var isTopicRule = (rule) => rule.slice(0, 6).toLowerCase() === TOPIC_PREFIX;
 var topicOf = (rule) => rule.slice(6).trim();
 /** Does one rule catch a repo? Name rules test the name, topic rules any topic (`*` allowed), property rules the custom properties. */
 function ruleMatches(rule, name, topics, props) {
+	if (isForkRule(rule)) return false;
 	if (isPropRule(rule)) return propHit(rule, props);
 	if (!isTopicRule(rule)) return globRe(rule).test(name);
 	const t = topicOf(rule);
@@ -81,6 +82,20 @@ function exactHit(rule, name, topics, props) {
 	const t = topicOf(rule).toLowerCase();
 	return !!t && !!topics?.some((x) => x.toLowerCase() === t);
 }
+/** Rule syntax `fork-of:<owner>` or `fork-of:<owner>/<repo>` (A5): forks by upstream. No `*` = exact-style. */
+var FORK_PREFIX = "fork-of:";
+var isForkRule = (rule) => rule.toLowerCase().startsWith(FORK_PREFIX);
+var forkTarget = (rule) => rule.slice(8).trim();
+/** Does one rule catch this repo? A `fork-of:` rule needs a known parent; every other kind goes through ruleMatches. */
+function ruleHits(rule, repo) {
+	if (!isForkRule(rule)) return ruleMatches(rule, repo.name, repo.topics, repo.props);
+	const t = forkTarget(rule);
+	if (!t || !repo.fork || !repo.parent) return false;
+	return globRe(t).test(t.includes("/") ? repo.parent : repo.parent.split("/")[0]);
+}
+/** Exact-style hit (a rule without `*`): the name, a topic, a property value or the upstream equals it. */
+var exactRuleHit = (rule, repo) => isExact(rule) && (isForkRule(rule) ? ruleHits(rule, repo) : exactHit(rule, repo.name, repo.topics, repo.props));
+var matchesRepo = (rules, repo) => rules.some((r) => ruleHits(r, repo));
 //#endregion
 //#region src/core/placement.ts
 var keyOf = (path) => path.join("/");
@@ -111,19 +126,31 @@ function flatList(groups, depth = 0, parent = [], out = []) {
 	}
 	return out;
 }
-/** Exact names win; otherwise the first pattern hit in post-order (deepest wins). `topic:` and `prop:` rules count like name rules. */
-function pickIn(order, name, topics, props) {
-	return order.find((x) => x.group.match.some((r) => exactHit(r, name, topics, props))) ?? order.find((x) => x.group.match.some((r) => ruleMatches(r, name, topics, props))) ?? null;
+/** A repo name (with optional topics / props) or the repo itself: `{ ...repo }` carries fork, parent, topics and props. */
+var target = (t, topics, props) => typeof t === "string" ? {
+	name: t,
+	topics,
+	props
+} : {
+	...t,
+	topics: t.topics ?? topics,
+	props: t.props ?? props
+};
+/** Exact names win (and exact `topic:`, `prop:`, `fork-of:` rules); otherwise the first pattern hit in post-order (deepest wins). */
+function pickIn(order, repo, topics, props) {
+	const t = target(repo, topics, props);
+	return order.find((x) => x.group.match.some((r) => exactRuleHit(r, t))) ?? order.find((x) => matchesRepo(x.group.match, t)) ?? null;
 }
-/** The rule of `group` that catches `name` (exact first). */
-function ruleFor(group, name, topics, props) {
-	return group.match.find((r) => exactHit(r, name, topics, props)) ?? group.match.find((r) => ruleMatches(r, name, topics, props));
+/** The rule of `group` that catches the repo (exact first). */
+function ruleFor(group, repo, topics, props) {
+	const t = target(repo, topics, props);
+	return group.match.find((r) => exactRuleHit(r, t)) ?? group.match.find((r) => ruleHits(r, t));
 }
 /** repo name -> group key ('' = ungrouped). */
 function placement(groups, repos) {
 	const order = postOrder(groups);
 	const out = {};
-	for (const r of repos) out[r.name] = pickIn(order, r.name, r.topics, r.props)?.key ?? "";
+	for (const r of repos) out[r.name] = pickIn(order, r)?.key ?? "";
 	return out;
 }
 //#endregion
@@ -154,6 +181,7 @@ var labelOf = (p) => PERMISSION_LABEL[p] ?? p;
 //#endregion
 //#region src/core/validate.ts
 var NAME_RE = /^[a-z0-9._-]+$/;
+var FORK_TARGET_RE = /^[A-Za-z0-9._*-]+(\/[A-Za-z0-9._*-]+)?$/;
 /** Turns parsed YAML (any shape) into a Config, or returns the first problem found. */
 function configFromObject(obj, opts = {}) {
 	const warnings = [];
@@ -226,6 +254,11 @@ function configFromObject(obj, opts = {}) {
 			if (typeof match === "string") match = [match];
 			if (!Array.isArray(match) || match.some((m) => typeof m !== "string")) {
 				err = `"${name}": match must be a list of names or patterns.`;
+				return;
+			}
+			const badFork = match.flatMap(splitRules).find((r) => isForkRule(r) && !FORK_TARGET_RE.test(forkTarget(r)));
+			if (badFork) {
+				err = `"${name}": rule "${badFork}" needs an owner, like fork-of:macfuse or fork-of:macfuse/macfuse.`;
 				return;
 			}
 			const badProp = match.flatMap(splitRules).find((r) => isPropRule(r) && !parsePropRule(r));

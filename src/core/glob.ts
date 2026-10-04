@@ -60,6 +60,7 @@ export function ruleLabel(rule: string): string {
 
 /** Does one rule catch a repo? Name rules test the name, topic rules any topic (`*` allowed), property rules the custom properties. */
 export function ruleMatches(rule: string, name: string, topics?: readonly string[], props?: RepoProps): boolean {
+  if (isForkRule(rule)) return false; // needs the repo's upstream: see ruleHits
   if (isPropRule(rule)) return propHit(rule, props);
   if (!isTopicRule(rule)) return globRe(rule).test(name);
   const t = topicOf(rule);
@@ -76,6 +77,34 @@ export function exactHit(rule: string, name: string, topics?: readonly string[],
 }
 
 export const matches = (rules: string[], name: string, topics?: readonly string[], props?: RepoProps): boolean => rules.some((r) => ruleMatches(r, name, topics, props));
+
+/** Rule syntax `fork-of:<owner>` or `fork-of:<owner>/<repo>` (A5): forks by upstream. No `*` = exact-style. */
+export const FORK_PREFIX = 'fork-of:';
+export const isForkRule = (rule: string): boolean => rule.toLowerCase().startsWith(FORK_PREFIX);
+export const forkTarget = (rule: string): string => rule.slice(FORK_PREFIX.length).trim();
+
+/** What a rule is checked against: the repo name, fork status and upstream (`fork-of:`), topics (`topic:`) and custom properties (`prop:`). */
+export interface RuleTarget {
+  name: string;
+  fork?: boolean;
+  parent?: string | null;
+  topics?: readonly string[];
+  props?: RepoProps;
+}
+
+/** Does one rule catch this repo? A `fork-of:` rule needs a known parent; every other kind goes through ruleMatches. */
+export function ruleHits(rule: string, repo: RuleTarget): boolean {
+  if (!isForkRule(rule)) return ruleMatches(rule, repo.name, repo.topics, repo.props);
+  const t = forkTarget(rule);
+  if (!t || !repo.fork || !repo.parent) return false;
+  return globRe(t).test(t.includes('/') ? repo.parent : repo.parent.split('/')[0]);
+}
+
+/** Exact-style hit (a rule without `*`): the name, a topic, a property value or the upstream equals it. */
+export const exactRuleHit = (rule: string, repo: RuleTarget): boolean =>
+  isExact(rule) && (isForkRule(rule) ? ruleHits(rule, repo) : exactHit(rule, repo.name, repo.topics, repo.props));
+
+export const matchesRepo = (rules: string[], repo: RuleTarget): boolean => rules.some((r) => ruleHits(r, repo));
 
 /** GitHub's own repository-name normalization: other characters become "-". */
 export function normName(value: string): string {

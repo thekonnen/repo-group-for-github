@@ -34,6 +34,8 @@ export interface RepoInfo {
   private?: boolean;
   archived?: boolean;
   fork?: boolean;
+  /** Upstream of a fork as "owner/repo" (A5). Filled lazily from GraphQL; null = looked up, none. */
+  parent?: string | null;
   pushedAt?: string | null;
   stars?: number;
   forks?: number;

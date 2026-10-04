@@ -1,5 +1,5 @@
 import { splitRules } from './edit';
-import { isPropRule, isTopicRule, parsePropRule, topicOf } from './glob';
+import { forkTarget, isForkRule, isPropRule, isTopicRule, parsePropRule, topicOf } from './glob';
 import { PERMISSIONS } from './permissions';
 import type { Config, Group, TeamTag } from './types';
 
@@ -19,6 +19,7 @@ export interface ValidateOptions {
 }
 
 const NAME_RE = /^[a-z0-9._-]+$/;
+const FORK_TARGET_RE = /^[A-Za-z0-9._*-]+(\/[A-Za-z0-9._*-]+)?$/;
 
 /** Turns parsed YAML (any shape) into a Config, or returns the first problem found. */
 export function configFromObject(obj: unknown, opts: ValidateOptions = {}): ValidationResult {
@@ -92,6 +93,11 @@ export function configFromObject(obj: unknown, opts: ValidateOptions = {}): Vali
       if (typeof match === 'string') match = [match];
       if (!Array.isArray(match) || match.some((m) => typeof m !== 'string')) {
         err = `"${name}": match must be a list of names or patterns.`;
+        return;
+      }
+      const badFork = (match as string[]).flatMap(splitRules).find((r) => isForkRule(r) && !FORK_TARGET_RE.test(forkTarget(r)));
+      if (badFork) {
+        err = `"${name}": rule "${badFork}" needs an owner, like fork-of:macfuse or fork-of:macfuse/macfuse.`;
         return;
       }
       const badProp = (match as string[]).flatMap(splitRules).find((r) => isPropRule(r) && !parsePropRule(r));

@@ -124,10 +124,10 @@ describe('big avatar button (F3)', () => {
     expect($('#rg-drawer-title')!.textContent).toBe('Edit group infra / dagsrv');
     expect(document.activeElement).toBe($('#rg-logo-upload'));
   });
-  it('is not a button on the org root', async () => {
+  it('is a button on the org root too', async () => {
     await open('');
     await vi.waitFor(() => expect($('.rg-g-title .rg-big-av')).toBeTruthy());
-    expect($('.rg-big-av-btn')).toBeNull();
+    expect($('.rg-big-av-btn')).toBeTruthy();
   });
   it('Edit group still focuses the name field', async () => {
     await open('#infra/dagsrv');

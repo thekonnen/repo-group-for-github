@@ -120,7 +120,7 @@ The script is generated: edit `src/core` or `src/action`, then run `npm run buil
 
 ## Group summary
 
-Each group page (org groups, My groups and team pages) shows "Pushed in 30 days" next to "Last push" in the stats row, and under it a language bar (top 5 + Other, by repository count) and a 12-week sparkline. The sparkline counts **repositories by the week of their last push**, taken from the local index; it is not commit activity. Archived repositories are excluded, subgroups are included, and no extra requests are made.
+Each group page (org groups, My groups and team pages) shows "Pushed in 30 days" next to "Last push" in the stats row, and under it a language bar (top 5 + Other, by repository count) and a 12-week gradient line. The sparkline counts **repositories by the week of their last push**, taken from the local index; it is not commit activity. Archived repositories are excluded, subgroups are included, and no extra requests are made.
 
 ## Status
 

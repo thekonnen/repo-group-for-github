@@ -135,7 +135,8 @@ describe('GroupSummary', () => {
     expect((el.querySelector('.rg-lang-bar span') as HTMLElement).getAttribute('style')).toContain('#00add8');
     expect(el.querySelector('.rg-spark-label')!.textContent).toBe('Repos last pushed per week');
     expect(el.querySelector('.rg-spark title')!.textContent).toContain('Not commit activity');
-    expect(el.querySelectorAll('.rg-spark rect')).toHaveLength(12);
+    expect(el.querySelectorAll('.rg-spark rect[fill="transparent"]')).toHaveLength(12);
+    expect(el.querySelector('.rg-spark mask polyline')!.getAttribute('points')!.split(' ')).toHaveLength(12);
     expect(el.querySelector('.rg-lang-note')!.textContent).toContain('1 without a language');
   });
   it('renders nothing for an empty group', () => {

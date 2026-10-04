@@ -1,4 +1,5 @@
 import { splitRules } from './edit';
+import { isPropRule, isTopicRule, parsePropRule, topicOf } from './glob';
 import { PERMISSIONS } from './permissions';
 import type { Config, Group, TeamTag } from './types';
 
@@ -91,6 +92,16 @@ export function configFromObject(obj: unknown, opts: ValidateOptions = {}): Vali
       if (typeof match === 'string') match = [match];
       if (!Array.isArray(match) || match.some((m) => typeof m !== 'string')) {
         err = `"${name}": match must be a list of names or patterns.`;
+        return;
+      }
+      const badProp = (match as string[]).flatMap(splitRules).find((r) => isPropRule(r) && !parsePropRule(r));
+      if (badProp) {
+        err = `"${name}": rule "${badProp}" needs a property and a value, like prop:client=Acme.`;
+        return;
+      }
+      const emptyTopic = (match as string[]).flatMap(splitRules).find((r) => isTopicRule(r) && !topicOf(r));
+      if (emptyTopic) {
+        err = `"${name}": the rule "${emptyTopic}" needs a topic name, like topic:kubernetes.`;
         return;
       }
       let keywords: unknown = raw.keywords == null ? [] : raw.keywords;

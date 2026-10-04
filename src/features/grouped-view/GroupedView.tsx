@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { langColor } from '../../core/lang-colors';
 import { displayName } from '../../core/edit';
+import { isPropRule, ruleLabel } from '../../core/glob';
 import { detailTotals, DETAILS_MAX_REPOS } from '../../core/details';
 import { ago } from '../../core/time';
 import { allRepos, flatRows, searchRows, SORT_KEYS, SORT_LABEL, treeRows, VIRTUALIZE_AFTER, windowRange, type GroupNode, type Row, type SortKey, type TreeModel } from '../../core/tree';
@@ -9,6 +10,7 @@ import { GroupAvatar } from '../logos/GroupAvatar';
 import { Icon } from '../../ui/Icon';
 import { useStore } from '../store';
 import { chipTeams } from '../../core/teams';
+import { MembersPanel } from '../members/MembersPanel';
 import { TeamBanners } from '../teams/TeamBanners';
 import { TeamChips } from '../teams/TeamChips';
 import { dragSource, dropTarget } from './dnd';
@@ -83,7 +85,8 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
   }, [scopeKey, s.phase]);
   const split = detailTotals(scope, s.details);
 
-  const tab = s.tab === 'rules' && isRoot ? 'items' : s.tab === 'ungrouped' && !isRoot ? 'items' : s.tab;
+  const hasMembers = !isRoot && !team; // C3: the Members tab is for group pages of the org page
+  const tab = s.tab === 'rules' && isRoot ? 'items' : s.tab === 'ungrouped' && !isRoot ? 'items' : s.tab === 'members' && !hasMembers ? 'items' : s.tab;
   let rows: Row[];
   let head: preact.ComponentChild;
   if (s.query.trim()) {
@@ -148,9 +151,12 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
         <Tab ctl={ctl} id="items" current={tab} label="Groups and repositories" />
         {isRoot ? <Tab ctl={ctl} id="ungrouped" current={tab} label="Ungrouped" count={ungrouped.length} /> : <Tab ctl={ctl} id="rules" current={tab} label="Match rules" count={node.group.match.length} />}
         <Tab ctl={ctl} id="all" current={tab} label="All repositories" count={node.total} />
+        {hasMembers && <Tab ctl={ctl} id="members" current={tab} label="Members" />}
       </div>
-      {tab === 'rules' && !s.query ? (
-        <RulesPanel node={node} />
+      {tab === 'members' ? (
+        <MembersPanel ctl={ctl} org={s.org} groups={cfg && cfg.exists && cfg.config ? cfg.config.groups : []} path={node.path} />
+      ) : tab === 'rules' && !s.query ? (
+        <RulesPanel node={node} org={s.org} propsHint={!!s.meta?.propsUnavailable && node.group.match.some(isPropRule)} />
       ) : (
         <>
           <Toolbar ctl={ctl} s={s} placeholder={`Search in ${name}`} />
@@ -360,7 +366,7 @@ function GroupRow({ ctl, row, fixed }: { ctl: Controller; row: Extract<Row, { ki
           <span>{node.latest ? `Updated ${ago(node.latest)}` : 'No pushes yet'}</span>
         </div>
       </div>
-      <div class="rg-row-side"><span class="rg-rules-line" title={node.group.match.join(', ')}>Rules: {node.group.match.length ? node.group.match.join(', ') : '—'}</span></div>
+      <div class="rg-row-side"><span class="rg-rules-line" title={node.group.match.map(ruleLabel).join(', ')}>Rules: {node.group.match.length ? node.group.match.map(ruleLabel).join(', ') : '—'}</span></div>
     </div>
   );
 }
@@ -394,15 +400,16 @@ function RepoRow({ ctl, org, row, fixed, label }: { ctl: Controller; org: string
   );
 }
 
-function RulesPanel({ node }: { node: GroupNode }) {
+function RulesPanel({ node, org, propsHint }: { node: GroupNode; org: string; propsHint: boolean }) {
   const own = node.repos;
   return (
     <div class="rg-box">
       <div class="rg-box-head"><span>How repositories join <code>{node.key}</code></span></div>
       <div class="rg-rules">
         <div class="rg-chips">
-          {node.group.match.length ? node.group.match.map((m) => <span class="rg-chip rg-ro" key={m}>{m}</span>) : <span class="rg-muted">No rules. Repositories only appear here through subgroups.</span>}
+          {node.group.match.length ? node.group.match.map((m) => <span class="rg-chip rg-ro" key={m} title={m}>{ruleLabel(m)}</span>) : <span class="rg-muted">No rules. Repositories only appear here through subgroups.</span>}
         </div>
+        {propsHint && <p class="rg-desc" role="status">Rules on custom properties match nothing yet: GitHub did not share the properties of {org}. An org owner must accept the new "Custom properties: Read" permission of the app in Settings → GitHub Apps.</p>}
         <p class="rg-desc">Patterns use <code>*</code> as a wildcard and are checked against the repository name. An exact name always wins; when several patterns match, the deepest group wins. New repositories are placed automatically on the next visit.</p>
         <div>
           <b>Matched directly here</b>

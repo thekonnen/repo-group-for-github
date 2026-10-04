@@ -14,6 +14,7 @@ import { DETAILS_MAX_REPOS, type DetailsMap } from '../../core/details';
 import { createLogoStore } from '../logos/logo-store';
 import { createStore, type Store } from '../store';
 import { createTeamsController } from '../teams/teams-controller';
+import { createMembersController } from '../members/members-controller';
 
 export interface SignIn {
   deviceCode: string;
@@ -37,7 +38,7 @@ export interface State {
   view: 'grouped' | 'list';
   expanded: Set<string>;
   expandedTouched: boolean;
-  tab: 'items' | 'ungrouped' | 'rules' | 'all';
+  tab: 'items' | 'ungrouped' | 'rules' | 'all' | 'members';
   sort: SortKey;
   query: string;
   access: Access | null;
@@ -108,6 +109,7 @@ export function createController(org: string, env: Env) {
     toast: null,
   });
   const teams = createTeamsController({ org, team: env.team, teamName: env.teamName, call: env.call, store, afterAccess: () => applyDefaults() });
+  const members = createMembersController({ org, call: env.call });
   // Logos load through the background; every config change asks for the references it has not seen yet (F7).
   const logos = createLogoStore(env.call, org);
   let logoCfg: unknown;
@@ -351,6 +353,7 @@ export function createController(org: string, env: Env) {
   return {
     store,
     teams,
+    members,
     logos,
     /** Loads an image from a link in the background (CORS-free, asks for the site's permission). Resolves to a data URL. */
     fetchLogoLink: async (url: string) => (await env.call<{ dataUrl: string }>({ type: 'logo:fetch-link', url })).dataUrl,
@@ -363,6 +366,7 @@ export function createController(org: string, env: Env) {
     dispose() {
       disposed = true;
       teams.dispose();
+      members.dispose();
       clearTimeout(prefsTimer);
       clearTimeout(toastTimer);
     },

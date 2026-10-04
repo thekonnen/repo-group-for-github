@@ -1,4 +1,4 @@
-import { globRe, isExact, matches } from './glob';
+import { exactHit, ruleMatches, type RepoProps } from './glob';
 import type { Group, RepoInfo } from './types';
 
 /** A group plus its path, e.g. ['infra', 'dagsrv']. */
@@ -41,28 +41,24 @@ export function flatList(groups: Group[], depth = 0, parent: string[] = [], out:
   return out;
 }
 
-/** Exact names win; otherwise the first pattern hit in post-order (deepest wins). */
-export function pickIn(order: Node[], name: string): Node | null {
-  const n = name.toLowerCase();
+/** Exact names win; otherwise the first pattern hit in post-order (deepest wins). `topic:` and `prop:` rules count like name rules. */
+export function pickIn(order: Node[], name: string, topics?: readonly string[], props?: RepoProps): Node | null {
   return (
-    order.find((x) => x.group.match.some((r) => isExact(r) && r.toLowerCase() === n)) ??
-    order.find((x) => matches(x.group.match, name)) ??
+    order.find((x) => x.group.match.some((r) => exactHit(r, name, topics, props))) ??
+    order.find((x) => x.group.match.some((r) => ruleMatches(r, name, topics, props))) ??
     null
   );
 }
 
 /** The rule of `group` that catches `name` (exact first). */
-export function ruleFor(group: Group, name: string): string | undefined {
-  const n = name.toLowerCase();
-  return (
-    group.match.find((r) => isExact(r) && r.toLowerCase() === n) ?? group.match.find((r) => globRe(r).test(name))
-  );
+export function ruleFor(group: Group, name: string, topics?: readonly string[], props?: RepoProps): string | undefined {
+  return group.match.find((r) => exactHit(r, name, topics, props)) ?? group.match.find((r) => ruleMatches(r, name, topics, props));
 }
 
 /** repo name -> group key ('' = ungrouped). */
-export function placement(groups: Group[], repos: Pick<RepoInfo, 'name'>[]): Record<string, string> {
+export function placement(groups: Group[], repos: Pick<RepoInfo, 'name' | 'topics' | 'props'>[]): Record<string, string> {
   const order = postOrder(groups);
   const out: Record<string, string> = {};
-  for (const r of repos) out[r.name] = pickIn(order, r.name)?.key ?? '';
+  for (const r of repos) out[r.name] = pickIn(order, r.name, r.topics, r.props)?.key ?? '';
   return out;
 }

@@ -1,7 +1,7 @@
 import { APP_SLUG, GITHUB_CLIENT_ID } from '../config';
 import { loadYamlParser, readConfig } from '../core/yaml-read';
 import type { Config } from '../core/types';
-import type { ConfigResult, ErrorInfo, GroupSuggestion, OrgPrefs, SuggestMethod, OrgSnapshot, Progress, Request, Response, TeamsResult } from '../github/messages';
+import type { ConfigResult, ErrorInfo, GroupSuggestion, OrgPrefs, SuggestMethod, OrgSnapshot, Progress, Request, Response, TeamsResult, TeamMembersResult } from '../github/messages';
 import { createClient, explainTokenRejection, GitHubError, type FetchLike } from './api';
 import { describeToken, loadAuth, pollDeviceFlow, publicAuth, saveAuth, signOut, startDeviceFlow } from './auth';
 import type { KV } from './kv';
@@ -16,6 +16,7 @@ import { listOrgs } from './orgs';
 import { ownerListPath, refreshIndex, type IndexStore } from './repo-index';
 import { refreshActionIndex } from './action-index';
 import { loadDetails } from './details';
+import { loadTeamMembers } from './members-data';
 import { cachedTeamSlugs, grantTeam, loadTeamAccess, loadTeams } from './teams-data';
 import { teamSlugs } from '../core/teams';
 import { loadProps, usesProps, withProps } from './props-data';
@@ -291,6 +292,9 @@ export function createHandler(deps: Deps) {
       case 'team:access':
         if (await isSelf(req.org)) return {};
         return loadTeamAccess(client, deps.kv, req.org, req.slugs, { force: req.force, now: deps.now });
+      case 'team:members':
+        if (await isSelf(req.org)) return { members: {}, unreadable: {} } satisfies TeamMembersResult;
+        return loadTeamMembers(client, deps.kv, req.org, req.slugs, { force: req.force, now: deps.now });
       case 'team:grant':
         return grantTeam(client, deps.kv, req.org, req.team, req.repo, req.permission);
       case 'yaml:validate':

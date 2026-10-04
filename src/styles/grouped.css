@@ -311,3 +311,17 @@
 .rg-root .rg-del-label { font-weight: 600; }
 .rg-root .rg-dialog-foot { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--rg-border); }
 .rg-root .rg-dialog-foot .rg-btn:not(.rg-btn-danger-solid) { width: 100%; justify-content: center; }
+
+/* C3: Members tab */
+.rg-root .rg-members { display: flex; flex-direction: column; gap: 12px; }
+.rg-root .rg-members-note { margin: 0; font-size: 13px; }
+.rg-root .rg-members-list { list-style: none; margin: 0; padding: 0; }
+.rg-root .rg-members-list > .rg-row:first-child { border-top: 0; }
+.rg-root .rg-member { align-items: center; padding-left: 16px; }
+.rg-root .rg-member-av { width: 32px; height: 32px; border-radius: 50%; flex: none; background: var(--rg-bg-subtle); }
+.rg-root .rg-member-av-empty { display: inline-flex; align-items: center; justify-content: center; font-weight: 600; color: var(--rg-muted); }
+.rg-root .rg-member-main { min-width: 0; flex: 1; }
+.rg-root .rg-member-login { font-weight: 600; color: var(--rg-fg); }
+.rg-root .rg-member-via { font-size: 12px; margin-top: 2px; }
+.rg-root .rg-members-team h3 { margin: 0; padding: 10px 16px; font-size: 14px; background: var(--rg-bg-subtle); border-top: 1px solid var(--rg-border); }
+.rg-root .rg-seg-text button { width: auto; padding: 0 12px; font: inherit; font-size: 13px; }

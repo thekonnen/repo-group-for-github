@@ -44,7 +44,7 @@ export type TeamAccess = Record<string, Record<string, Permission>>; // slug -> 
  */
 export function syncPlan(
   groups: Group[],
-  repos: Pick<RepoInfo, 'name' | 'archived'>[],
+  repos: Pick<RepoInfo, 'name' | 'archived' | 'topics'>[],
   access: TeamAccess,
   teamSlug?: string,
   customBase?: Record<string, string>,
@@ -53,7 +53,7 @@ export function syncPlan(
   const rows: SyncRow[] = [];
   for (const repo of repos) {
     if (repo.archived) continue;
-    const node = pickIn(order, repo.name);
+    const node = pickIn(order, repo.name, repo.topics);
     if (!node) continue;
     const eff = effectiveTeams(groups, node.path);
     for (const [slug, target] of Object.entries(eff)) {

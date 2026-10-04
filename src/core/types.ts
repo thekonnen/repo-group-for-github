@@ -38,5 +38,7 @@ export interface RepoInfo {
   stars?: number;
   forks?: number;
   openIssuesAndPrs?: number;
+  /** GitHub topics, lowercase. Matched by `topic:` rules. */
+  topics?: string[];
   viewerIsAdmin?: boolean;
 }

@@ -1,0 +1,57 @@
+# OPTIONAL — Repository Group for Github: weekly pull request that proposes a reorganization of repo-groups.yml
+#
+# Off until you copy it. Copy this file to <org>/.github/.github/workflows/repo-groups-reorg.yml and copy
+# design/actions/reorg.mjs (one self-contained file, no npm install) to <org>/.github/.github/scripts/reorg.mjs.
+#
+# What it does, each week (and on demand):
+#   - lists the non-archived repositories of the org and places them with the same rules as the extension;
+#   - finds new repositories that no group catches, and exact names in `match` whose repository no longer exists;
+#   - adds a new repository to a group ONLY when the suggestion is confident; the rest are listed in the pull request
+#     under "Needs a human decision";
+#   - proposes removing dead exact names (inside the pull request only; nothing is deleted automatically);
+#   - opens ONE pull request from the branch repo-groups/reorg-<date>, and updates it on later runs instead of opening
+#     another. It never pushes to the default branch and opens no pull request when there is nothing to propose.
+#
+# PRIVACY: the pull request body names repositories and descriptions, including private ones the token can see.
+# Anyone who can read <org>/.github can read it. Only use this where members already see every repository.
+#
+# Needs a secret REPO_GROUPS_TOKEN (org secret, available to <org>/.github): a fine-grained token or GitHub App token with
+#   - Repository → Metadata: Read on all repositories of the org (to list them)
+#   - Repository → Contents: Read & write on <org>/.github (branch and commit)
+#   - Repository → Pull requests: Read & write on <org>/.github
+# Also enable Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests" only if you
+# prefer the built-in token; this template uses REPO_GROUPS_TOKEN instead, so that is not required.
+#
+# Template only: not tested against a live org yet. Run it once with dry_run = true on a sandbox org first.
+name: repo-groups-reorg
+
+on:
+  schedule:
+    - cron: "41 6 * * 1"     # Mondays 06:41 UTC
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Print the proposal in the log; open or update no pull request"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repo-groups-reorg
+  cancel-in-progress: false
+
+jobs:
+  reorg:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Propose reorganization
+        env:
+          REPO_GROUPS_TOKEN: ${{ secrets.REPO_GROUPS_TOKEN }}
+          ORG: ${{ github.repository_owner }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: node .github/scripts/reorg.mjs

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { langColor } from '../../core/lang-colors';
 import { displayName } from '../../core/edit';
+import { ruleLabel } from '../../core/glob';
 import { detailTotals, DETAILS_MAX_REPOS } from '../../core/details';
 import { ago } from '../../core/time';
 import { allRepos, flatRows, searchRows, SORT_KEYS, SORT_LABEL, treeRows, VIRTUALIZE_AFTER, windowRange, type GroupNode, type Row, type SortKey, type TreeModel } from '../../core/tree';
@@ -357,7 +358,7 @@ function GroupRow({ ctl, row, fixed }: { ctl: Controller; row: Extract<Row, { ki
           <span>{node.latest ? `Updated ${ago(node.latest)}` : 'No pushes yet'}</span>
         </div>
       </div>
-      <div class="rg-row-side"><span class="rg-rules-line" title={node.group.match.join(', ')}>Rules: {node.group.match.length ? node.group.match.join(', ') : '—'}</span></div>
+      <div class="rg-row-side"><span class="rg-rules-line" title={node.group.match.map(ruleLabel).join(', ')}>Rules: {node.group.match.length ? node.group.match.map(ruleLabel).join(', ') : '—'}</span></div>
     </div>
   );
 }
@@ -395,7 +396,7 @@ function RulesPanel({ node }: { node: GroupNode }) {
       <div class="rg-box-head"><span>How repositories join <code>{node.key}</code></span></div>
       <div class="rg-rules">
         <div class="rg-chips">
-          {node.group.match.length ? node.group.match.map((m) => <span class="rg-chip rg-ro" key={m}>{m}</span>) : <span class="rg-muted">No rules. Repositories only appear here through subgroups.</span>}
+          {node.group.match.length ? node.group.match.map((m) => <span class="rg-chip rg-ro" key={m}>{ruleLabel(m)}</span>) : <span class="rg-muted">No rules. Repositories only appear here through subgroups.</span>}
         </div>
         <p class="rg-desc">Patterns use <code>*</code> as a wildcard and are checked against the repository name. An exact name always wins; when several patterns match, the deepest group wins. New repositories are placed automatically on the next visit.</p>
         <div>

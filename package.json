@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "size": "node scripts/check-size.mjs",
+    "build:action": "node scripts/build-action.mjs",
     "build:cli": "vite build -c packages/cli/vite.config.ts"
   },
   "dependencies": {

@@ -31,6 +31,15 @@ const PROVIDER_SHORT = { gemini: 'Gemini', custom: 'custom endpoint' } as const;
 /** "model · Gemini", plus ", fallback" when the first provider failed. */
 const answeredBy = (sg: Suggestion): string => [sg.model, sg.provider ? PROVIDER_SHORT[sg.provider] : ''].filter(Boolean).join(' · ') + (sg.fallback ? ', fallback' : '');
 
+/** Animated "working" line: pulsing sparkle, shimmering text and bouncing dots (static under reduced motion). */
+const Working = ({ text, ai }: { text: string; ai: boolean }) => (
+  <>
+    {ai && <Icon name="sparkle" size={12} />}
+    <span class="rg-shimmer">{text}</span>
+    <span class="rg-dots" aria-hidden="true"><i /><i /><i /></span>
+  </>
+);
+
 /** One line about the last Keywords/AI request. */
 function methodNote(sg: Suggestion, groups: Group[]): string {
   const who = METHOD_LABEL[sg.method];
@@ -142,8 +151,8 @@ function Methods({ ctl }: { ctl: NrController }) {
         <Proposal ctl={ctl} sg={sg} groups={s.groups} />
       ) : (
         sg && (
-          <span class={'rg-hint rg-nr-method-note' + (sg.status === 'error' ? ' rg-warn' : '')} role="status" aria-live="polite">
-            {methodNote(sg, s.groups)}
+          <span class={'rg-hint rg-nr-method-note' + (sg.status === 'error' ? ' rg-warn' : '') + (sg.status === 'loading' ? ' rg-working' : '')} role="status" aria-live="polite">
+            {sg.status === 'loading' ? <Working text={sg.method === 'llm' ? 'Asking the AI' : 'Scoring the name'} ai={sg.method === 'llm'} /> : methodNote(sg, s.groups)}
           </span>
         )
       )}

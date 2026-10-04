@@ -1,5 +1,6 @@
 import { postOrder, pickIn, ruleFor, type Node } from './placement';
 import type { Group } from './types';
+import type { RepoProps } from './glob';
 
 /**
  * Suggests a group for a repository that no rule catches. No network, no model: rules first (the same placement as
@@ -71,11 +72,11 @@ const ruleWords = (rule: string) => tokens(rule.replace(/\*/g, ' '));
 /** Only groups that can hold repos: leaves, and groups with rules of their own. */
 const candidates = (order: Node[]) => order.filter((n) => n.group.groups.length === 0 || n.group.match.length > 0);
 
-export function suggest(groups: Group[], repo: { name: string; description?: string | null }): Suggestion {
+export function suggest(groups: Group[], repo: { name: string; description?: string | null; topics?: string[]; props?: RepoProps }): Suggestion {
   const order = postOrder(groups);
 
-  const hit = pickIn(order, repo.name);
-  if (hit) return { source: 'rule', key: hit.key, rule: ruleFor(hit.group, repo.name), score: 1, margin: 1, ranking: [{ key: hit.key, score: 1 }] };
+  const hit = pickIn(order, repo.name, repo.topics, repo.props);
+  if (hit) return { source: 'rule', key: hit.key, rule: ruleFor(hit.group, repo.name, repo.topics, repo.props), score: 1, margin: 1, ranking: [{ key: hit.key, score: 1 }] };
 
   const nodes = candidates(order);
   if (!nodes.length) return { source: 'uncertain', key: null, score: 0, margin: 0, ranking: [] };

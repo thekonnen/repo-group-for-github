@@ -1,0 +1,12 @@
+{
+  "name": "repo-groups-cli",
+  "private": true,
+  "version": "0.1.0",
+  "description": "CLI and MCP server (stdio) to read and edit repo-groups.yml in <org>/.github. Not part of the browser extension.",
+  "type": "module",
+  "bin": { "rg": "dist/rg.mjs" },
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "vite build -c vite.config.ts"
+  }
+}

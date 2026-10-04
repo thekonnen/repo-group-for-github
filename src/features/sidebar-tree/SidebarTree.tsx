@@ -3,6 +3,7 @@ import { sideItems } from '../../core/tree';
 import { Icon } from '../../ui/Icon';
 import { useLogoSrc } from '../logos/logo-store';
 import type { Controller } from '../grouped-view/controller';
+import { dropTarget } from '../grouped-view/dnd';
 import { useStore } from '../store';
 import { SidebarTeams } from '../teams/SidebarTeams';
 import { UnassignedBadge } from '../grouped-view/UnassignedNotice';
@@ -13,6 +14,7 @@ export function SidebarTree({ ctl }: { ctl: Controller }) {
   const model = ctl.model();
   if (!model || s.phase !== 'ready' || !model.root.children.length) return null;
   const cur = s.path.join('/');
+  const movable = ctl.canMove();
   return (
     <div class="rg-side">
       <div class="rg-divider" />
@@ -30,6 +32,7 @@ export function SidebarTree({ ctl }: { ctl: Controller }) {
               style={{ paddingLeft: 8 + it.depth * 16 }}
               aria-current={s.view === 'grouped' && cur === it.key ? 'true' : undefined}
               onClick={() => ctl.go(it.key ? it.key.split('/') : [])}
+              {...(movable ? dropTarget(ctl, it.key ? it.key.split('/') : []) : {})}
             >
               <SideIcon ctl={ctl} folder={!!it.key} logo={it.logo} />
               <span>{it.name}</span>

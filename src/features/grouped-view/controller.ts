@@ -2,9 +2,10 @@ import { ago } from '../../core/time';
 import { buildHash, parseHash } from '../../core/layers';
 import type { IndexMeta } from '../../core/index-sync';
 import type { Access } from '../../core/access';
-import { editLogoPath, finalName, pngOf, type Edit } from '../../core/edit';
+import { editLogoPath, finalName, moveRepos as planMoves, shareRepos as planShares, unshareRepos as planUnshares, pngOf, type Edit, type MovePlan } from '../../core/edit';
 import type { Group } from '../../core/types';
 import { writeConfig } from '../../core/yaml-write';
+import { proposeForkGroups, withForkGroups, type ForkProposal } from '../../core/fork-groups';
 import type { RepoInfo } from '../../core/types';
 import { defaultExpanded, memoTree, SORT_KEYS, type SortKey, type TreeModel } from '../../core/tree';
 import { hasGithubFilter } from '../../github/route';
@@ -15,6 +16,7 @@ import { visitUngrouped, type SeenUngrouped } from '../../core/unassigned';
 import { createLogoStore } from '../logos/logo-store';
 import { createStore, type Store } from '../store';
 import { createTeamsController } from '../teams/teams-controller';
+import { createMembersController } from '../members/members-controller';
 
 export interface SignIn {
   deviceCode: string;
@@ -38,19 +40,36 @@ export interface State {
   view: 'grouped' | 'list';
   expanded: Set<string>;
   expandedTouched: boolean;
-  tab: 'items' | 'ungrouped' | 'rules' | 'all';
+  tab: 'items' | 'ungrouped' | 'rules' | 'all' | 'work' | 'members';
   sort: SortKey;
   query: string;
   access: Access | null;
   /** Separate open issue / PR counts (F14), loaded lazily for small groups. */
   details: DetailsMap;
-  drawer: { mode: 'edit' | 'new'; path: string[]; focus?: 'logo' } | null;
+  drawer: { mode: 'edit' | 'new'; path: string[]; focus?: 'logo' | 'shared' } | null;
   yaml: { text: string; scope?: 'ungrouped' } | null;
   /** Ungrouped repositories already shown on earlier visits (A6), and the ones that are new since then. */
   seen: SeenUngrouped | null;
   newUngrouped: string[];
   unassignedDismissed: boolean;
   toast: { text: string; kind: 'ok' | 'error' } | null;
+  /** A4: repositories ticked in the list. Cleared after a commit and when the group, tab or search changes. */
+  selected: string[];
+  /** A4: a move waiting for the person's OK. Nothing is committed until `confirmMove`. */
+  pendingMove: PendingMove | null;
+}
+
+export interface PendingMove {
+  /** `move` changes the home group; `share` (A3, "Also list in…") only adds an extra listing. */
+  mode: 'move' | 'share' | 'unshare';
+  /** The repositories that were asked for (including the ones already there). */
+  repos: string[];
+  /** Destination of a move/share; for `unshare` the group the link is removed from. */
+  to: string[];
+  /** What the commit would do (`moved` = the names that change, for both modes); `error` when the destination is gone. */
+  plan: Pick<MovePlan, 'moved' | 'already' | 'stillCaught' | 'wasListed' | 'stillShared'> & { redundant: string[]; /** unshare: shared rules that still list a repo (cannot be removed automatically) */ linkedBy: { repo: string; rule: string }[]; error?: string };
+  /** Ungrouped moves: also stop listing the repositories in groups that share them by exact name. */
+  dropShared: boolean;
 }
 
 export type SaveResult = { ok: true } | { ok: false; message: string };
@@ -123,8 +142,11 @@ export function createController(org: string, env: Env) {
     newUngrouped: [],
     unassignedDismissed: readDismissed(org),
     toast: null,
+    selected: [],
+    pendingMove: null,
   });
   const teams = createTeamsController({ org, team: env.team, teamName: env.teamName, call: env.call, store, afterAccess: () => applyDefaults() });
+  const members = createMembersController({ org, call: env.call });
   // Logos load through the background; every config change asks for the references it has not seen yet (F7).
   const logos = createLogoStore(env.call, org);
   let logoCfg: unknown;
@@ -171,6 +193,7 @@ export function createController(org: string, env: Env) {
     if (snap) store.set({ repos: snap.repos, meta: snap.meta, indexVersion: store.get().indexVersion + 1 });
     if (cfg) store.set({ config: cfg });
     applyDefaults();
+    void ensureParents();
     return !!snap;
   }
 
@@ -199,6 +222,7 @@ export function createController(org: string, env: Env) {
     }
     await cfgP;
     applyDefaults();
+    void ensureParents();
     noteUngrouped();
   }
 
@@ -248,14 +272,14 @@ export function createController(org: string, env: Env) {
     toastTimer = setTimeout(() => store.set({ toast: null }), 6000);
   }
 
-  async function save(edit: Edit, created = false): Promise<SaveResult> {
+  async function save(edit: Edit, created = false, toast?: string): Promise<SaveResult> {
     try {
       const r = await env.call<any>({ type: 'org:edit', org, edit });
       if (r.status === 'needs-repo') {
         // <owner>/.github does not exist yet: create it (private) and save again, in the same click.
         if (created) return { ok: false, message: `Could not create ${org}/.github.` };
         await env.call({ type: 'org:create-dotgithub', org });
-        return save(edit, true);
+        return save(edit, true, toast);
       }
       const before = store.get();
       const logoFile = editLogoPath(edit);
@@ -291,11 +315,99 @@ export function createController(org: string, env: Env) {
       next.expandedTouched = true;
       store.set(next);
       savePrefs({ expanded: [...expanded] });
-      showToast(edit.kind === 'delete' ? `Deleted ${edit.path.join('/')} · committed to ${org}/.github/repo-groups.yml` : `Committed to ${org}/.github/repo-groups.yml`);
+      showToast(toast ?? (edit.kind === 'delete' ? `Deleted ${edit.path.join('/')} · committed to ${org}/.github/repo-groups.yml` : `Committed to ${org}/.github/repo-groups.yml`));
       return { ok: true };
     } catch (e) {
       return { ok: false, message: infoOf(e).message };
     }
+  }
+
+  const destLabel = (to: string[]) => (to.length ? to.join(' / ') : 'Ungrouped');
+
+  /** The index records of these names, so topic:, prop: and fork-of: rules are honored (names alone are the fallback). */
+  const targetsOf = (names: string[]) => {
+    const byName = new Map(store.get().repos.map((r) => [r.name, r]));
+    return [...new Set(names)].map((name) => {
+      const r = byName.get(name);
+      return r ? { name, fork: r.fork, parent: r.parent, topics: r.topics, props: r.props } : { name };
+    });
+  };
+  const emptyPlan = { moved: [], already: [], stillCaught: [], wasListed: [], stillShared: [], redundant: [], linkedBy: [] };
+
+  /**
+   * A4: stages a move of one or more repositories to a group ([] = Ungrouped) and opens the confirmation. Nothing is
+   * committed here.
+   */
+  function stageMove(repos: string[], to: string[]) {
+    const s = store.get();
+    const groups = s.config && s.config.exists && s.config.config ? s.config.config.groups : null;
+    if (!groups || !repos.length) return;
+    const plan = planMoves(groups, targetsOf(repos), to);
+    store.set({
+      pendingMove: { mode: 'move', repos: [...new Set(repos)], to, dropShared: true, plan: 'error' in plan ? { ...emptyPlan, error: plan.error } : { ...plan, redundant: [], linkedBy: [] } },
+    });
+  }
+
+  /** A3: stages "Also list in…": the repositories are listed in a group as well, their home stays. Nothing is committed here. */
+  function stageShare(repos: string[], to: string[]) {
+    const s = store.get();
+    const groups = s.config && s.config.exists && s.config.config ? s.config.config.groups : null;
+    if (!groups || !repos.length) return;
+    const plan = planShares(groups, targetsOf(repos), to);
+    store.set({
+      pendingMove: {
+        mode: 'share',
+        repos: [...new Set(repos)],
+        to,
+        dropShared: false,
+        plan: 'error' in plan ? { ...emptyPlan, error: plan.error } : { ...emptyPlan, moved: plan.added, already: plan.already, redundant: plan.redundant },
+      },
+    });
+  }
+
+  /** A3: stages "Remove link": the repositories stop being listed in `from`. Their home is never touched. Nothing is committed here. */
+  function stageUnshare(repos: string[], from: string[]) {
+    const s = store.get();
+    const groups = s.config && s.config.exists && s.config.config ? s.config.config.groups : null;
+    if (!groups || !repos.length) return;
+    const plan = planUnshares(groups, targetsOf(repos), from);
+    store.set({
+      pendingMove: {
+        mode: 'unshare',
+        repos: [...new Set(repos)],
+        to: from,
+        dropShared: false,
+        plan: 'error' in plan ? { ...emptyPlan, error: plan.error } : { ...emptyPlan, moved: plan.removed, already: plan.notLinked, linkedBy: plan.stillShared },
+      },
+    });
+  }
+
+  /**
+   * A4: the OK of the confirmation: one commit for every repository that changes. The toast only appears after the commit
+   * succeeded; on failure the message goes back to the dialog, which stays open. A conflict is re-applied once by the
+   * background (§7).
+   */
+  async function confirmMove(): Promise<SaveResult> {
+    const p = store.get().pendingMove;
+    if (!p) return { ok: true };
+    if (p.plan.error) return { ok: false, message: p.plan.error };
+    if (!p.plan.moved.length) return { ok: false, message: 'Nothing to commit.' };
+    const n = p.plan.moved.length;
+    const what = n === 1 ? p.plan.moved[0] : `${n} repositories`;
+    const targets = targetsOf(p.plan.moved);
+    const where = `committed to ${org}/.github/repo-groups.yml`;
+    const r =
+      p.mode === 'unshare'
+        ? await save({ kind: 'unshare', repos: p.plan.moved, from: p.to, targets }, false, `Stopped listing ${what} in ${destLabel(p.to)} · ${where}`)
+        : p.mode === 'share'
+        ? await save({ kind: 'share', repos: p.plan.moved, to: p.to, targets }, false, `Also listed ${what} in ${destLabel(p.to)} · ${where}`)
+        : await save(
+            { kind: 'move', repos: p.plan.moved, to: p.to, targets, ...(!p.to.length && p.dropShared ? { dropShared: true } : {}) },
+            false,
+            `Moved ${what} to ${destLabel(p.to)} · ${where}${p.plan.stillCaught.length ? ` · ${p.plan.stillCaught.map((c) => `${c.repo} is still matched by ${c.rule} in ${c.key}`).join('; ')}` : ''}`,
+          );
+    if (r.ok) store.set({ pendingMove: null, selected: [] });
+    return r;
   }
 
   let detailsKey = '';
@@ -312,6 +424,31 @@ export function createController(org: string, env: Env) {
       if (!disposed && d) store.set({ details: { ...store.get().details, ...d } });
     } catch {
       /* the combined number stays */
+    }
+  }
+
+  let parentsFor = -1;
+  /** Fork upstreams (A5): asks the background once per index version when some fork has no parent yet. Never throws. */
+  async function ensureParents() {
+    const s = store.get();
+    if (s.phase !== 'ready' || parentsFor === s.indexVersion || !s.repos.some((r) => r.fork && r.parent === undefined)) return;
+    parentsFor = s.indexVersion;
+    try {
+      const map = await env.call<Record<string, string | null>>({ type: 'org:parents', org });
+      if (disposed || !map) return;
+      const cur = store.get();
+      let changed = false;
+      const repos = cur.repos.map((r) => {
+        if (!r.fork || r.parent !== undefined || !(r.name in map)) return r;
+        changed = true;
+        return { ...r, parent: map[r.name] };
+      });
+      if (changed) {
+        parentsFor = cur.indexVersion + 1;
+        store.set({ repos, indexVersion: cur.indexVersion + 1 });
+      }
+    } catch {
+      /* fork-of rules just wait for the next visit */
     }
   }
 
@@ -357,6 +494,7 @@ export function createController(org: string, env: Env) {
   return {
     store,
     teams,
+    members,
     logos,
     /** Loads an image from a link in the background (CORS-free, asks for the site's permission). Resolves to a data URL. */
     fetchLogoLink: async (url: string) => (await env.call<{ dataUrl: string }>({ type: 'logo:fetch-link', url })).dataUrl,
@@ -364,15 +502,55 @@ export function createController(org: string, env: Env) {
     init,
     refresh,
     ensureDetails,
+    /** A5: one proposed group per upstream owner with 2+ ungrouped forks. Nothing is saved. */
+    forkProposals(): ForkProposal[] {
+      const s = store.get();
+      const cfg = s.config && s.config.exists && s.config.config ? s.config.config : null;
+      return proposeForkGroups(cfg ? cfg.groups : [], s.repos);
+    },
+    /** A5: opens the YAML editor with the proposed groups added, for review. The user confirms with Apply and commit. */
+    openForkDraft() {
+      const s = store.get();
+      const cfg = s.config && s.config.exists && s.config.config ? s.config.config : { version: 1, index: 'api' as const, groups: [] as Group[] };
+      const proposals = proposeForkGroups(cfg.groups, s.repos);
+      if (!proposals.length) return;
+      store.set({ drawer: null, yaml: { text: writeConfig({ ...cfg, groups: withForkGroups(cfg.groups, proposals) }, `${org}/.github/repo-groups.yml`) } });
+    },
     startSignIn,
     openVerification: (s: SignIn) => env.open(`${s.verificationUri}?user_code=${encodeURIComponent(s.userCode)}`),
     dispose() {
       disposed = true;
       teams.dispose();
+      members.dispose();
       clearTimeout(prefsTimer);
       clearTimeout(toastTimer);
     },
     save,
+    stageMove,
+    stageShare,
+    stageUnshare,
+    /** A3: opens the original of a linked row: its home group, or the Ungrouped tab. */
+    goOriginal(key: string) {
+      if (key) this.go(key.split('/'));
+      else (this.go([]), this.setTab('ungrouped'));
+    },
+    setDropShared(on: boolean) {
+      const p = store.get().pendingMove;
+      if (p) store.set({ pendingMove: { ...p, dropShared: on } });
+    },
+    confirmMove,
+    cancelMove: () => store.set({ pendingMove: null }),
+    toggleSelect(name: string) {
+      const cur = store.get().selected;
+      store.set({ selected: cur.includes(name) ? cur.filter((n) => n !== name) : [...cur, name] });
+    },
+    selectAll: (names: string[]) => store.set({ selected: [...new Set(names)] }),
+    clearSelection: () => store.set({ selected: [] }),
+    /** A4: moving needs write access to the org file; the team page is a read-only view. */
+    canMove(): boolean {
+      const s = store.get();
+      return !!s.access?.canWriteOrg && !env.team && !!s.config && s.config.exists && !!s.config.config;
+    },
     savedText,
     openYaml(text?: string, scope?: 'ungrouped') {
       store.set({ drawer: null, yaml: { text: text ?? savedText(), scope } });
@@ -427,7 +605,7 @@ export function createController(org: string, env: Env) {
           : { exists: false };
       store.set({ config, indexVersion: before.indexVersion + 1 });
     },
-    openDrawer: (mode: 'edit' | 'new', path: string[], focus?: 'logo') => store.set({ drawer: { mode, path, ...(focus ? { focus } : {}) } }),
+    openDrawer: (mode: 'edit' | 'new', path: string[], focus?: 'logo' | 'shared') => store.set({ drawer: { mode, path, ...(focus ? { focus } : {}) } }),
     closeDrawer: () => store.set({ drawer: null }),
     dismissToast: () => (clearTimeout(toastTimer), store.set({ toast: null })),
     /** Hash changes (also back/forward): #infra/dagsrv. */
@@ -436,13 +614,16 @@ export function createController(org: string, env: Env) {
       const path = r.layer === 'org' ? r.path : [];
       const m = model();
       const known = !m || !path.length || m.byKey.has(path.join('/'));
-      store.set({ path: known ? path : [], tab: 'items', query: '' });
+      const next = known ? path : [];
+      // Same group (for example a pushState from `go` echoed back as a hash change): keep the tab the person chose.
+      if (next.join('/') === store.get().path.join('/')) return;
+      store.set({ path: next, tab: 'items', query: '', selected: [] });
     },
     go(path: string[]) {
       const hash = buildHash({ layer: 'org', path });
       env.history.pushState(null, '', env.location.pathname + env.location.search + hash);
       const wasList = store.get().view !== 'grouped';
-      store.set({ path, tab: 'items', query: '', view: 'grouped' });
+      store.set({ path, tab: 'items', query: '', view: 'grouped', selected: [] });
       if (wasList) savePrefs({ view: 'grouped' });
     },
     setView(view: 'grouped' | 'list') {
@@ -457,12 +638,14 @@ export function createController(org: string, env: Env) {
       clearTimeout(prefsTimer);
       prefsTimer = setTimeout(() => savePrefs({ expanded: [...expanded] }), 300);
     },
-    setTab: (tab: State['tab']) => store.set({ tab, query: '' }),
+    setTab: (tab: State['tab']) => store.set({ tab, query: '', selected: [] }),
+    /** C1: open issues and PRs of these repos (names from the index), `depth` items per repo and kind. */
+    loadWork: (repos: string[], depth: number) => env.call<import('../../background/work-items').WorkResult>({ type: 'org:work-items', org, repos, depth }),
     setSort(sort: SortKey) {
       store.set({ sort });
       savePrefs({ sort });
     },
-    setQuery: (query: string) => store.set({ query }),
+    setQuery: (query: string) => store.set(query === store.get().query ? { query } : { query, selected: [] }),
     updatedText: (meta: IndexMeta | null) => (meta?.lastIncrementalSync ? ago(meta.lastIncrementalSync) : ''),
   };
 }

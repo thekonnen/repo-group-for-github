@@ -1,3 +1,4 @@
+import { isPropRule, parsePropRule } from './glob';
 import { logoPath } from './logo';
 import { findGroup, placement } from './placement';
 import type { Group, TeamTag } from './types';
@@ -65,7 +66,9 @@ export const slugName = (v: string): string => v.toLowerCase().replace(/[^a-z0-9
 export const finalName = (v: string): string => slugName(v.trim()).replace(/^-+|-+$/g, '');
 
 /** Error text for the drawer, or null when the draft is valid. */
-export function validateDraft(groups: Group[], d: { mode: 'edit' | 'new'; path: string[]; name: string; title?: string }): string | null {
+export function validateDraft(groups: Group[], d: { mode: 'edit' | 'new'; path: string[]; name: string; title?: string; match?: string[] }): string | null {
+  const bad = d.match?.find((r) => isPropRule(r) && !parsePropRule(r));
+  if (bad) return `The rule "${bad}" needs a property and a value, like prop:client=Acme.`;
   const name = finalName(d.name);
   if (!name) return (d.title ?? '').trim() ? 'Could not make a slug from this name. Type one in the Slug field.' : 'Name is required.';
   const parent = d.mode === 'edit' ? d.path.slice(0, -1) : d.path;

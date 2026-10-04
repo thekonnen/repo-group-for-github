@@ -1,7 +1,7 @@
 # Prompt copied by "Copy prompt for AI" / "Copy prompt for AI + YML"
 # {{org}} is replaced by the organization login at runtime.
 # "+ YML" appends: a blank line, "Current file and repositories:", then a ```yaml block with the
-# current repo-groups.yml followed by a read-only `repositories:` list (name, description, language, topics).
+# current repo-groups.yml followed by a read-only `repositories:` list (name, description, language, topics, and custom properties when the org has them).
 # When the user picks a Scope other than "All repositories" (F14), the `repositories:` list only holds
 # the repos in that scope, and this line is added right after the Task list:
 #   Only classify the repositories listed. Keep every other group exactly as it is.
@@ -21,6 +21,7 @@ Output rules:
 - title: optional display name for people (capitals, spaces and accents allowed, for example "Grupo: Competição"). Keep every "title" exactly as it is, on the same group. Add one only when the slug alone reads badly.
 - Use at most 3 levels. Prefer 3 to 9 groups per level. Avoid a group with a single repository unless it clearly stands alone.
 - match: exact repository names or patterns with * as wildcard. Prefer patterns that will also catch future repositories of the same kind (for example "dags-*"), without catching repositories that belong elsewhere. An exact name always wins over a pattern; when several patterns match, the deepest group wins.
+- Some repositories list "properties" (organization custom properties, for example client or team). When a property clearly defines a group, you may use a rule like "prop:client=Acme" (the value accepts * and ignores case). Use it only with property names and values that appear in the list. Exact names and "prop:" rules without * win over patterns.
 - description: one short sentence, up to about 80 characters, saying what the group holds.
 - Keep every "logo" value exactly as it is, on the same group.
 - Keep every "teams" value exactly as it is. If you merge or rename a group, carry its teams to the group that replaces it. Never invent team names.

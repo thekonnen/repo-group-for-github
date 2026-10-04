@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { langColor } from '../../core/lang-colors';
 import { displayName } from '../../core/edit';
-import { ruleLabel } from '../../core/glob';
+import { isPropRule, ruleLabel } from '../../core/glob';
 import { detailTotals, DETAILS_MAX_REPOS } from '../../core/details';
 import { ago } from '../../core/time';
 import { allRepos, flatRows, searchRows, SORT_KEYS, SORT_LABEL, treeRows, VIRTUALIZE_AFTER, windowRange, type GroupNode, type Row, type SortKey, type TreeModel } from '../../core/tree';
@@ -149,7 +149,7 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
         <Tab ctl={ctl} id="all" current={tab} label="All repositories" count={node.total} />
       </div>
       {tab === 'rules' && !s.query ? (
-        <RulesPanel node={node} />
+        <RulesPanel node={node} org={s.org} propsHint={!!s.meta?.propsUnavailable && node.group.match.some(isPropRule)} />
       ) : (
         <>
           <Toolbar ctl={ctl} s={s} placeholder={`Search in ${name}`} />
@@ -389,15 +389,16 @@ function RepoRow({ org, row, fixed, label }: { org: string; row: Extract<Row, { 
   );
 }
 
-function RulesPanel({ node }: { node: GroupNode }) {
+function RulesPanel({ node, org, propsHint }: { node: GroupNode; org: string; propsHint: boolean }) {
   const own = node.repos;
   return (
     <div class="rg-box">
       <div class="rg-box-head"><span>How repositories join <code>{node.key}</code></span></div>
       <div class="rg-rules">
         <div class="rg-chips">
-          {node.group.match.length ? node.group.match.map((m) => <span class="rg-chip rg-ro" key={m}>{ruleLabel(m)}</span>) : <span class="rg-muted">No rules. Repositories only appear here through subgroups.</span>}
+          {node.group.match.length ? node.group.match.map((m) => <span class="rg-chip rg-ro" key={m} title={m}>{ruleLabel(m)}</span>) : <span class="rg-muted">No rules. Repositories only appear here through subgroups.</span>}
         </div>
+        {propsHint && <p class="rg-desc" role="status">Rules on custom properties match nothing yet: GitHub did not share the properties of {org}. An org owner must accept the new "Custom properties: Read" permission of the app in Settings → GitHub Apps.</p>}
         <p class="rg-desc">Patterns use <code>*</code> as a wildcard and are checked against the repository name. An exact name always wins; when several patterns match, the deepest group wins. New repositories are placed automatically on the next visit.</p>
         <div>
           <b>Matched directly here</b>

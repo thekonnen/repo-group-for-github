@@ -34,20 +34,49 @@ function globRe(pattern) {
 	return re;
 }
 var isExact = (rule) => !rule.includes("*");
+var PROP_PREFIX = "prop:";
+/** `prop:client=Acme` is a rule on an org custom property instead of the repository name. */
+var isPropRule = (rule) => rule.slice(0, 5).toLowerCase() === PROP_PREFIX;
+/** Splits `prop:name=value`. Null when the name or the value is missing. */
+function parsePropRule(rule) {
+	if (!isPropRule(rule)) return null;
+	const body = rule.slice(5);
+	const eq = body.indexOf("=");
+	const name = eq < 0 ? "" : body.slice(0, eq).trim();
+	const value = eq < 0 ? "" : body.slice(eq + 1).trim();
+	return name && value ? {
+		name,
+		value
+	} : null;
+}
+/** Whether a property rule hits these values. Property names compare case-insensitively; the value takes `*` and ignores case. */
+function propHit(rule, props) {
+	const p = parsePropRule(rule);
+	if (!p || !props) return false;
+	const re = globRe(p.value);
+	const lower = p.name.toLowerCase();
+	for (const [k, v] of Object.entries(props)) {
+		if (k.toLowerCase() !== lower) continue;
+		if (Array.isArray(v) ? v.some((x) => re.test(x)) : typeof v === "string" && re.test(v)) return true;
+	}
+	return false;
+}
 /** `topic:foo` / `topic:foo-*` rules match GitHub topics instead of the repository name. */
 var TOPIC_PREFIX = "topic:";
 var isTopicRule = (rule) => rule.slice(0, 6).toLowerCase() === TOPIC_PREFIX;
 /** The topic part of a `topic:` rule, trimmed (may be empty: invalid). */
 var topicOf = (rule) => rule.slice(6).trim();
-/** Does one rule catch a repo? Name rules test the name, topic rules test any topic (case-insensitive, `*` allowed). */
-function ruleMatches(rule, name, topics) {
+/** Does one rule catch a repo? Name rules test the name, topic rules any topic (`*` allowed), property rules the custom properties. */
+function ruleMatches(rule, name, topics, props) {
+	if (isPropRule(rule)) return propHit(rule, props);
 	if (!isTopicRule(rule)) return globRe(rule).test(name);
 	const t = topicOf(rule);
 	return !!t && !!topics?.some((x) => globRe(t).test(x));
 }
-/** Exact-style hit: a rule without `*` that equals the name, or (topic rule) equals one of the topics. */
-function exactHit(rule, name, topics) {
+/** Exact-style hit: a rule without `*` that equals the name, one of the topics (topic rule), or hits the properties (prop rule). */
+function exactHit(rule, name, topics, props) {
 	if (!isExact(rule)) return false;
+	if (isPropRule(rule)) return propHit(rule, props);
 	if (!isTopicRule(rule)) return rule.toLowerCase() === name.toLowerCase();
 	const t = topicOf(rule).toLowerCase();
 	return !!t && !!topics?.some((x) => x.toLowerCase() === t);
@@ -82,19 +111,19 @@ function flatList(groups, depth = 0, parent = [], out = []) {
 	}
 	return out;
 }
-/** Exact names win; otherwise the first pattern hit in post-order (deepest wins). `topic:` rules count like name rules. */
-function pickIn(order, name, topics) {
-	return order.find((x) => x.group.match.some((r) => exactHit(r, name, topics))) ?? order.find((x) => x.group.match.some((r) => ruleMatches(r, name, topics))) ?? null;
+/** Exact names win; otherwise the first pattern hit in post-order (deepest wins). `topic:` and `prop:` rules count like name rules. */
+function pickIn(order, name, topics, props) {
+	return order.find((x) => x.group.match.some((r) => exactHit(r, name, topics, props))) ?? order.find((x) => x.group.match.some((r) => ruleMatches(r, name, topics, props))) ?? null;
 }
 /** The rule of `group` that catches `name` (exact first). */
-function ruleFor(group, name, topics) {
-	return group.match.find((r) => exactHit(r, name, topics)) ?? group.match.find((r) => ruleMatches(r, name, topics));
+function ruleFor(group, name, topics, props) {
+	return group.match.find((r) => exactHit(r, name, topics, props)) ?? group.match.find((r) => ruleMatches(r, name, topics, props));
 }
 /** repo name -> group key ('' = ungrouped). */
 function placement(groups, repos) {
 	const order = postOrder(groups);
 	const out = {};
-	for (const r of repos) out[r.name] = pickIn(order, r.name, r.topics)?.key ?? "";
+	for (const r of repos) out[r.name] = pickIn(order, r.name, r.topics, r.props)?.key ?? "";
 	return out;
 }
 //#endregion
@@ -197,6 +226,11 @@ function configFromObject(obj, opts = {}) {
 			if (typeof match === "string") match = [match];
 			if (!Array.isArray(match) || match.some((m) => typeof m !== "string")) {
 				err = `"${name}": match must be a list of names or patterns.`;
+				return;
+			}
+			const badProp = match.flatMap(splitRules).find((r) => isPropRule(r) && !parsePropRule(r));
+			if (badProp) {
+				err = `"${name}": rule "${badProp}" needs a property and a value, like prop:client=Acme.`;
 				return;
 			}
 			const emptyTopic = match.flatMap(splitRules).find((r) => isTopicRule(r) && !topicOf(r));
@@ -3769,11 +3803,11 @@ var ruleWords = (rule) => tokens(rule.replace(/\*/g, " "));
 var candidates = (order) => order.filter((n) => n.group.groups.length === 0 || n.group.match.length > 0);
 function suggest(groups, repo) {
 	const order = postOrder(groups);
-	const hit = pickIn(order, repo.name, repo.topics);
+	const hit = pickIn(order, repo.name, repo.topics, repo.props);
 	if (hit) return {
 		source: "rule",
 		key: hit.key,
-		rule: ruleFor(hit.group, repo.name, repo.topics),
+		rule: ruleFor(hit.group, repo.name, repo.topics, repo.props),
 		score: 1,
 		margin: 1,
 		ranking: [{

@@ -313,7 +313,8 @@
 .rg-root .rg-dialog-foot .rg-btn:not(.rg-btn-danger-solid) { width: 100%; justify-content: center; }
 
 /* A6: repositories that are not in any group */
-.rg-root .rg-unassigned { background: var(--rg-bg-subtle); }
+.rg-root .rg-unassigned { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 16px; border: 1px solid var(--rg-border); border-radius: 6px; background: var(--rg-bg-subtle); }
+.rg-root .rg-unassigned .rg-grow { flex: 1 1 260px; min-width: 0; }
 .rg-root .rg-unassigned-x { width: 32px; padding: 0; justify-content: center; border-color: transparent; background: transparent; }
 .rg-root .rg-label.rg-new { color: var(--rg-accent); border-color: var(--rg-accent); }
 .rg-root .rg-unassigned-badge { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px; border: 1px solid var(--rg-border); border-radius: 999px; background: var(--rg-bg-subtle); color: var(--rg-fg); font-size: 12px; font-weight: 500; cursor: pointer; }

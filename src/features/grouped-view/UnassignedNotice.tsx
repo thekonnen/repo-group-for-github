@@ -16,7 +16,7 @@ export function UnassignedNotice({ ctl, count, newCount, personal = false }: { c
   const s = useStore(ctl.store);
   if (!count || s.unassignedDismissed) return null;
   return (
-    <div class="rg-banner rg-unassigned" role="status">
+    <div class="rg-unassigned" role="status">
       <span class="rg-grow">
         <b>{unassignedText(count, personal)}</b>
         {newCount > 0 && <span class="rg-muted"> · {t('unassignedNewCount', newCount.toLocaleString())}</span>}

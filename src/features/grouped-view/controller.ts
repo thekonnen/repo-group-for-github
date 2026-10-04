@@ -2,7 +2,7 @@ import { ago } from '../../core/time';
 import { buildHash, parseHash } from '../../core/layers';
 import type { IndexMeta } from '../../core/index-sync';
 import type { Access } from '../../core/access';
-import { editLogoPath, finalName, pngOf, type Edit } from '../../core/edit';
+import { editLogoPath, finalName, moveRepo as planMove, pngOf, type Edit } from '../../core/edit';
 import type { Group } from '../../core/types';
 import { writeConfig } from '../../core/yaml-write';
 import type { RepoInfo } from '../../core/types';
@@ -218,14 +218,14 @@ export function createController(org: string, env: Env) {
     toastTimer = setTimeout(() => store.set({ toast: null }), 6000);
   }
 
-  async function save(edit: Edit, created = false): Promise<SaveResult> {
+  async function save(edit: Edit, created = false, toast?: string): Promise<SaveResult> {
     try {
       const r = await env.call<any>({ type: 'org:edit', org, edit });
       if (r.status === 'needs-repo') {
         // <owner>/.github does not exist yet: create it (private) and save again, in the same click.
         if (created) return { ok: false, message: `Could not create ${org}/.github.` };
         await env.call({ type: 'org:create-dotgithub', org });
-        return save(edit, true);
+        return save(edit, true, toast);
       }
       const before = store.get();
       const logoFile = editLogoPath(edit);
@@ -261,11 +261,35 @@ export function createController(org: string, env: Env) {
       next.expandedTouched = true;
       store.set(next);
       savePrefs({ expanded: [...expanded] });
-      showToast(edit.kind === 'delete' ? `Deleted ${edit.path.join('/')} · committed to ${org}/.github/repo-groups.yml` : `Committed to ${org}/.github/repo-groups.yml`);
+      showToast(toast ?? (edit.kind === 'delete' ? `Deleted ${edit.path.join('/')} · committed to ${org}/.github/repo-groups.yml` : `Committed to ${org}/.github/repo-groups.yml`));
       return { ok: true };
     } catch (e) {
       return { ok: false, message: infoOf(e).message };
     }
+  }
+
+  /**
+   * A4: moves a repository to a group ([] = Ungrouped) in the org file. The toast only appears after the commit succeeded;
+   * a failure shows an error toast. A conflict is re-applied once by the background (§7).
+   */
+  async function moveRepo(repo: string, to: string[]): Promise<SaveResult> {
+    const s = store.get();
+    const groups = s.config && s.config.exists && s.config.config ? s.config.config.groups : null;
+    if (!groups) return { ok: false, message: 'There is no repo-groups.yml to change yet.' };
+    const dest = to.length ? to.join(' / ') : 'Ungrouped';
+    const plan = planMove(groups, repo, to);
+    if ('error' in plan) {
+      showToast(plan.error, 'error');
+      return { ok: false, message: plan.error };
+    }
+    if (!plan.changed) {
+      showToast(`${repo} is already in ${dest}.`);
+      return { ok: true };
+    }
+    const warn = plan.stillCaught ? ` · The rule ${plan.stillCaught.rule} of ${plan.stillCaught.key} still matches it, so it stays there` : '';
+    const r = await save({ kind: 'move', repo, to }, false, `Moved ${repo} to ${dest} · committed to ${org}/.github/repo-groups.yml${warn}`);
+    if (!r.ok) showToast(r.message, 'error');
+    return r;
   }
 
   let detailsKey = '';
@@ -343,6 +367,12 @@ export function createController(org: string, env: Env) {
       clearTimeout(toastTimer);
     },
     save,
+    moveRepo,
+    /** A4: moving needs write access to the org file; the team page is a read-only view. */
+    canMove(): boolean {
+      const s = store.get();
+      return !!s.access?.canWriteOrg && !env.team && !!s.config && s.config.exists && !!s.config.config;
+    },
     savedText,
     openYaml(text?: string) {
       store.set({ drawer: null, yaml: { text: text ?? savedText() } });

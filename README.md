@@ -60,6 +60,16 @@ The extension then downloads that one file instead of paginating, and confirms e
 
 **Privacy warning:** everyone who can read `<org>/.github` can read the names and descriptions of **all** repositories listed in `repo-index.json`, including private ones they cannot open. Only enable this in organizations where members already see every repository.
 
+## Optional: weekly pull request that proposes a reorganization
+
+An organization can let a scheduled workflow keep `repo-groups.yml` tidy. Once a week it lists the repositories, files new ones into a group when it is confident, lists the rest under "Needs a human decision", proposes removing exact names whose repository is gone, and opens (or updates) one pull request from `repo-groups/reorg-<date>`. It never pushes to the default branch and opens nothing when there is nothing to propose.
+
+1. Copy `design/actions/repo-groups-reorg.yml` to `<org>/.github/.github/workflows/repo-groups-reorg.yml` and `design/actions/reorg.mjs` to `<org>/.github/.github/scripts/reorg.mjs`.
+2. Create the secret `REPO_GROUPS_TOKEN` (Metadata read on all repositories; Contents and Pull requests read & write on `<org>/.github`).
+3. Run it once with `dry_run` on.
+
+The script is generated: edit `src/core` or `src/action`, then run `npm run build:action` (a test fails when the committed file is stale). Details and privacy notes: [docs/reorg-action.md](docs/reorg-action.md).
+
 ## Status
 
 Milestones 1–6 done: scaffold, tested `core/`, background worker (device flow, token fallback, parallel repo index with cache, `repo-groups.yml` reader, access detection), and the read-only grouped view on `github.com/orgs/<org>/repositories` (groups and subgroups, sidebar tree, group pages at `#infra/dagsrv`, search, GitHub-list toggle), plus Edit group / New group. Org owners and members with write access to `<org>/.github` can edit groups and create groups and subgroups from the page (each save is a commit to `repo-groups.yml`). The YAML editor (Edit YAML) has the AI round-trip: copy the prompt with the file and repositories, paste the answer back, review the diff, commit. Groups have a display name (any characters) and a slug (`grupo-competicao`). Next: logos, new-repository field, teams (in progress).

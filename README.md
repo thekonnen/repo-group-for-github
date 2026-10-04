@@ -70,6 +70,10 @@ The extension then downloads that one file instead of paginating, and confirms e
 
 **Privacy warning:** everyone who can read `<org>/.github` can read the names and descriptions of **all** repositories listed in `repo-index.json`, including private ones they cannot open. Only enable this in organizations where members already see every repository.
 
+## Repositories that are not in any group
+
+When some repositories match no group, the top-level page shows a callout ("12 repositories are not in any group yet") with **Review ungrouped** (opens the Ungrouped tab) and **Start with AI** (opens the YAML editor scoped to "Ungrouped only"), and the sidebar shows a count badge. Ungrouped repositories that appeared since your last visit get a **New** label; the set already seen is kept per org in `storage.local` (`rg:prefs:<org>`, key `unassignedSeen`). It is all derived from the local index and placement, with no extra API calls; archived repositories are never counted. Dismissing the callout hides it for the browser session. Nothing is shown when every repository is grouped.
+
 ## Optional: one repository in several groups (`shared`)
 
 Each repository has one home group, chosen by `match`. A group can also list repositories that live elsewhere, like a tag:

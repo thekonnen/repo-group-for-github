@@ -17,6 +17,8 @@ import { TeamChips } from '../teams/TeamChips';
 import { dragSource, dropTarget } from './dnd';
 import { RepoMenu, SelectionBar } from './RepoMenu';
 import type { Controller, State } from './controller';
+import { UnassignedNotice, ungroupedTabLabel } from './UnassignedNotice';
+import { t } from '../../i18n';
 import { WorkPanel } from './WorkPanel';
 
 const ROW_H = 76;
@@ -138,6 +140,7 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
         <div class="rg-banner rg-banner-warn" role="alert"><span class="rg-grow"><b>repo-groups.yml has a problem:</b> {cfg.error}. Showing every repository as ungrouped.</span></div>
       )}
       <TeamBanners ctl={ctl} />
+      {isRoot && !team && tab !== 'ungrouped' && cfg?.exists && !cfg.error && <UnassignedNotice ctl={ctl} count={ungrouped.length} newCount={ungrouped.filter((r) => s.newUngrouped.includes(r.name)).length} />}
       <Crumbs ctl={ctl} s={s} model={model} node={node} />
       <Header ctl={ctl} s={s} node={node} name={name} isRoot={isRoot} />
       <div class="rg-stats">
@@ -155,7 +158,7 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
       </div>
       <div class="rg-tabs" role="tablist">
         <Tab ctl={ctl} id="items" current={tab} label="Groups and repositories" />
-        {isRoot ? <Tab ctl={ctl} id="ungrouped" current={tab} label="Ungrouped" count={ungrouped.length} /> : <Tab ctl={ctl} id="rules" current={tab} label="Match rules" count={node.group.match.length} />}
+        {isRoot ? <Tab ctl={ctl} id="ungrouped" current={tab} label={ungroupedTabLabel()} count={ungrouped.length} /> : <Tab ctl={ctl} id="rules" current={tab} label="Match rules" count={node.group.match.length} />}
         <Tab ctl={ctl} id="all" current={tab} label="All repositories" count={node.total} />
         <Tab ctl={ctl} id="work" current={tab} label="Issues & PRs" count={split ? split.issues + split.prs : node.total <= DETAILS_MAX_REPOS ? node.issues : undefined} />
         {hasMembers && <Tab ctl={ctl} id="members" current={tab} label="Members" />}
@@ -355,7 +358,7 @@ function Rows({ ctl, s, rows }: { ctl: Controller; s: State; rows: Row[] }) {
   const slice = virtual ? rows.slice(range.start, range.end) : rows;
   return (
     <div class="rg-rows" ref={ref} style={virtual ? { paddingTop: range.start * ROW_H, paddingBottom: Math.max(0, rows.length - range.end) * ROW_H } : undefined}>
-      {slice.map((r, i) => (r.kind === 'group' ? <GroupRow key={`g:${r.node.key}`} ctl={ctl} row={r} fixed={virtual} /> : <RepoRow key={`r:${virtual ? range.start + i : i}:${r.repo.name}`} ctl={ctl} org={s.org} row={r} selected={r.also === undefined && s.selected.includes(r.repo.name)} fixed={virtual} label={ctl.teams.repoLabel(r.repo.name)} />))}
+      {slice.map((r, i) => (r.kind === 'group' ? <GroupRow key={`g:${r.node.key}`} ctl={ctl} row={r} fixed={virtual} /> : <RepoRow key={`r:${virtual ? range.start + i : i}:${r.repo.name}`} ctl={ctl} org={s.org} row={r} selected={r.also === undefined && s.selected.includes(r.repo.name)} fixed={virtual} label={ctl.teams.repoLabel(r.repo.name)} isNew={s.newUngrouped.includes(r.repo.name) && ctl.model()?.placed.get(r.repo.name) === ''} />))}
     </div>
   );
 }
@@ -390,7 +393,7 @@ function GroupRow({ ctl, row, fixed }: { ctl: Controller; row: Extract<Row, { ki
 }
 
 /** `label` is the team's permission on the team page; otherwise the label shows Public or Private. */
-function RepoRow({ ctl, org, row, fixed, label, selected }: { ctl: Controller; org: string; row: Extract<Row, { kind: 'repo' }>; fixed: boolean; label?: string; selected: boolean }) {
+function RepoRow({ ctl, org, row, fixed, label, selected, isNew }: { ctl: Controller; org: string; row: Extract<Row, { kind: 'repo' }>; fixed: boolean; label?: string; selected: boolean; isNew?: boolean }) {
   const r: RepoInfo = row.repo;
   const movable = ctl.canMove();
   const current = ctl.model()?.placed.get(r.name) ?? '';
@@ -407,6 +410,7 @@ function RepoRow({ ctl, org, row, fixed, label, selected }: { ctl: Controller; o
           <a href={repoUrl(org, r.name)}>{row.prefix && <span class="rg-path-pre">{row.prefix}</span>}{r.name}</a>
           <span class="rg-label">{label ?? (r.private ? 'Private' : 'Public')}</span>
           {r.fork && <span class="rg-label">Fork</span>}
+          {isNew && <span class="rg-label rg-new" title={t('unassignedNewTitle')}>{t('unassignedNewLabel')}</span>}
           {linked && (
             <button type="button" class="rg-also rg-link-chip" title={`Linked from ${from}. Remove the link here, or move it from there.`} onClick={() => ctl.goOriginal(row.also!)}>
               <Icon name="link" size={12} />linked from {from}

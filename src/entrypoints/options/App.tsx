@@ -220,6 +220,20 @@ function Ai() {
           {t('optionsAiFallback')}
         </label>
         <span class="rg-ext-muted">{both ? t('optionsAiFallbackHint') : t('optionsAiFallbackNeedsBoth')}</span>
+        <label class="rg-ext-check" for="rg-ai-search">
+          <input
+            id="rg-ai-search"
+            type="checkbox"
+            checked={status?.search !== false}
+            disabled={!configured}
+            onChange={(e) => {
+              const search = (e.currentTarget as HTMLInputElement).checked;
+              void run(async () => (load(await call<LlmStatus>({ type: 'llm:search', search })), t('optionsAiAutoSaved')));
+            }}
+          />
+          {t('optionsAiSearch')}
+        </label>
+        <span class="rg-ext-muted">{t('optionsAiSearchHint')}</span>
       </form>
       {first && (
         <p class="rg-ext-muted" id="rg-ai-order">

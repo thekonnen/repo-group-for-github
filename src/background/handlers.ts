@@ -27,7 +27,7 @@ import { loadProps, usesProps, withProps } from './props-data';
 import { postOrder } from '../core/placement';
 import { suggest } from '../core/suggest';
 import { buildTree } from '../core/tree';
-import { askLlm, classifyPrompt, clearLlmConfig, configuredProviders, llmConfigured, llmOrigin, llmStatus, LlmError, loadLlmConfig, parseSuggestion, saveLlmConfig, setLlmAuto, setLlmFallback, type Provider } from './llm';
+import { askLlm, classifyPrompt, clearLlmConfig, configuredProviders, llmConfigured, llmOrigin, llmStatus, LlmError, loadLlmConfig, parseSearch, parseSuggestion, saveLlmConfig, searchPrompt, setLlmAuto, setLlmFallback, setLlmSearch, type Provider } from './llm';
 
 export interface Deps {
   fetch: FetchLike;
@@ -394,6 +394,27 @@ export function createHandler(deps: Deps) {
         const status = await setLlmFallback(deps.kv, req.fallback);
         await resetAiState();
         return status;
+      }
+      case 'llm:search':
+        return setLlmSearch(deps.kv, req.search);
+      case 'search:llm': {
+        // The AI only sees repositories of this user's own index (F15 §5), and only names it can verify come back.
+        const cfg = await loadLlmConfig(deps.kv);
+        if (!llmConfigured(cfg) || cfg?.search === false || !req.query.trim()) return { names: [] as string[], skipped: true };
+        const home = new Map(req.repos.map((r) => [r.name, r.group]));
+        const repos = ((await deps.index.load(req.org))?.repos ?? []).filter((r) => home.has(r.name)).map((r) => ({ name: r.name, description: r.description, group: home.get(r.name) }));
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 8000);
+        try {
+          const a = await askLlm({ ...llmDeps(), signal: ctrl.signal }, searchPrompt(repos, req.query, req.groups));
+          const names = parseSearch(a.text, repos.map((r) => r.name));
+          return names ? { names } : { names: [] as string[], error: 'The AI answered in a format the search could not read.' };
+        } catch (e) {
+          // the literal result stands on its own; the page shows why the AI added nothing
+          return { names: [] as string[], error: ctrl.signal.aborted ? 'The AI did not answer in time.' : e instanceof Error ? e.message : String(e) };
+        } finally {
+          clearTimeout(timer);
+        }
       }
       case 'llm:clear': {
         const status = await clearLlmConfig(deps.kv, req.mode);

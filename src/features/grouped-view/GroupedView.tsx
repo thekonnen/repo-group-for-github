@@ -4,7 +4,7 @@ import { displayName } from '../../core/edit';
 import { isPropRule, ruleLabel } from '../../core/glob';
 import { detailTotals, DETAILS_MAX_REPOS } from '../../core/details';
 import { ago } from '../../core/time';
-import { allRepos, flatRows, pathTitle, searchRows, SORT_KEYS, SORT_LABEL, treeRows, VIRTUALIZE_AFTER, windowRange, type GroupNode, type Row, type SortKey, type TreeModel } from '../../core/tree';
+import { allRepos, flatRows, pathTitle, groupHits, groupText, searchRows, SORT_KEYS, SORT_LABEL, treeRows, VIRTUALIZE_AFTER, windowRange, type GroupNode, type Row, type SortKey, type TreeModel } from '../../core/tree';
 import type { RepoInfo } from '../../core/types';
 import { GroupAvatar } from '../logos/GroupAvatar';
 import { RootAvatar } from '../logos/RootAvatar';
@@ -90,6 +90,7 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
   const forkProps = !team && s.access?.canWriteOrg && tab0(s, isRoot) === 'ungrouped' ? ctl.forkProposals() : [];
 
   useSlashFocus();
+  const readmeTexts = useStore(ctl.readmes.store).texts;
   const scope = node.total <= DETAILS_MAX_REPOS ? allRepos(node) : [];
   const scopeKey = scope.map((r) => r.name).join('\n');
   useEffect(() => {
@@ -109,7 +110,9 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
   let head: preact.ComponentChild;
   if (s.query.trim()) {
     // In the "All repositories" tab a search stays a flat list in the chosen order, like GitHub's own.
-    rows = tab === 'all' ? flatRows(node, s.sort, s.query) : searchRows(model, node, s.query);
+    // Repositories the AI found for the same terms are listed too (it only ever names repos of this scope).
+    const ai = s.aiHits && s.aiHits.query === s.query.trim() ? new Set(s.aiHits.names) : undefined;
+    rows = tab === 'all' ? flatRows(node, s.sort, s.query, ai) : [...groupHits(node, s.query, readmeTexts), ...searchRows(model, node, s.query, ai)];
     head = `${plural(rows.length, 'result', 'results')} for “${s.query.trim()}”`;
   } else if (tab === 'all') {
     rows = flatRows(node, s.sort);
@@ -195,11 +198,11 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
         <RulesPanel node={node} org={s.org} propsHint={!!s.meta?.propsUnavailable && node.group.match.some(isPropRule)} />
       ) : (
         <>
-          <Toolbar ctl={ctl} s={s} placeholder={`Search in ${name}`} />
+          <Toolbar ctl={ctl} s={s} placeholder={`Search in ${name}`} scope={() => aiScope(model, node, readmeTexts)} />
           {ctl.canMove() && <SelectionBar ctl={ctl} selected={s.selected} />}
           <div class="rg-box">
             <div class="rg-box-head"><span class="rg-box-title">{ctl.canMove() && repoNames.length > 0 && <input type="checkbox" class="rg-check" aria-label="Select all repositories in this list" checked={repoNames.every((n) => s.selected.includes(n))} onChange={(e) => ((e.target as HTMLInputElement).checked ? ctl.selectAll(repoNames) : ctl.clearSelection())} />}{head}</span>{tab === 'all' ? <SortSelect value={s.sort} label="Sort repositories" onChange={(k) => ctl.setSort(k)} /> : tab === 'items' && !isRoot && !s.query.trim() ? <SortSelect group value={ctl.sortOf(node)} label={`Sort the repositories of ${name}`} onChange={(k) => void ctl.setGroupSort(node, k)} /> : <span class="rg-muted">Sort: Last pushed</span>}</div>
-            {rows.length ? <Rows ctl={ctl} s={s} rows={rows} /> : <Empty tab={tab} query={s.query} isRoot={isRoot} team={team} />}
+            {rows.length ? <Rows ctl={ctl} s={s} rows={rows} /> : <Empty tab={tab} query={s.query} isRoot={isRoot} team={team} ai={{ busy: s.aiBusy, error: s.aiHits?.query === s.query.trim() ? s.aiHits.error : undefined }} />}
           </div>
         </>
       )}
@@ -207,9 +210,10 @@ function Groups({ ctl, s, model }: { ctl: Controller; s: State; model: TreeModel
   );
 }
 
-function Empty({ tab, query, isRoot, team }: { tab: string; query: string; isRoot: boolean; team?: string }) {
+function Empty({ tab, query, isRoot, team, ai }: { tab: string; query: string; isRoot: boolean; team?: string; ai?: { busy: boolean; error?: string } }) {
   if (team && isRoot && !query.trim()) return <div class="rg-empty"><b>No repositories yet</b>{team} cannot access any repository. Use Sync access to give it the access set in repo-groups.yml.</div>;
-  if (query.trim()) return <div class="rg-empty"><b>No repositories match</b>Try a shorter name or clear the search.</div>;
+  if (query.trim() && ai?.busy) return <div class="rg-empty rg-ai-wait" role="status"><b><span class="rg-ai-spark" aria-hidden="true"><Icon name="sparkle" size={18} /></span><span class="rg-ai-text">Searching with the AI</span><span class="rg-dots" aria-hidden="true"><i /><i /><i /></span></b>No literal match yet. The AI is reading names, descriptions and READMEs.</div>;
+  if (query.trim()) return <div class="rg-empty"><b>No repositories match</b>Try a shorter name or clear the search.{ai?.error && <> The AI search added nothing: {ai.error}</>}</div>;
   if (tab === 'ungrouped') return <div class="rg-empty"><b>Every repository is in a group</b>New repositories land here until a rule matches them.</div>;
   return <div class="rg-empty"><b>{isRoot ? 'No repositories yet' : 'This group is empty'}</b>{isRoot ? 'Repositories you can access will show here.' : 'Add a match rule or create a subgroup.'}</div>;
 }
@@ -370,14 +374,25 @@ function Tabs({ ctl, current, saved, tabs }: { ctl: Controller; current: string;
   );
 }
 
-function Toolbar({ ctl, s, placeholder }: { ctl: Controller; s: State; placeholder: string }) {
+function aiScope(model: TreeModel, node: GroupNode, texts: Readonly<Record<string, string | null>>) {
+  const repos = allRepos(node).map((r) => ({ name: r.name, group: (model.placed.get(r.name) ?? '') || '-' }));
+  const groups: { path: string; text: string }[] = [];
+  const walk = (n: GroupNode) => n.children.forEach((c) => (groups.push({ path: c.key, text: groupText(c.group, texts) }), walk(c)));
+  walk(node);
+  return { repos, groups };
+}
+
+function Toolbar({ ctl, s, placeholder, scope }: { ctl: Controller; s: State; placeholder: string; /** What the AI may search: the repositories of the current group and the texts of its groups. */ scope?: () => { repos: { name: string; group: string }[]; groups: { path: string; text: string }[] } }) {
   const [text, setText] = useState(s.query);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const aiTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => setText(s.query), [s.query]);
   const onInput = (v: string) => {
     setText(v);
     clearTimeout(timer.current);
     timer.current = setTimeout(() => ctl.setQuery(v), 100); // search runs in memory, 100 ms debounce
+    clearTimeout(aiTimer.current);
+    if (scope && v.trim().length >= 3) aiTimer.current = setTimeout(() => { const c = scope(); void ctl.searchAi(v, c.repos, c.groups); }, 600); // the AI waits until typing stops
   };
   return (
     <div class="rg-toolbar">

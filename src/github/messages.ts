@@ -51,6 +51,8 @@ export type Request =
   | { type: 'llm:save'; config: { mode?: Provider; apiKey?: string; baseUrl?: string; model?: string } }
   | { type: 'llm:auto'; auto: boolean }
   | { type: 'llm:fallback'; fallback: boolean }
+  | { type: 'llm:search'; search: boolean }
+  | { type: 'search:llm'; org: string; query: string; /** Names of this scope with the path of the group each lives in. */ repos: { name: string; group: string }[]; /** Group paths with their description and README text, so the AI can answer by what a group is about. */ groups: { path: string; text: string }[] }
   | { type: 'llm:clear'; mode?: Provider }
   | { type: 'llm:test'; mode?: Provider }
   | { type: 'suggest:group'; org: string; repo: { name: string; description?: string | null }; method?: SuggestMethod; /** Started by the page on its own (AI by default), not by a click: cheaper and rate limited. */ auto?: boolean };

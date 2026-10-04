@@ -53,6 +53,10 @@ export interface State {
   /** Saved order of the group tabs; empty = the built-in order. */
   tabOrder: string[];
   query: string;
+  /** Repositories the AI found for `query` (search box); empty until it answers. */
+  aiHits: { query: string; names: string[]; error?: string; skipped?: boolean } | null;
+  /** The AI is working on this search. */
+  aiBusy: boolean;
   access: Access | null;
   /** Separate open issue / PR counts (F14), loaded lazily for small groups. */
   details: DetailsMap;
@@ -159,6 +163,8 @@ export function createController(org: string, env: Env) {
     groupSort: {},
     tabOrder: [],
     query: '',
+    aiHits: null,
+    aiBusy: false,
     access: null,
     details: {},
     drawer: null,
@@ -711,6 +717,18 @@ export function createController(org: string, env: Env) {
     setSort(sort: SortKey) {
       store.set({ sort });
       savePrefs({ sort });
+    },
+    /** Asks the AI for repositories matching the search terms. Quietly does nothing when no AI is set or it fails. */
+    async searchAi(query: string, repos: { name: string; group: string }[], groups: { path: string; text: string }[]) {
+      const q = query.trim();
+      if (!q || !repos.length) return;
+      store.set({ aiBusy: true });
+      try {
+        const r = await env.call<{ names: string[]; error?: string; skipped?: boolean }>({ type: 'search:llm', org, query: q, repos, groups });
+        if (store.get().query.trim() === q) store.set({ aiHits: { query: q, ...r }, aiBusy: false });
+      } catch (e) {
+        if (store.get().query.trim() === q) store.set({ aiHits: { query: q, names: [], error: e instanceof Error ? e.message : String(e) }, aiBusy: false });
+      }
     },
     setQuery: (query: string) => store.set(query === store.get().query ? { query } : { query, selected: [] }),
     canEditOrder,

@@ -110,6 +110,21 @@
 .rg-root .rg-row-side .rg-counts { display: flex; gap: 12px; }
 .rg-root .rg-row-side span { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
 .rg-root .rg-empty { padding: 32px 16px; text-align: center; color: var(--rg-muted); }
+.rg-root .rg-ai-wait { display: flex; flex-direction: column; align-items: center; padding: 40px 16px; }
+.rg-root .rg-empty.rg-ai-wait b { display: inline-flex; align-items: center; gap: 6px; font-size: 16px; color: var(--rg-accent); }
+.rg-root .rg-ai-spark { position: relative; display: inline-flex; color: var(--rg-ext, var(--rg-accent)); }
+.rg-root .rg-ai-spark svg { fill: currentColor; position: relative; }
+.rg-root .rg-ai-text { color: var(--rg-accent); }
+.rg-root .rg-ai-wait .rg-dots i { width: 5px; height: 5px; }
+@media (prefers-reduced-motion: no-preference) {
+  .rg-root .rg-ai-spark svg { animation: rg-ai-beat 1s ease-in-out infinite; }
+  .rg-root .rg-ai-spark::after { content: ''; position: absolute; inset: -4px; border-radius: 50%; background: currentColor; opacity: 0; animation: rg-ai-ring 1.6s ease-out infinite; }
+  .rg-root .rg-ai-text { background: linear-gradient(90deg, var(--rg-accent), var(--rg-ext, var(--rg-accent)), var(--rg-accent)) 0 0 / 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: rg-ai-flow 1.8s linear infinite, rg-ai-breathe 1.6s ease-in-out infinite; }
+}
+@keyframes rg-ai-beat { 0%, 100% { transform: scale(.8) rotate(0); } 50% { transform: scale(1.35) rotate(20deg); } }
+@keyframes rg-ai-ring { 0% { transform: scale(.4); opacity: .45; } 100% { transform: scale(2.2); opacity: 0; } }
+@keyframes rg-ai-flow { to { background-position: -200% 0; } }
+@keyframes rg-ai-breathe { 0%, 100% { opacity: .65; } 50% { opacity: 1; } }
 .rg-root .rg-empty b { display: block; color: var(--rg-fg); font-size: 16px; margin-bottom: 4px; }
 .rg-root .rg-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 16px; border: 1px solid var(--rg-border); border-radius: 6px; background: var(--rg-accent-subtle); }
 .rg-root .rg-banner .rg-grow { flex: 1 1 260px; min-width: 0; }

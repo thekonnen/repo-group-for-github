@@ -234,6 +234,12 @@
   "optionsAiFallbackNeedsBoth": {
     "message": "Save both providers to enable the fallback."
   },
+  "optionsAiSearch": {
+    "message": "Search repositories with the AI by default"
+  },
+  "optionsAiSearchHint": {
+    "message": "The search box also asks the AI to find repositories by meaning, and lists them after the literal matches. Each search sends the search text and the names and descriptions of the repositories in the current group to the provider. Without an AI key, or if it fails, the normal search is used."
+  },
   "optionsAiTagPrimary": {
     "message": "tried first"
   },

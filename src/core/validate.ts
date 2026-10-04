@@ -1,4 +1,5 @@
 import { splitRules } from './edit';
+import { forkTarget, isForkRule, isPropRule, isTopicRule, parsePropRule, topicOf } from './glob';
 import { PERMISSIONS } from './permissions';
 import type { Config, Group, TeamTag } from './types';
 
@@ -18,6 +19,7 @@ export interface ValidateOptions {
 }
 
 const NAME_RE = /^[a-z0-9._-]+$/;
+const FORK_TARGET_RE = /^[A-Za-z0-9._*-]+(\/[A-Za-z0-9._*-]+)?$/;
 
 /** Turns parsed YAML (any shape) into a Config, or returns the first problem found. */
 export function configFromObject(obj: unknown, opts: ValidateOptions = {}): ValidationResult {
@@ -100,6 +102,20 @@ export function configFromObject(obj: unknown, opts: ValidateOptions = {}): Vali
         return;
       }
       const sharedRules = (shared as string[]).flatMap(splitRules);
+      const ruleProblem = (rules: string[]): string | null => {
+        const badFork = rules.find((r) => isForkRule(r) && !FORK_TARGET_RE.test(forkTarget(r)));
+        if (badFork) return `"${name}": rule "${badFork}" needs an owner, like fork-of:macfuse or fork-of:macfuse/macfuse.`;
+        const badProp = rules.find((r) => isPropRule(r) && !parsePropRule(r));
+        if (badProp) return `"${name}": rule "${badProp}" needs a property and a value, like prop:client=Acme.`;
+        const emptyTopic = rules.find((r) => isTopicRule(r) && !topicOf(r));
+        if (emptyTopic) return `"${name}": the rule "${emptyTopic}" needs a topic name, like topic:kubernetes.`;
+        return null;
+      };
+      const problem = ruleProblem((match as string[]).flatMap(splitRules)) ?? ruleProblem(sharedRules);
+      if (problem) {
+        err = problem;
+        return;
+      }
       let keywords: unknown = raw.keywords == null ? [] : raw.keywords;
       if (typeof keywords === 'string') keywords = [keywords];
       if (!Array.isArray(keywords) || keywords.some((k) => typeof k !== 'string')) {

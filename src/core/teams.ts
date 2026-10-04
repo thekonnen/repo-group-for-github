@@ -46,7 +46,7 @@ export type TeamAccess = Record<string, Record<string, Permission>>; // slug -> 
  */
 export function syncPlan(
   groups: Group[],
-  repos: Pick<RepoInfo, 'name' | 'archived'>[],
+  repos: Pick<RepoInfo, 'name' | 'archived' | 'fork' | 'parent' | 'topics' | 'props'>[],
   access: TeamAccess,
   teamSlug?: string,
   customBase?: Record<string, string>,
@@ -55,7 +55,7 @@ export function syncPlan(
   const rows: SyncRow[] = [];
   for (const repo of repos) {
     if (repo.archived) continue;
-    const node = pickIn(order, repo.name);
+    const node = pickIn(order, repo);
     if (!node) continue;
     const eff = effectiveTeams(groups, node.path);
     for (const [slug, target] of Object.entries(eff)) {
@@ -73,15 +73,16 @@ export function syncPlan(
 /** Repos a team can access that sit in groups not tagged for it (informational banner). */
 export function untaggedAccess(
   groups: Group[],
-  repos: Pick<RepoInfo, 'name'>[],
+  repos: Pick<RepoInfo, 'name' | 'fork' | 'parent' | 'topics' | 'props'>[],
   access: TeamAccess,
   teamSlug: string,
 ): string[] {
   const order = postOrder(groups);
-  const names = new Set(repos.map((r) => r.name));
+  const byName = new Map(repos.map((r) => [r.name, r]));
   return Object.keys(access[teamSlug] ?? {}).filter((name) => {
-    if (!names.has(name)) return false;
-    const node = pickIn(order, name);
+    const repo = byName.get(name);
+    if (!repo) return false;
+    const node = pickIn(order, repo);
     return !node || !(teamSlug in effectiveTeams(groups, node.path));
   });
 }
@@ -120,3 +121,26 @@ export function withGranted(access: TeamAccess, slug: string, repo: string, perm
 export const inGroup = (placedKey: string, groupKey: string): boolean => placedKey === groupKey || placedKey.startsWith(groupKey + '/');
 
 export { findGroup };
+
+export interface TeamTargetChange {
+  slug: string;
+  /** Target access at the old home ('' = Ungrouped): undefined when the team had no target there. */
+  from?: Permission;
+  /** Target access at the new home: undefined when the team has no target there. */
+  to?: Permission;
+}
+
+/**
+ * Informational (A4/A3): how the target team access of a repository changes when its HOME group moves from `fromKey` to
+ * `toKey` ('' = Ungrouped). Nothing is granted or removed by a move; Sync access only ever adds or raises access.
+ */
+export function teamTargetChanges(groups: Group[], fromKey: string, toKey: string): TeamTargetChange[] {
+  const a = fromKey ? effectiveTeams(groups, fromKey.split('/')) : {};
+  const b = toKey ? effectiveTeams(groups, toKey.split('/')) : {};
+  const out: TeamTargetChange[] = [];
+  for (const slug of [...new Set([...Object.keys(a), ...Object.keys(b)])].sort()) {
+    if (a[slug]?.permission === b[slug]?.permission) continue;
+    out.push({ slug, from: a[slug]?.permission, to: b[slug]?.permission });
+  }
+  return out;
+}

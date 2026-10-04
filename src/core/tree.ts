@@ -46,7 +46,7 @@ export function buildTree(groups: Group[], repos: RepoInfo[]): TreeModel {
   const root = mk(rootGroup, []);
   const placed = new Map<string, string>();
   for (const r of visible) {
-    const hit = pickIn(order, r.name);
+    const hit = pickIn(order, r);
     const node = hit ? byKey.get(hit.key)! : root;
     node.repos.push(r);
     placed.set(r.name, node.key);
@@ -55,7 +55,7 @@ export function buildTree(groups: Group[], repos: RepoInfo[]): TreeModel {
   const flat = flatList(groups);
   if (flat.some((x) => x.group.shared?.length)) {
     for (const r of visible) {
-      const keys = sharedKeysFor(flat, r.name, placed.get(r.name) ?? '');
+      const keys = sharedKeysFor(flat, r, placed.get(r.name) ?? '');
       if (!keys.length) continue;
       secondary.set(r.name, keys);
       for (const k of keys) {

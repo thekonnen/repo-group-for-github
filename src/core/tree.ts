@@ -41,7 +41,7 @@ export function buildTree(groups: Group[], repos: RepoInfo[]): TreeModel {
   const root = mk(rootGroup, []);
   const placed = new Map<string, string>();
   for (const r of visible) {
-    const hit = pickIn(order, r.name);
+    const hit = pickIn(order, r.name, r.topics);
     const node = hit ? byKey.get(hit.key)! : root;
     node.repos.push(r);
     placed.set(r.name, node.key);

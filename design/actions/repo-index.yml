@@ -53,6 +53,7 @@ jobs:
               stars: r.stargazers_count,
               forks: r.forks_count,
               openIssuesAndPrs: r.open_issues_count,
+              topics: r.topics || [],
             }));
             const out = { version: 1, org, generatedAt: new Date().toISOString(), total: items.length, repos: items };
             require('fs').writeFileSync('repo-index.json', JSON.stringify(out) + '\n');

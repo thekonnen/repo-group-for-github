@@ -469,7 +469,7 @@ groups:                    # required list (may be empty)
                            # optional (F12). A plain string = that team with "push" (Write).
                            # permission: pull | triage | push | maintain | admin | <custom repository role name>
                            # Inherited by every subgroup; the closest definition of a slug wins.
-    match: ["dagsrv", "dags-*"]  # optional list of exact names or * patterns (a single string is accepted)
+    match: ["dagsrv", "dags-*", "topic:kubernetes"]  # optional list of exact names, * patterns or topic:<github-topic> rules (a single string is accepted)
     groups: [ ... ]        # optional nested groups, any depth (UI and AI prompt recommend ≤ 3)
 ```
 - UI labels for permissions: `pull` = Read, `triage` = Triage, `push` = Write, `maintain` = Maintain, `admin` = Admin (GitHub's own names).
@@ -496,6 +496,8 @@ groups:                    # required list (may be empty)
 2. **Exact names win:** the first group in that order whose `match` contains a rule without `*` that equals the repo name (case-insensitive).
 3. Otherwise, the **first group in post-order** with a `*` pattern that matches. This means the deepest match wins. Patterns are converted to `^…$` regex, `*` becomes `.*`, other characters are escaped, case-insensitive.
 4. Otherwise the repo is **Ungrouped** (root).
+
+**Topic rules (A1):** a rule `topic:foo` matches the repo's GitHub topics (case-insensitive) instead of its name. Without `*` it is exact-style (step 2), with `*` (`topic:ml-*`) it is pattern-style (step 3). The value after `topic:` must not be empty. Topics come from `topics` in the REST repo list and are stored in the repo index (`topics: string[]`).
 
 Reference: `globRe`, `pickIn`, `ruleFor`, `assign`, `placement` in `design/mockup/mockup.js`.
 

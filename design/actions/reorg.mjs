@@ -184,6 +184,22 @@ function placement(groups, repos) {
 	return out;
 }
 //#endregion
+//#region src/core/labels.ts
+/** "#D73A4A" -> "d73a4a"; null when it is not six hex digits. */
+function normColor(c) {
+	const v = c.trim().replace(/^#/, "").toLowerCase();
+	return /^[0-9a-f]{6}$/.test(v) ? v : null;
+}
+/** `YYYY-MM-DD` or an ISO 8601 timestamp; returns the timestamp the milestones API wants, or null when invalid. */
+function dueOn(v) {
+	const t = v.trim();
+	if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return Number.isNaN(Date.parse(t)) ? null : `${t}T00:00:00Z`;
+	if (/^\d{4}-\d{2}-\d{2}T/.test(t) && !Number.isNaN(Date.parse(t))) return new Date(t).toISOString().replace(/\.\d{3}Z$/, "Z");
+	return null;
+}
+/** Names are case-insensitive on GitHub. */
+var labelKey = (name) => name.trim().toLowerCase();
+//#endregion
 //#region src/core/edit.ts
 /**
 * "dag, dagsrv;dags" -> three rules. Repository names cannot contain commas or spaces, so splitting a rule on them
@@ -259,6 +275,76 @@ function configFromObject(obj, opts = {}) {
 		}
 		return out;
 	};
+	const parseLabels = (name, raw) => {
+		if (raw == null) return [];
+		const bad = () => {
+			err = `"${name}": labels must be a list of label names or { name, color, description }.`;
+			return null;
+		};
+		if (!Array.isArray(raw)) return bad();
+		const map = /* @__PURE__ */ new Map();
+		for (const l of raw) {
+			let n;
+			let color;
+			let description;
+			if (typeof l === "string") n = l;
+			else if (l && typeof l === "object") ({name: n, color, description} = l);
+			else return bad();
+			if (typeof n !== "string" || !n.trim()) return bad();
+			if (description != null && typeof description !== "string") return bad();
+			let c;
+			if (color != null) {
+				const v = typeof color === "string" || typeof color === "number" ? normColor(String(color)) : null;
+				if (!v) {
+					err = `"${name}": label "${n.trim()}" color must be six hex digits, like d73a4a.`;
+					return null;
+				}
+				c = v;
+			}
+			const tag = {
+				name: n.trim(),
+				...c ? { color: c } : {},
+				...typeof description === "string" && description.trim() ? { description: description.trim() } : {}
+			};
+			map.set(labelKey(tag.name), tag);
+		}
+		return [...map.values()];
+	};
+	const parseMilestones = (name, raw) => {
+		if (raw == null) return [];
+		const bad = () => {
+			err = `"${name}": milestones must be a list of { title, due_on, description }.`;
+			return null;
+		};
+		if (!Array.isArray(raw)) return bad();
+		const map = /* @__PURE__ */ new Map();
+		for (const m of raw) {
+			let title;
+			let due;
+			let description;
+			if (typeof m === "string") title = m;
+			else if (m && typeof m === "object") ({title, due_on: due, description} = m);
+			else return bad();
+			if (typeof title !== "string" || !title.trim()) return bad();
+			if (description != null && typeof description !== "string") return bad();
+			let d;
+			if (due != null) {
+				const text = due instanceof Date ? Number.isNaN(due.getTime()) ? "" : due.toISOString().replace(/T00:00:00(\.000)?Z$/, "") : typeof due === "string" ? due : "";
+				if (!dueOn(text)) {
+					err = `"${name}": milestone "${title.trim()}" due_on must be a date like 2026-12-31.`;
+					return null;
+				}
+				d = text.trim();
+			}
+			const tag = {
+				title: title.trim(),
+				...d ? { due_on: d } : {},
+				...typeof description === "string" && description.trim() ? { description: description.trim() } : {}
+			};
+			map.set(labelKey(tag.title), tag);
+		}
+		return [...map.values()];
+	};
 	const build = (list, where) => {
 		const seen = /* @__PURE__ */ new Set();
 		const out = [];
@@ -316,6 +402,10 @@ function configFromObject(obj, opts = {}) {
 			const words = keywords.map((k) => k.trim()).filter(Boolean);
 			const teams = parseTeams(name, raw.teams);
 			if (!teams) return;
+			const labels = parseLabels(name, raw.labels);
+			if (!labels) return;
+			const milestones = parseMilestones(name, raw.milestones);
+			if (!milestones) return;
 			let groups = [];
 			if (raw.groups != null) {
 				if (!Array.isArray(raw.groups)) {
@@ -332,6 +422,8 @@ function configFromObject(obj, opts = {}) {
 				...words.length ? { keywords: words } : {},
 				logo: typeof raw.logo === "string" && raw.logo.trim() ? raw.logo.trim() : null,
 				teams,
+				...labels.length ? { labels } : {},
+				...milestones.length ? { milestones } : {},
 				match: match.flatMap(splitRules),
 				...sharedRules.length ? { shared: sharedRules } : {},
 				groups
@@ -3743,8 +3835,11 @@ function readConfig(text, load, opts = {}) {
 /** Double-quoted YAML string. */
 var q = (s) => "\"" + String(s).replace(/\\/g, "\\\\").replace(/"/g, "\\\"") + "\"";
 var teamToYaml = (t) => t.permission === "push" ? q(t.slug) : `{ slug: ${q(t.slug)}, permission: ${q(t.permission)} }`;
+/** A label with only a name is written as the string shorthand. */
+var labelToYaml = (l) => !l.color && !l.description ? q(l.name) : `{ name: ${q(l.name)}${l.color ? `, color: ${q(l.color)}` : ""}${l.description ? `, description: ${q(l.description)}` : ""} }`;
+var milestoneToYaml = (m) => `{ title: ${q(m.title)}${m.due_on ? `, due_on: ${q(m.due_on)}` : ""}${m.description ? `, description: ${q(m.description)}` : ""} }`;
 /**
-* Canonical writer: order name, title, description, keywords, logo, teams, match, shared, groups; 2-space indent;
+* Canonical writer: order name, title, description, keywords, logo, teams, labels, milestones, match, shared, groups; 2-space indent;
 * flow-style lists; leading comment. `personal` omits index and teams (My groups).
 */
 function writeConfig(cfg, header, opts = {}) {
@@ -3759,6 +3854,8 @@ function writeConfig(cfg, header, opts = {}) {
 		if (g.keywords?.length) lines.push(`${ind}  keywords: [${g.keywords.map(q).join(", ")}]`);
 		if (g.logo) lines.push(`${ind}  logo: ${q(g.logo)}`);
 		if (!opts.personal && g.teams.length) lines.push(`${ind}  teams: [${g.teams.map(teamToYaml).join(", ")}]`);
+		if (!opts.personal && g.labels?.length) lines.push(`${ind}  labels: [${g.labels.map(labelToYaml).join(", ")}]`);
+		if (!opts.personal && g.milestones?.length) lines.push(`${ind}  milestones: [${g.milestones.map(milestoneToYaml).join(", ")}]`);
 		if (g.match.length) lines.push(`${ind}  match: [${g.match.map(q).join(", ")}]`);
 		if (g.shared?.length) lines.push(`${ind}  shared: [${g.shared.map(q).join(", ")}]`);
 		if (g.groups.length) {
@@ -3772,6 +3869,8 @@ function writeConfig(cfg, header, opts = {}) {
 //#endregion
 //#region src/core/diff.ts
 var byKey = (groups) => new Map(flatList(groups).map((n) => [n.key, n.group]));
+var labelsStr = (g) => (g.labels ?? []).map((l) => `${l.name}:${l.color ?? ""}:${l.description ?? ""}`).join("|");
+var milestonesStr = (g) => (g.milestones ?? []).map((m) => `${m.title}:${m.due_on ?? ""}:${m.description ?? ""}`).join("|");
 var teamsStr = (g) => g.teams.map((t) => `${t.slug}:${t.permission}`).join(", ");
 function diffTrees(a, b, repos) {
 	const ga = byKey(a);
@@ -3829,6 +3928,18 @@ function diffTrees(a, b, repos) {
 			cls: "chg",
 			text: `Teams of ${k}`,
 			to: nb.teams.map((t) => `${t.slug} · ${labelOf(t.permission)}`).join(", ") || "(none)"
+		});
+		if (labelsStr(na) !== labelsStr(nb)) items.push({
+			k: "~",
+			cls: "chg",
+			text: `Default labels of ${k}`,
+			to: (nb.labels ?? []).map((l) => l.name).join(", ") || "(none)"
+		});
+		if (milestonesStr(na) !== milestonesStr(nb)) items.push({
+			k: "~",
+			cls: "chg",
+			text: `Default milestones of ${k}`,
+			to: (nb.milestones ?? []).map((m) => m.title).join(", ") || "(none)"
 		});
 	}
 	for (const r of repos) if (pa[r.name] !== pb[r.name]) items.push({

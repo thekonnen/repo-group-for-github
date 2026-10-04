@@ -5,6 +5,20 @@ export interface TeamTag {
   permission: Permission;
 }
 
+/** A default issue label of a group (C2). `color` is 6 hex digits without "#"; absent = the default color. */
+export interface LabelTag {
+  name: string;
+  color?: string;
+  description?: string;
+}
+
+/** A default milestone of a group (C2). `due_on` is a date (YYYY-MM-DD) or an ISO 8601 timestamp. */
+export interface MilestoneTag {
+  title: string;
+  due_on?: string;
+  description?: string;
+}
+
 export interface Group {
   /** The slug: URL, rules, paths. Lowercase letters, numbers, - _ . */
   name: string;
@@ -15,6 +29,10 @@ export interface Group {
   keywords?: string[];
   logo: string | null;
   teams: TeamTag[];
+  /** Default labels (C2). Inherited by subgroups; the closest definition of a name wins. */
+  labels?: LabelTag[];
+  /** Default milestones (C2). Same inheritance as labels. */
+  milestones?: MilestoneTag[];
   match: string[];
   /**
    * Optional (A3). Rules that ALSO list a repository in this group, on top of its primary placement. They never change

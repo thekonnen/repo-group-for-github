@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
-import { applyEdit, cleanTeams, displayName, finalName, slugify, slugName, splitRules, validateDraft, type Edit } from '../../core/edit';
+import { applyEdit, cleanLabels, cleanMilestones, cleanTeams, displayName, finalName, slugify, slugName, splitRules, validateDraft, type Edit } from '../../core/edit';
 import { matchesRepo, ruleLabel } from '../../core/glob';
+import { effectiveLabels, effectiveMilestones } from '../../core/labels';
 import { effectiveTeams } from '../../core/teams';
 import { byPush, nodeAt, type TreeModel } from '../../core/tree';
-import type { TeamTag } from '../../core/types';
+import type { LabelTag, MilestoneTag, TeamTag } from '../../core/types';
 import { writeConfig } from '../../core/yaml-write';
 import { Drawer } from '../../ui/Drawer';
 import { Icon } from '../../ui/Icon';
@@ -11,6 +12,7 @@ import { LogoField, type LogoDraft } from '../logo-cropper/LogoField';
 import { useLogoSrc } from '../logos/logo-store';
 import type { Controller, SaveResult } from '../grouped-view/controller';
 import { useStore } from '../store';
+import { LabelsField } from '../labels/LabelsField';
 import { TeamsField } from '../teams/TeamsField';
 import { DeleteGroupDialog } from './DeleteGroupDialog';
 
@@ -57,6 +59,18 @@ function Form({ ctl, mode, path, focus }: { ctl: Controller; mode: 'edit' | 'new
   const inherited = Object.entries(effectiveTeams(groups, parentPath))
     .filter(([slug]) => !teams.some((t) => t.slug === slug))
     .map(([slug, t]) => ({ slug, permission: t.permission, from: titled(model, t.from) }));
+  // Default labels and milestones (C2): org layer only, not in suggest mode.
+  const [labels, setLabels] = useState<LabelTag[]>(node?.group.labels ?? []);
+  const [milestones, setMilestones] = useState<MilestoneTag[]>(node?.group.milestones ?? []);
+  const showLabels = !s.access?.personal && !s.access?.suggestMode;
+  const labelsDirty = !!node && JSON.stringify(cleanLabels(labels)) !== JSON.stringify(node.group.labels ?? []);
+  const milestonesDirty = !!node && JSON.stringify(cleanMilestones(milestones)) !== JSON.stringify(node.group.milestones ?? []);
+  const inhLabels = Object.entries(effectiveLabels(groups, parentPath))
+    .filter(([k]) => !labels.some((l) => l.name.trim().toLowerCase() === k))
+    .map(([key, e]) => ({ key, ...e, from: titled(model, e.from) }));
+  const inhMilestones = Object.entries(effectiveMilestones(groups, parentPath))
+    .filter(([k]) => !milestones.some((m) => m.title.trim().toLowerCase() === k))
+    .map(([key, e]) => ({ key, ...e, from: titled(model, e.from) }));
   const savedSlugs = node ? Object.keys(effectiveTeams(groups, path)) : [];
   const [ruleInput, setRuleInput] = useState('');
   // A3: shared rules also list a repository here without changing where it belongs.
@@ -86,6 +100,8 @@ function Form({ ctl, mode, path, focus }: { ctl: Controller; mode: 'edit' | 'new
     allRules.join('\n') !== node.group.match.join('\n') ||
     sharedDirty ||
     teamsDirty ||
+    labelsDirty ||
+    milestonesDirty ||
     logo.kind !== 'keep';
 
   const onTitle = (v: string) => {
@@ -114,8 +130,8 @@ function Form({ ctl, mode, path, focus }: { ctl: Controller; mode: 'edit' | 'new
   const logoChange = logo.kind === 'png' ? { png: logo.png } : logo.kind === 'remove' ? { remove: true as const } : undefined;
   const edit: Edit =
     mode === 'edit'
-      ? { kind: 'edit', path, name: slug, title, description, match: allRules, ...(sharedDirty ? { shared: allShared } : {}), ...(logoChange && { logo: logoChange }), ...(teamsDirty ? { teams } : {}) }
-      : { kind: 'new', parent: path, name: slug, title, description, match: allRules, ...(allShared.length ? { shared: allShared } : {}), ...(logoChange && { logo: logoChange }), ...(teams.length ? { teams } : {}) };
+      ? { kind: 'edit', path, name: slug, title, description, match: allRules, ...(sharedDirty ? { shared: allShared } : {}), ...(logoChange && { logo: logoChange }), ...(teamsDirty ? { teams } : {}), ...(labelsDirty ? { labels } : {}), ...(milestonesDirty ? { milestones } : {}) }
+      : { kind: 'new', parent: path, name: slug, title, description, match: allRules, ...(allShared.length ? { shared: allShared } : {}), ...(logoChange && { logo: logoChange }), ...(teams.length ? { teams } : {}), ...(showLabels && labels.length ? { labels } : {}), ...(showLabels && milestones.length ? { milestones } : {}) };
 
   const submit = async () => {
     setTouched(true);
@@ -192,6 +208,17 @@ function Form({ ctl, mode, path, focus }: { ctl: Controller; mode: 'edit' | 'new
           customRoles={tv.customRoles ? Object.keys(tv.customRoles) : undefined}
           onSync={mode === 'edit' && savedSlugs.length ? () => void ctl.teams.openSync({ teams: savedSlugs, groupKey: path.join('/') }) : undefined}
           syncNote={teamsDirty ? 'Save your team changes first. Sync access uses the saved file.' : null}
+        />}
+
+        {showLabels && <LabelsField
+          labels={labels}
+          milestones={milestones}
+          onLabels={(l) => (setLabels(l), setProblem(null))}
+          onMilestones={(m) => (setMilestones(m), setProblem(null))}
+          inheritedLabels={inhLabels}
+          inheritedMilestones={inhMilestones}
+          onSync={mode === 'edit' && (node?.group.labels?.length || node?.group.milestones?.length || inhLabels.length || inhMilestones.length) ? () => void ctl.labels.openSync(path.join('/')) : undefined}
+          syncNote={labelsDirty || milestonesDirty ? 'Save your label changes first. Sync labels uses the saved file.' : null}
         />}
 
         <div class="rg-field">

@@ -15,6 +15,7 @@ import { DETAILS_MAX_REPOS, type DetailsMap } from '../../core/details';
 import { visitUngrouped, type SeenUngrouped } from '../../core/unassigned';
 import { createLogoStore } from '../logos/logo-store';
 import { createStore, type Store } from '../store';
+import { createLabelsController } from '../labels/labels-controller';
 import { createTeamsController } from '../teams/teams-controller';
 import { createMembersController } from '../members/members-controller';
 
@@ -146,6 +147,7 @@ export function createController(org: string, env: Env) {
     pendingMove: null,
   });
   const teams = createTeamsController({ org, team: env.team, teamName: env.teamName, call: env.call, store, afterAccess: () => applyDefaults() });
+  const labels = createLabelsController({ org, call: env.call, store });
   const members = createMembersController({ org, call: env.call });
   // Logos load through the background; every config change asks for the references it has not seen yet (F7).
   const logos = createLogoStore(env.call, org);
@@ -494,6 +496,7 @@ export function createController(org: string, env: Env) {
   return {
     store,
     teams,
+    labels,
     members,
     logos,
     /** Loads an image from a link in the background (CORS-free, asks for the site's permission). Resolves to a data URL. */
@@ -521,6 +524,7 @@ export function createController(org: string, env: Env) {
     dispose() {
       disposed = true;
       teams.dispose();
+      labels.dispose();
       members.dispose();
       clearTimeout(prefsTimer);
       clearTimeout(toastTimer);

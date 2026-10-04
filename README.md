@@ -36,6 +36,18 @@ Permissions: Metadata (read), Contents (read & write), Issues (read), Pull reque
 
 Open `github.com/<you>?tab=repositories` while signed in as that user: the grouped view replaces the list (your own profile only). Groups live in `<you>/.github/repo-groups.yml`, which the extension offers to create as a private repository the first time. Teams do not exist on personal accounts, so the Teams field is hidden. The GitHub App must be installed on your account with access to all repositories to see private ones.
 
+## Group by GitHub topic
+
+A match rule `topic:<name>` puts every repository that has that GitHub topic in the group, so new repositories file themselves when they are tagged:
+
+```yaml
+groups:
+  - name: ml
+    match: ["topic:machine-learning", "topic:ml-*"]
+```
+
+Topics match case-insensitively and exactly; `*` works as a wildcard. They follow the same precedence as name rules (exact beats pattern, deepest group wins). The UI shows the rule as `topic: machine-learning`. Repositories indexed before this feature get their topics on the next full re-index (use **Re-index**).
+
 ## Optional: pre-built index for very large organizations (`index: action`)
 
 By default each member builds the repository index with their own API calls (about 34 requests the first time for 3,400 repositories). An organization can instead let a scheduled workflow write `repo-index.json` into `<org>/.github`:

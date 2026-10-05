@@ -1,9 +1,9 @@
 {
   "extName": {
-    "message": "Repository Group for Github"
+    "message": "Konnen: Repo Group for Github"
   },
   "extDescription": {
-    "message": "Organize the repositories of a GitHub organization into groups and subgroups, shared with the whole org."
+    "message": "Organize GitHub repositories into nested groups on your profile, org and teams. Share them with your org or keep a private view."
   },
   "signInHint": {
     "message": "Sign in to see your organization's repositories in groups."
@@ -29,6 +29,12 @@
   "accountKindApp": {
     "message": "GitHub App"
   },
+  "popupAccountsHeading": { "message": "Connected accounts" },
+  "popupAccountsHint": { "message": "Click a profile to open its repositories on GitHub." },
+  "popupOpenRepos": { "message": "Open repositories on GitHub" },
+  "popupPersonal": { "message": "Personal account · repositories" },
+  "popupOrg": { "message": "Organization · repositories" },
+  "popupOrgWithGroups": { "message": "Organization · has groups" },
   "popupOrgsHeading": {
     "message": "Organizations with groups"
   },
@@ -53,6 +59,7 @@
   "optionsTokenHeading": {
     "message": "Personal access token"
   },
+  "optionsTokenNotNeeded": { "message": "You are connected through the GitHub App, so you do not need a personal access token. A token would replace the App sign-in; use one only if your organization cannot install the App." },
   "optionsTokenIntro": {
     "message": "Use a token instead of the GitHub App sign-in. It is stored in this browser and only the extension background reads it."
   },

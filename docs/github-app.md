@@ -39,5 +39,5 @@ Leave the callback URL empty and **Webhook → Active** unchecked.
 ## 4. After creating
 
 1. Copy the **Client ID** into `GITHUB_CLIENT_ID` and the slug (the last part of `github.com/apps/<slug>`) into `APP_SLUG` in `src/config.ts`. The client id is not a secret. Do **not** generate a client secret or a private key.
-2. **Install App** on each account or org, with **All repositories**. A user token only reaches what both the App and the user can reach, so this is required (F15).
+2. **Install App** on each account or org, with **All repositories**. Direct link (no Marketplace checkout, no billing data): `https://github.com/apps/konnen-repository-group-for-github/installations/new`. A user token only reaches what both the App and the user can reach, so this is required (F15).
 3. Changing permissions later needs an org owner to accept the update at `https://github.com/organizations/<org>/settings/installations`. This applies to **Custom properties: Read** on an App that was created before it was added: until an owner accepts it, `prop:` rules match nothing and the Match rules tab says so.

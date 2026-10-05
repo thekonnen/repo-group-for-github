@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { t } from '../../i18n';
 import { call } from '../../github/client';
-import { groupedViewUrl } from '../../ext-pages/tab-org';
+import { groupedViewUrl, orgFromUrl, userReposUrl } from '../../ext-pages/tab-org';
 import { toInfo, useAuth } from '../../ext-pages/use-auth';
 import type { OrgEntry, OrgList } from '../../background/orgs';
 
@@ -9,6 +9,15 @@ export function App() {
   const auth = useAuth();
   const [orgs, setOrgs] = useState<OrgEntry[] | null>(null);
   const [orgError, setOrgError] = useState('');
+  const [tabOrg, setTabOrg] = useState<string | null>(null);
+
+  // The org of the current tab is shown even when the API does not list it (e.g. a token without membership scope).
+  useEffect(() => {
+    browser.tabs
+      .query({ active: true, currentWindow: true })
+      .then((tabs) => setTabOrg(orgFromUrl(tabs[0]?.url, () => false)))
+      .catch(() => {});
+  }, []);
   const signedIn = !!auth.status?.signedIn;
 
   useEffect(() => {
@@ -22,12 +31,11 @@ export function App() {
     };
   }, [signedIn]);
 
-  const withFile = (orgs ?? []).filter((o) => o.hasFile);
   const err = auth.error;
 
   return (
     <main>
-      <h1><img src="/icon/48.png" alt="" />Repository Group for Github</h1>
+      <h1><img src="/icon/48.png" alt="" />Konnen: Repo Group for Github</h1>
       {auth.status?.signedIn ? (
         <>
           <div class="rg-ext-row">
@@ -36,23 +44,38 @@ export function App() {
             <span class="rg-ext-muted">{auth.status.kind === 'pat' ? t('accountKindToken') : t('accountKindApp')}</span>
             <button class="rg-ext-btn" onClick={() => auth.signOut()}>{t('signOut')}</button>
           </div>
-          <h2>{t('popupOrgsHeading')}</h2>
-          {orgs === null ? (
-            <span class="rg-ext-muted" role="status">{t('popupOrgsLoading')}</span>
-          ) : withFile.length ? (
-            <ul class="orgs">
-              {withFile.map((o) => (
+          <h2>{t('popupAccountsHeading')}</h2>
+          <span class="rg-ext-muted hint">{t('popupAccountsHint')}</span>
+          <ul class="orgs">
+            {auth.status.login && (
+              <li>
+                <a href={userReposUrl(auth.status.login)} target="_blank" rel="noopener" title={t('popupOpenRepos')}>
+                  {auth.status.avatarUrl && <img src={auth.status.avatarUrl} alt="" />}
+                  <span class="who">
+                    <b>{auth.status.login}</b>
+                    <small>{t('popupPersonal')}</small>
+                  </span>
+                  <span class="go" aria-hidden="true">↗</span>
+                </a>
+              </li>
+            )}
+            {orgs === null ? (
+              <li class="rg-ext-muted" role="status">{t('popupOrgsLoading')}</li>
+            ) : (
+              withTab(orgs, tabOrg).map((o) => (
                 <li key={o.login}>
-                  <a href={groupedViewUrl(o.login)} target="_blank" rel="noopener">
+                  <a href={groupedViewUrl(o.login)} target="_blank" rel="noopener" title={t('popupOpenRepos')}>
                     {o.avatarUrl && <img src={o.avatarUrl} alt="" />}
-                    <span>{o.login}</span>
+                    <span class="who">
+                      <b>{o.login}</b>
+                      <small>{o.hasFile ? t('popupOrgWithGroups') : t('popupOrg')}</small>
+                    </span>
+                    <span class="go" aria-hidden="true">↗</span>
                   </a>
                 </li>
-              ))}
-            </ul>
-          ) : (
-            <span class="rg-ext-muted">{t('popupOrgsEmpty')}</span>
-          )}
+              ))
+            )}
+          </ul>
           {orgError && <p class="rg-ext-err" role="alert">{orgError}</p>}
         </>
       ) : auth.flow ? (
@@ -72,4 +95,9 @@ export function App() {
       <button class="rg-ext-link" style="justify-self:start" onClick={() => browser.runtime.openOptionsPage()}>{t('popupOptions')}</button>
     </main>
   );
+}
+
+function withTab(orgs: OrgEntry[], tabOrg: string | null): OrgEntry[] {
+  if (!tabOrg || orgs.some((o) => o.login.toLowerCase() === tabOrg.toLowerCase())) return orgs;
+  return [{ login: tabOrg, avatarUrl: `https://github.com/${encodeURIComponent(tabOrg)}.png?size=64`, hasFile: false }, ...orgs];
 }

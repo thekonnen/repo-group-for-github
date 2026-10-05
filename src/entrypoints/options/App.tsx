@@ -41,6 +41,7 @@ function Account({ auth }: { auth: ReturnType<typeof useAuth> }) {
 function Token({ auth }: { auth: ReturnType<typeof useAuth> }) {
   const [saved, setSaved] = useState('');
   const err = auth.error;
+  const viaApp = !!auth.status?.signedIn && auth.status.kind !== 'pat';
   // Read the DOM value, not state, so Enter and autofill always send what the field shows.
   const submit = async (input: HTMLInputElement) => {
     const token = input.value.trim();
@@ -54,25 +55,32 @@ function Token({ auth }: { auth: ReturnType<typeof useAuth> }) {
   };
   return (
     <section aria-labelledby="h-token">
-      <h2 id="h-token">{t('optionsTokenHeading')}</h2>
-      <p>{t('optionsTokenIntro')}</p>
-      <p class="rg-ext-muted">{t('optionsTokenKinds')}</p>
-      <p class="rg-ext-muted">{t('optionsTokenPolicy')}</p>
-      <form
-        class="field"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void submit((e.currentTarget as HTMLFormElement).elements.namedItem('token') as HTMLInputElement);
-        }}
-      >
-        <label for="rg-token">{t('optionsTokenLabel')}</label>
-        <div class="inline">
-          <input id="rg-token" name="token" class="rg-ext-input" type="password" autocomplete="off" spellcheck={false} />
-          <button class="rg-ext-btn" type="submit">{t('optionsTokenSave')}</button>
+      {viaApp && <p class="notice" role="status">{t('optionsTokenNotNeeded')}</p>}
+      <details open={!viaApp}>
+        <summary>
+          <h2 id="h-token">{t('optionsTokenHeading')}</h2>
+        </summary>
+        <div class="details-body">
+        <p>{t('optionsTokenIntro')}</p>
+        <p class="rg-ext-muted">{t('optionsTokenKinds')}</p>
+        <p class="rg-ext-muted">{t('optionsTokenPolicy')}</p>
+        <form
+          class="field"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void submit((e.currentTarget as HTMLFormElement).elements.namedItem('token') as HTMLInputElement);
+          }}
+        >
+          <label for="rg-token">{t('optionsTokenLabel')}</label>
+          <div class="inline">
+            <input id="rg-token" name="token" class="rg-ext-input" type="password" autocomplete="off" spellcheck={false} />
+            <button class="rg-ext-btn" type="submit">{t('optionsTokenSave')}</button>
+          </div>
+        </form>
+        {err && <p class="rg-ext-err" role="alert">{err.message}{err.hint ? ` ${err.hint}` : ''}</p>}
+        {saved && <p class="rg-ext-ok" role="status">{saved}</p>}
         </div>
-      </form>
-      {err && <p class="rg-ext-err" role="alert">{err.message}{err.hint ? ` ${err.hint}` : ''}</p>}
-      {saved && <p class="rg-ext-ok" role="status">{saved}</p>}
+      </details>
     </section>
   );
 }

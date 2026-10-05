@@ -56,26 +56,28 @@ beforeEach(() => {
 afterEach(() => render(null, root()));
 
 describe('popup', () => {
-  it('shows the account, only orgs with a repo-groups.yml, and links to the grouped view', async () => {
+  it('shows the personal account and every org, each linking to its repositories', async () => {
     backend();
     render(h(Popup, {}), root());
-    await vi.waitFor(() => expect(root().querySelectorAll('.orgs a')).toHaveLength(1));
-    expect(text()).toContain('ana');
-    const a = root().querySelector('.orgs a') as HTMLAnchorElement;
-    expect(a.getAttribute('href')).toBe('https://github.com/orgs/thekonnen/repositories');
-    expect(text()).not.toContain('acme');
+    await vi.waitFor(() => expect(root().querySelectorAll('.orgs a')).toHaveLength(3));
+    const hrefs = [...root().querySelectorAll('.orgs a')].map((a) => a.getAttribute('href'));
+    expect(hrefs).toEqual([
+      'https://github.com/ana?tab=repositories',
+      'https://github.com/orgs/thekonnen/repositories',
+      'https://github.com/orgs/acme/repositories',
+    ]);
   });
   it('has no separate "Open grouped view" button: the org row already links there', async () => {
     backend();
     render(h(Popup, {}), root());
-    await vi.waitFor(() => expect(root().querySelectorAll('.orgs a')).toHaveLength(1));
+    await vi.waitFor(() => expect(root().querySelectorAll('.orgs a')).toHaveLength(3));
     expect([...root().querySelectorAll('button')].some((b) => b.textContent?.startsWith('Open grouped'))).toBe(false);
   });
   it('still renders when the tab url cannot be read', async () => {
     backend();
     mock.query.mockRejectedValue(new Error('no'));
     render(h(Popup, {}), root());
-    await vi.waitFor(() => expect(root().querySelectorAll('.orgs a')).toHaveLength(1));
+    await vi.waitFor(() => expect(root().querySelectorAll('.orgs a')).toHaveLength(3));
   });
   it('starts the device flow when signed out and shows the code', async () => {
     backend({

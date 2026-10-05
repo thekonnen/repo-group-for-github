@@ -25,3 +25,4 @@ export function orgFromUrl(url: string | undefined, isKnownOrg: (login: string) 
 }
 
 export const groupedViewUrl = (org: string) => `https://github.com/orgs/${encodeURIComponent(org)}/repositories`;
+export const userReposUrl = (login: string) => `https://github.com/${encodeURIComponent(login)}?tab=repositories`;

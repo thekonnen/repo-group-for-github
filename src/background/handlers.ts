@@ -312,12 +312,13 @@ export function createHandler(deps: Deps) {
           const snap = await deps.index.load(req.org).catch(() => null);
           return commitEdit(client, deps.kv, req.org, req.edit, snap?.repos);
         }
-        if (!hasPng(req.edit) && !hasReadmeFile(req.edit)) return commitEdit(client, deps.kv, req.org, req.edit);
+        if (req.edit.kind !== 'migrate-readmes' && !hasPng(req.edit) && !hasReadmeFile(req.edit)) return commitEdit(client, deps.kv, req.org, req.edit);
         const r = await commitEditWithLogo(client, deps.kv, req.org, req.edit);
         const png = pngOf(req.edit);
         if (r.status === 'ok' && r.logoSha && png) {
           await logos.prime(req.org, r.logoSha, `data:image/png;base64,${png}`).catch(() => {});
         }
+        if (r.status === 'ok') for (const m of r.migrated ?? []) await readmes.prime(req.org, m.sha, m.text).catch(() => {});
         const text = readmeFileOf(req.edit);
         if (r.status === 'ok' && r.readmeSha && text !== null) await readmes.prime(req.org, r.readmeSha, text).catch(() => {});
         return r;

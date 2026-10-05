@@ -2,7 +2,7 @@ import { isForkRule, isPropRule, isTopicRule, matchesRepo, parsePropRule, type R
 import { logoPath } from './logo';
 import { findGroup, flatList, keyOf, pickIn, placement, postOrder, ruleFor, sharedPlacement } from './placement';
 import { labelKey } from './labels';
-import { cleanReadme, isSafeReadmePath, readmeFilePath, type ReadmeChange } from './readme';
+import { cleanReadme, isReadmePath, isSafeReadmePath, readmeFilePath, type ReadmeChange } from './readme';
 import { prunePins, type SortKey } from './sort';
 import type { Group, LabelTag, MilestoneTag, RepoInfo, TeamTag } from './types';
 
@@ -13,6 +13,8 @@ export type Edit =
   | { kind: 'new'; parent: string[]; name: string; title?: string; description: string; match: string[]; shared?: string[]; logo?: LogoChange; readme?: ReadmeChange; teams?: TeamTag[]; labels?: LabelTag[]; milestones?: MilestoneTag[] }
   /** F9: adds the exact repo name to the match list of an existing group. */
   | { kind: 'file'; path: string[]; repo: string }
+  /** C4: moves every README written inline in repo-groups.yml to `readmes/<path>.md`, in one commit. */
+  | { kind: 'migrate-readmes' }
   /** Removes a group and all its subgroups from the file. No repository is touched: they fall back to the other rules. */
   | { kind: 'delete'; path: string[] }
   /** C5: pins (appends to the end of `pinned`) or unpins a repo in a group. The repo must be placed in that group. */
@@ -33,6 +35,28 @@ export const hasPng = (e: Edit): boolean => (e.kind === 'new' || e.kind === 'edi
 /** The README text of an edit that stores it as a file (committed with repo-groups.yml), if it carries one. */
 export const readmeFileOf = (e: Edit): string | null => ((e.kind === 'new' || e.kind === 'edit') && e.readme && 'file' in e.readme ? cleanReadme(e.readme.file) || null : null);
 export const hasReadmeFile = (e: Edit): boolean => readmeFileOf(e) !== null;
+
+/** The README texts that sit inside the YAML (older files) with the file each would move to, in file order. */
+export function inlineReadmes(groups: Group[], parent: string[] = []): { path: string[]; file: string; text: string }[] {
+  const out: { path: string[]; file: string; text: string }[] = [];
+  for (const g of groups) {
+    const path = [...parent, g.name];
+    const r = g.readme;
+    if (r && r.trim() && !isReadmePath(r)) out.push({ path, file: readmeFilePath(path), text: cleanReadme(r) });
+    out.push(...inlineReadmes(g.groups, path));
+  }
+  return out;
+}
+
+/** Copy of the tree where each inline README became the path of its file. The files come from `inlineReadmes` of the same tree. */
+export function migrateReadmes(groups: Group[]): Group[] {
+  const next = structuredClone(groups);
+  for (const m of inlineReadmes(next)) {
+    const g = findGroup(next, m.path);
+    if (g) g.readme = m.file;
+  }
+  return next;
+}
 
 /** Sets or clears `readme` on a group. Returns an error text for a path that leaves the repository. */
 function setReadme(g: Group, change: ReadmeChange | undefined, groupPath: string[]): string | null {
@@ -345,6 +369,7 @@ export function unshareRepos(groups: Group[], repos: RepoRef[], from: string[]):
 
 /** Applies an edit to a tree (never mutates the input). Logo, teams and subgroups of an edited group are kept. */
 export function applyEdit(groups: Group[], edit: Edit, repos?: Pick<RepoInfo, 'name' | 'archived'>[]): { groups: Group[] } | { error: string } {
+  if (edit.kind === 'migrate-readmes') return { groups: migrateReadmes(groups) };
   const next = clone(groups);
   if (edit.kind === 'pin' || edit.kind === 'sort') {
     const t = findGroup(next, edit.path);
@@ -455,10 +480,11 @@ export function applyEdit(groups: Group[], edit: Edit, repos?: Pick<RepoInfo, 'n
 }
 
 export const editPath = (e: Edit): string =>
-  e.kind === 'unshare' ? keyOf(e.from) : e.kind === 'move' || e.kind === 'share' ? keyOf(e.to) : e.kind === 'file' || e.kind === 'delete' || e.kind === 'pin' || e.kind === 'sort' ? e.path.join('/') : (e.kind === 'new' ? [...e.parent, finalName(e.name)] : [...e.path.slice(0, -1), finalName(e.name)]).join('/');
+  e.kind === 'migrate-readmes' ? '' : e.kind === 'unshare' ? keyOf(e.from) : e.kind === 'move' || e.kind === 'share' ? keyOf(e.to) : e.kind === 'file' || e.kind === 'delete' || e.kind === 'pin' || e.kind === 'sort' ? e.path.join('/') : (e.kind === 'new' ? [...e.parent, finalName(e.name)] : [...e.path.slice(0, -1), finalName(e.name)]).join('/');
 
 /** `chore(repo-groups): edit group infra/dagsrv` (§7). */
 export function commitMessage(e: Edit): string {
+  if (e.kind === 'migrate-readmes') return 'chore(repo-groups): move READMEs out of repo-groups.yml into files';
   if (e.kind === 'pin') return `chore(repo-groups): ${e.pinned ? 'pin' : 'unpin'} ${e.repo} in ${e.path.join('/')}`;
   if (e.kind === 'sort') return `chore(repo-groups): ${e.sort && e.sort !== 'pushed' ? `sort ${e.path.join('/')} by ${e.sort}` : `reset sort of ${e.path.join('/')}`}`;
   if (e.kind === 'file') return `chore(repo-groups): file ${e.repo} in ${e.path.join('/')}`;

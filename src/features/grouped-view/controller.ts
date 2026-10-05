@@ -16,7 +16,7 @@ import { DETAILS_MAX_REPOS, type DetailsMap } from '../../core/details';
 import { visitUngrouped, type SeenUngrouped } from '../../core/unassigned';
 import { createLogoStore } from '../logos/logo-store';
 import { createReadmeStore } from '../readme/readme-store';
-import { readmeFileOf } from '../../core/edit';
+import { inlineReadmes, readmeFileOf } from '../../core/edit';
 import { isReadmePath } from '../../core/readme';
 import { createStore, type Store } from '../store';
 import { createLabelsController } from '../labels/labels-controller';
@@ -202,7 +202,18 @@ export function createController(org: string, env: Env) {
     const walk = (gs: Group[]) => gs.forEach((g) => (g.readme && isReadmePath(g.readme) && refs.push(g.readme.trim()), walk(g.groups)));
     if (cfg && cfg.exists && cfg.config) walk(cfg.config.groups);
     readmes.want(refs);
+    autoMigrateReadmes(cfg);
   });
+  // C4: READMEs live as files in <org>/.github, not inside repo-groups.yml. Older files with inline text are moved once,
+  // in one commit, by whoever can write the org file. A failure is silent (the text stays readable) and is not retried this visit.
+  let migrating = false;
+  function autoMigrateReadmes(cfg: ConfigResult | null | undefined) {
+    if (migrating || !cfg || !cfg.exists || !cfg.config || env.team || !canEditOrder()) return;
+    const n = inlineReadmes(cfg.config.groups).length;
+    if (!n) return;
+    migrating = true;
+    save({ kind: 'migrate-readmes' }, false, `Moved ${n === 1 ? '1 README' : `${n} READMEs`} to files · committed to ${org}/.github`).catch(() => {});
+  }
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
   let prefsTimer: ReturnType<typeof setTimeout> | undefined;

@@ -466,8 +466,9 @@ groups:                    # required list (may be empty)
     description: "..."     # optional string
     keywords: ["s3", "backup"]  # optional list of words (tools, topics). Only used to suggest a group for a new repo (core/suggest.ts); never changes placement
     logo: "logos/infra.png" # optional; path inside <org>/.github, or an https URL
-    readme: |              # optional (C4): inline Markdown, or a path inside <org>/.github ("readmes/infra.md"). Max 64 KB.
+    readme: "readmes/infra.md" # optional (C4): path of a Markdown file inside <org>/.github (max 64 KB), written by the editor as `readmes/<group-path-with-dashes>.md` in the same commit as repo-groups.yml, so the YAML stays small.
                            # Shown on the group page as the first tab, About. Rendered by core/markdown.ts (no HTML, links http/https/mailto only).
+                           # Older files may hold inline Markdown here: it is still read, and the next save of that group moves it to a file.
     teams: ["core_team", { slug: "ai-squad", permission: "maintain" }]
                            # optional (F12). A plain string = that team with "push" (Write).
                            # permission: pull | triage | push | maintain | admin | <custom repository role name>

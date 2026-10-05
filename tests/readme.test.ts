@@ -318,7 +318,7 @@ describe('README field of the Edit group drawer', () => {
   };
   const edited = (req: any) => ({ status: 'ok', sha: 'sha-2', config: configWith(undefined).config, warnings: [], req });
 
-  it('has Write and Preview tabs; inline text is saved with the edit', async () => {
+  it('has Write and Preview tabs; the text is saved as a file with the edit', async () => {
     const { log } = await openDrawer(configWith(undefined), { edit: edited });
     expect(field()).toBeTruthy();
     expect(save().disabled).toBe(true); // nothing changed yet
@@ -332,7 +332,7 @@ describe('README field of the Edit group drawer', () => {
     save().click();
     await vi.waitFor(() => expect(log.some((r: any) => r.type === 'org:edit')).toBe(true));
     const req: any = log.find((r: any) => r.type === 'org:edit');
-    expect(req.edit).toMatchObject({ kind: 'edit', path: ['infra'], readme: { inline: '# Hi\n\n**bold** <b>x</b>' } });
+    expect(req.edit).toMatchObject({ kind: 'edit', path: ['infra'], readme: { file: '# Hi\n\n**bold** <b>x</b>' } });
   });
   it('"Markdown file" mode sends the text as a file change', async () => {
     const { log } = await openDrawer(configWith(undefined), { edit: edited });
@@ -368,14 +368,16 @@ describe('README field of the Edit group drawer', () => {
     await vi.waitFor(() => expect($('.rg-drawer')!.textContent).toContain('larger than 64 KB'));
     expect(save().disabled).toBe(true);
   });
-  it('shows the saved inline README and clearing it removes it', async () => {
+  it('shows the saved inline README, moves it to a file on load, and clearing it removes it', async () => {
     const { log } = await openDrawer(configWith('Old text\n'), { edit: edited });
     expect(field().value).toBe('Old text\n');
     type(field(), '');
     await vi.waitFor(() => expect(save().disabled).toBe(false));
     save().click();
-    await vi.waitFor(() => expect(log.some((r: any) => r.type === 'org:edit')).toBe(true));
-    expect((log.find((r: any) => r.type === 'org:edit') as any).edit.readme).toEqual({ remove: true });
+    await vi.waitFor(() => expect(log.some((r: any) => r.type === 'org:edit' && r.edit.kind === 'edit')).toBe(true));
+    expect((log.find((r: any) => r.type === 'org:edit' && r.edit.kind === 'edit') as any).edit.readme).toEqual({ remove: true });
+    // the page itself already asked to move the inline README to a file (C4)
+    expect(log.some((r: any) => r.type === 'org:edit' && r.edit.kind === 'migrate-readmes')).toBe(true);
   });
   it('fills in a saved file README when it arrives, without marking the form changed', async () => {
     await openDrawer(configWith('readmes/infra.md'), { files: { 'readmes/infra.md': 'From file' }, edit: edited });
@@ -386,5 +388,37 @@ describe('README field of the Edit group drawer', () => {
     await open('#infra', configWith('hi'), { access: memberAccess });
     expect($$('button').some((b) => b.textContent!.trim() === 'Edit group')).toBe(false);
     await vi.waitFor(() => expect($('.rg-md')).toBeTruthy()); // but they can read it
+  });
+});
+
+describe('README drawer draft (files first)', () => {
+  it('opens inline text from an older file as a file draft that migrates on save', async () => {
+    const { initialReadme, isInlineReadme, readmeChange } = await import('../src/features/readme/ReadmeField');
+    const d = initialReadme('# Old\n', ['infra'], undefined);
+    expect(d.mode).toBe('file');
+    expect(isInlineReadme('# Old\n')).toBe(true);
+    expect(isInlineReadme('readmes/infra.md')).toBe(false);
+    expect(readmeChange(d, '# Old\n', ['infra'], undefined)).toEqual({ file: '# Old\n' });
+    expect(initialReadme(undefined, ['infra'], undefined).mode).toBe('file');
+  });
+});
+
+describe('migrate-readmes', () => {
+  it('moves every inline README to its file path and leaves paths alone', async () => {
+    const { inlineReadmes, migrateReadmes } = await import('../src/core/edit');
+    const g = example().groups;
+    findGroup(g, ['infra'])!.readme = '# Infra  \r\n';
+    findGroup(g, ['infra', 'dagsrv'])!.readme = 'Scheduler';
+    const ai = g.find((x) => x.name === 'ai');
+    if (ai) ai.readme = 'readmes/ai.md';
+    expect(inlineReadmes(g)).toEqual([
+      { path: ['infra'], file: 'readmes/infra.md', text: '# Infra\n' },
+      { path: ['infra', 'dagsrv'], file: 'readmes/infra-dagsrv.md', text: 'Scheduler\n' },
+    ]);
+    const out = migrateReadmes(g);
+    expect(findGroup(out, ['infra'])!.readme).toBe('readmes/infra.md');
+    expect(findGroup(out, ['infra', 'dagsrv'])!.readme).toBe('readmes/infra-dagsrv.md');
+    expect(inlineReadmes(out)).toEqual([]);
+    expect(findGroup(g, ['infra'])!.readme).toBe('# Infra  \r\n'); // input untouched
   });
 });

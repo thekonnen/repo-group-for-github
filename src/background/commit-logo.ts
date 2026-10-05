@@ -1,4 +1,4 @@
-import { applyEdit, commitMessage, editLogoPath, finalName, pngOf, readmeFileOf, type Edit } from '../core/edit';
+import { applyEdit, commitMessage, editLogoPath, finalName, inlineReadmes, pngOf, readmeFileOf, type Edit } from '../core/edit';
 import { findGroup } from '../core/placement';
 import { readmeFilePath } from '../core/readme';
 import type { Config } from '../core/types';
@@ -14,7 +14,7 @@ const enc = encodeURIComponent;
 const PROTECTED = /protected branch|branch protection|required status|review is required|changes must be made through a pull request/i;
 const refPath = (branch: string) => branch.split('/').map(enc).join('/');
 
-export type LogoEditResult = EditResult & { logoSha?: string; readmeSha?: string; readmeFile?: string };
+export type LogoEditResult = EditResult & { logoSha?: string; readmeSha?: string; readmeFile?: string; /** `migrate-readmes`: every file written, to prime the cache. */ migrated?: { file: string; sha: string; text: string }[] };
 
 /**
  * An edit that stores a new logo and/or a README file (C4): the files and repo-groups.yml go in ONE commit through the Git Data API
@@ -25,7 +25,8 @@ export async function commitEditWithLogo(client: Client, kv: KV, org: string, ed
   const png = pngOf(edit);
   const logoFile = editLogoPath(edit);
   const readmeText = readmeFileOf(edit);
-  if (!(png && logoFile) && readmeText === null) throw new EditError('There is no new logo or README to save.');
+  const migrate = edit.kind === 'migrate-readmes';
+  if (!(png && logoFile) && readmeText === null && !migrate) throw new EditError('There is no new logo or README to save.');
   const load = await loadYamlParser();
   const repo = await readDotGithub(client, org);
   if (!repo.readable) return { status: 'needs-repo' };
@@ -51,6 +52,8 @@ export async function commitEditWithLogo(client: Client, kv: KV, org: string, ed
           config = r.config;
         }
       }
+      const moving = migrate ? inlineReadmes(config.groups) : [];
+      if (migrate && !moving.length) throw new EditError('No README is stored inside repo-groups.yml, so there is nothing to move.');
       const applied = applyEdit(config.groups, edit);
       if ('error' in applied) throw new EditError(applied.error);
       const next: Config = { ...config, groups: applied.groups };
@@ -71,6 +74,12 @@ export async function commitEditWithLogo(client: Client, kv: KV, org: string, ed
           files.push({ path: at, mode: '100644', type: 'blob', sha: readmeSha });
         }
       }
+      const migrated: { file: string; sha: string; text: string }[] = [];
+      for (const m of moving) {
+        const sha = (await client.rest(`${git}/blobs`, { method: 'POST', body: { content: encodeBase64Utf8(m.text), encoding: 'base64' } })).data.sha as string;
+        files.push({ path: m.file, mode: '100644', type: 'blob', sha });
+        migrated.push({ file: m.file, sha, text: m.text });
+      }
       const ymlSha: string = (await client.rest(`${git}/blobs`, { method: 'POST', body: { content: encodeBase64Utf8(text), encoding: 'base64' } })).data.sha;
       const tree = await client.rest(`${git}/trees`, {
         method: 'POST',
@@ -87,7 +96,7 @@ export async function commitEditWithLogo(client: Client, kv: KV, org: string, ed
       step = 'ref';
       await client.rest(`${git}/refs/heads/${refPath(repo.defaultBranch)}`, { method: 'PATCH', body: { sha: commit.data.sha } });
       await kv.set(`rg:file:${org}`, { exists: true, text, sha: ymlSha, etag: null } satisfies OrgFile);
-      return { status: 'ok', sha: ymlSha, config: next, warnings: [], ...(pngSha && png ? { logoSha: pngSha } : {}), ...(readmeSha && readmeFile ? { readmeSha, readmeFile } : {}) };
+      return { status: 'ok', sha: ymlSha, config: next, warnings: [], ...(pngSha && png ? { logoSha: pngSha } : {}), ...(readmeSha && readmeFile ? { readmeSha, readmeFile } : {}), ...(migrated.length ? { migrated } : {}) };
     } catch (e) {
       const conflict = e instanceof GitHubError && e.kind === 'validation' && step === 'ref' && !PROTECTED.test(e.message);
       if (conflict && attempt === 0) continue; // the branch moved under us: read again, re-apply

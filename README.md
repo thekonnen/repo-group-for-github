@@ -1,6 +1,10 @@
 
 ### Konnen: Repo group for GitHub
 
+Organizes the repositories of a GitHub organization or personal account into nested groups and subgroups, directly on github.com.
+
+_See this case of a organization_
+
 <img src="./assets/before_after_org.png" alt="-" width="1000">
 
 ## Install
@@ -16,9 +20,10 @@ Open **https://github.com/apps/konnen-repository-group-for-github/installations/
 
 ### 2. Install the extension (Chrome, Edge, Brave)
 
-**From the store:** [Add to Chrome](https://chromewebstore.google.com/detail/bfoacibbggpnlofmimdpmaffhnejmlfd).
+**From the chrome store:** [Add to Chrome](https://chromewebstore.google.com/detail/bfoacibbggpnlofmimdpmaffhnejmlfd).
 
-**From source:**
+<details>
+<summary><b>From source</b> (developer mode)</summary>
 
 ```sh
 git clone https://github.com/thekonnen/repo-group-for-github.git
@@ -35,9 +40,13 @@ Firefox: run `npm run build:firefox`, open `about:debugging#/runtime/this-firefo
 
 After you pull new changes, run `npm run build` again and click the reload icon on the extension.
 
+</details>
+
 ### 3. Sign in
 
 Click the extension icon, then **Sign in with GitHub**. Copy the code, authorize on GitHub, and open one of the pages below.
+
+<img src="./assets/how-to-setup.png" alt="-" width="1000">
 
 ## Where it works
 

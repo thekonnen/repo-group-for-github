@@ -1,11 +1,11 @@
 
-### Title
+### Konnen: Repo group for GitHub
 
 <img src="./assets/before_after_org.png" alt="-" width="1000">
 
 ## Install
 
-The extension is not on the Chrome Web Store yet, so you load it in developer mode. You need the GitHub App and the extension.
+You need the GitHub App and the extension. Chrome, Edge and Brave users can install it from the [Chrome Web Store](https://chromewebstore.google.com/detail/bfoacibbggpnlofmimdpmaffhnejmlfd); the steps below build it from source instead.
 
 ### 1. Install the GitHub App
 
@@ -15,6 +15,10 @@ Open **https://github.com/apps/konnen-repository-group-for-github/installations/
 - Personal profile: choose your own account.
 
 ### 2. Install the extension (Chrome, Edge, Brave)
+
+**From the store:** [Add to Chrome](https://chromewebstore.google.com/detail/bfoacibbggpnlofmimdpmaffhnejmlfd).
+
+**From source:**
 
 ```sh
 git clone https://github.com/thekonnen/repo-group-for-github.git

@@ -2,7 +2,7 @@ import { useState } from 'preact/hooks';
 import { byteLength, ERR_README_BIG, isReadmePath, isSafeReadmePath, kb, MAX_README_BYTES, readmeFilePath, readmeTooBig, type ReadmeChange } from '../../core/readme';
 import { Markdown } from './Markdown';
 
-export type ReadmeMode = 'inline' | 'file' | 'path';
+export type ReadmeMode = 'file' | 'path';
 
 /** What the person typed in the README field of the drawer. Nothing is sent until Save. */
 export interface ReadmeDraft {
@@ -11,14 +11,20 @@ export interface ReadmeDraft {
   path: string;
 }
 
-/** Initial draft from the group's saved `readme` (a path or inline text) and, for a file, its loaded text. */
+/**
+ * Initial draft from the group's saved `readme` and, for a file, its loaded text. READMEs live as files in <org>/.github, so the
+ * YAML only keeps a path. Text written inline by an older version opens as a file draft: saving moves it out of repo-groups.yml.
+ */
 export function initialReadme(saved: string | undefined, groupPath: string[], loaded: string | null | undefined): ReadmeDraft {
   if (saved && isReadmePath(saved)) {
     const own = saved === readmeFilePath(groupPath);
     return own ? { mode: 'file', text: loaded ?? '', path: saved } : { mode: 'path', text: '', path: saved };
   }
-  return { mode: 'inline', text: saved ?? '', path: '' };
+  return { mode: 'file', text: saved ?? '', path: '' };
 }
+
+/** True when the saved README is text inside repo-groups.yml (older files) that the next save moves to a file. */
+export const isInlineReadme = (saved: string | undefined): boolean => !!saved?.trim() && !isReadmePath(saved);
 
 /** The change this draft makes to the group, `undefined` when it changes nothing. `loaded` is the text of the saved file, if any. */
 export function readmeChange(d: ReadmeDraft, saved: string | undefined, groupPath: string[], loaded: string | null | undefined): ReadmeChange | undefined {
@@ -29,13 +35,10 @@ export function readmeChange(d: ReadmeDraft, saved: string | undefined, groupPat
     return p ? { path: p } : { remove: true };
   }
   const text = clean(d.text);
-  if (d.mode === 'inline') {
-    if (text === clean(saved && !isReadmePath(saved) ? saved : '')) return undefined;
-    return text ? { inline: d.text } : { remove: true };
-  }
   const here = readmeFilePath(groupPath);
   if (!text) return saved ? { remove: true } : undefined;
   if (saved === here && loaded != null && clean(loaded) === text) return undefined;
+  // Inline text in the YAML: saving moves it to the file, even when the text is unchanged.
   return { file: d.text };
 }
 
@@ -55,7 +58,7 @@ export function readmeProblem(d: ReadmeDraft): string | null {
  * README field of the group drawer (C4): Markdown text with Write / Preview tabs, stored either inside repo-groups.yml or as
  * a file in <org>/.github, or the path of a file that already exists there.
  */
-export function ReadmeField({ org, groupPath, draft, onChange, loading, problem }: { org: string; groupPath: string[]; draft: ReadmeDraft; onChange: (d: ReadmeDraft) => void; loading?: boolean; problem?: string | null }) {
+export function ReadmeField({ org, groupPath, draft, onChange, loading, problem, inline }: { org: string; inline?: boolean; groupPath: string[]; draft: ReadmeDraft; onChange: (d: ReadmeDraft) => void; loading?: boolean; problem?: string | null }) {
   const [tab, setTab] = useState<'write' | 'preview'>('write');
   const size = byteLength(draft.text);
   const file = readmeFilePath(groupPath);
@@ -63,7 +66,6 @@ export function ReadmeField({ org, groupPath, draft, onChange, loading, problem 
     <div class="rg-field">
       <label for="rg-f-readme-mode">README</label>
       <select id="rg-f-readme-mode" class="rg-y-scope" aria-label="Where the README is stored" value={draft.mode} onChange={(e) => onChange({ ...draft, mode: (e.target as HTMLSelectElement).value as ReadmeMode })}>
-        <option value="inline" selected={draft.mode === 'inline'}>Text inside repo-groups.yml</option>
         <option value="file" selected={draft.mode === 'file'}>Markdown file in {org}/.github</option>
         <option value="path" selected={draft.mode === 'path'}>Path of an existing file</option>
       </select>
@@ -85,7 +87,7 @@ export function ReadmeField({ org, groupPath, draft, onChange, loading, problem 
             <div class="rg-md-preview" role="tabpanel" aria-label="README preview">{draft.text.trim() ? <Markdown text={draft.text} /> : <span class="rg-muted">Nothing to preview yet.</span>}</div>
           )}
           <span class="rg-hint">
-            {problem ? <span class="rg-error" role="alert">{problem}</span> : <>Markdown: headings, lists, links, code, tables. HTML is shown as text. {kb(size)} of {MAX_README_BYTES / 1024} KB{draft.mode === 'file' ? <> · saved as <code>{file}</code> in the same commit</> : null}.</>}
+            {problem ? <span class="rg-error" role="alert">{problem}</span> : <>{inline ? <>This README is stored inside repo-groups.yml. Saving moves it to <code>{file}</code> and keeps only the path in the YAML. </> : null}Markdown: headings, lists, links, code, tables. HTML is shown as text. {kb(size)} of {MAX_README_BYTES / 1024} KB{draft.mode === 'file' ? <> · saved as <code>{file}</code> in the same commit</> : null}.</>}
           </span>
         </>
       )}

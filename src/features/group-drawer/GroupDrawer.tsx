@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { isReadmePath, readmeFilePath } from '../../core/readme';
-import { initialReadme, ReadmeField, readmeChange, readmeProblem } from '../readme/ReadmeField';
+import { initialReadme, isInlineReadme, ReadmeField, readmeChange, readmeProblem } from '../readme/ReadmeField';
 import { useReadmeText } from '../readme/readme-store';
 import { applyEdit, cleanLabels, cleanMilestones, cleanTeams, displayName, finalName, slugify, slugName, splitRules, validateDraft, type Edit } from '../../core/edit';
 import { matchesRepo, ruleLabel } from '../../core/glob';
@@ -76,7 +76,7 @@ function Form({ ctl, mode, path, focus }: { ctl: Controller; mode: 'edit' | 'new
     .map(([key, e]) => ({ key, ...e, from: titled(model, e.from) }));
   const savedSlugs = node ? Object.keys(effectiveTeams(groups, path)) : [];
   const [ruleInput, setRuleInput] = useState('');
-  // README (C4): inline text, a file committed with this save, or the path of an existing file.
+  // README (C4): a file committed with this save, or the path of an existing file. Inline text from older files moves to a file.
   const savedReadme = node?.group.readme;
   const loadedReadme = useReadmeText(ctl.readmes, savedReadme && isReadmePath(savedReadme) ? savedReadme : '');
   const [readme, setReadme] = useState(() => initialReadme(savedReadme, path, loadedReadme));
@@ -216,7 +216,7 @@ function Form({ ctl, mode, path, focus }: { ctl: Controller; mode: 'edit' | 'new
           <input id="rg-f-desc" class="rg-input" value={description} autocomplete="off" placeholder="One short sentence" onInput={(e) => setDescription((e.target as HTMLInputElement).value)} />
         </div>
 
-        <ReadmeField org={s.org} groupPath={mode === 'edit' ? [...path.slice(0, -1), finalName(slug) || path[path.length - 1]] : [...path, finalName(slug) || 'group']} draft={readme} loading={readmeLoading} problem={readmeError}
+        <ReadmeField org={s.org} groupPath={mode === 'edit' ? [...path.slice(0, -1), finalName(slug) || path[path.length - 1]] : [...path, finalName(slug) || 'group']} draft={readme} inline={isInlineReadme(savedReadme)} loading={readmeLoading} problem={readmeError}
           onChange={(d) => (setReadme(d), setReadmeTouched(true), setProblem(null))} />
 
         {!s.access?.personal && <TeamsField

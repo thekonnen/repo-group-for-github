@@ -76,8 +76,25 @@ export async function mountOrgRepos(org: string, env?: Partial<Env>, doc: Docume
   if (side) render(<SidebarTree ctl={ctl} />, side);
   render(<Overlay ctl={ctl} />, overlay);
 
-  // GitHub's own list is hidden only while the grouped view (or its sign-in state) is showing.
-  const sync = () => nativeParts.forEach((el) => el.classList.toggle('rg-hidden', ctl.store.get().view === 'grouped'));
+  // GitHub's content column can have a viewport-sized minimum height. A banner *before* that
+  // column leaves a huge gap before its search and rows; put the banner inside the column instead.
+  const viewClass = root.className;
+  const viewStyle = root.getAttribute('style');
+  // Without a usable sign-in, keep GitHub's real repository list visible regardless of the saved view.
+  const sync = () => {
+    const s = ctl.store.get();
+    if (s.phase === 'signed-out') {
+      root.className = 'rg-root';
+      root.removeAttribute('style');
+      column.prepend(root);
+    } else if (root.parentElement === column) {
+      column.before(root);
+      root.className = viewClass;
+      if (viewStyle === null) root.removeAttribute('style');
+      else root.setAttribute('style', viewStyle);
+    }
+    nativeParts.forEach((el) => el.classList.toggle('rg-hidden', s.phase === 'ready' && s.view === 'grouped'));
+  };
   const unsubscribe = ctl.store.subscribe(sync);
   sync();
   const onHash = () => ctl.syncHash();

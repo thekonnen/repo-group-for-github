@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'preact/hooks';
+import { browser } from 'wxt/browser';
 import { t } from '../../i18n';
 import { call } from '../../github/client';
 import { groupedViewUrl, orgFromUrl, userReposUrl } from '../../ext-pages/tab-org';
 import { toInfo, useAuth } from '../../ext-pages/use-auth';
 import type { OrgEntry, OrgList } from '../../background/orgs';
+import { DeviceCode } from '../../ui/DeviceCode';
 
 export function App() {
   const auth = useAuth();
@@ -81,7 +83,7 @@ export function App() {
       ) : auth.flow ? (
         <>
           <span class="rg-ext-muted">{t('deviceHint')}</span>
-          <div class="rg-ext-code" aria-live="polite">{auth.flow.userCode}</div>
+          <DeviceCode code={auth.flow.userCode} className="rg-ext-code" />
           <button class="rg-ext-btn primary" onClick={() => auth.openDevicePage(auth.flow!)}>{t('openDevicePage')}</button>
           <span class="rg-ext-muted">{t('deviceWaiting')}</span>
         </>

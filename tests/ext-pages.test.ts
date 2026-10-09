@@ -93,6 +93,11 @@ describe('popup', () => {
     expect(log.some((r) => r.type === 'orgs:list')).toBe(false);
     btn.click();
     await vi.waitFor(() => expect(text()).toContain('AB-12'));
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    (root().querySelector('.rg-ext-code') as HTMLButtonElement).click();
+    await vi.waitFor(() => expect(writeText).toHaveBeenCalledWith('AB-12'));
+    await vi.waitFor(() => expect(text()).toContain('Copied!'));
   });
 });
 

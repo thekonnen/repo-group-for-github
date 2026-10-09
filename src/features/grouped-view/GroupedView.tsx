@@ -9,6 +9,7 @@ import type { RepoInfo } from '../../core/types';
 import { GroupAvatar } from '../logos/GroupAvatar';
 import { RootAvatar } from '../logos/RootAvatar';
 import { Icon } from '../../ui/Icon';
+import { DeviceCode } from '../../ui/DeviceCode';
 import { useStore } from '../store';
 import { chipTeams } from '../../core/teams';
 import { MembersPanel } from '../members/MembersPanel';
@@ -32,8 +33,8 @@ const repoUrl = (org: string, name: string) => `https://github.com/${org}/${name
 
 export function GroupedView({ ctl }: { ctl: Controller }) {
   const s = useStore(ctl.store);
+  if (s.phase === 'signed-out') return <SignInBanner ctl={ctl} s={s} />;
   if (s.view === 'list') return <ListBanner ctl={ctl} />;
-  if (s.phase === 'signed-out') return <SignInEmpty ctl={ctl} s={s} />;
   const model = ctl.model();
   if (!model) return <div class="rg-view"><div class="rg-empty"><b>Loading repositories…</b></div></div>;
   return <Groups ctl={ctl} s={s} model={model} />;
@@ -50,30 +51,29 @@ function ListBanner({ ctl }: { ctl: Controller }) {
   );
 }
 
-function SignInEmpty({ ctl, s }: { ctl: Controller; s: State }) {
+function SignInBanner({ ctl, s }: { ctl: Controller; s: State }) {
   const f = s.signIn;
   return (
-    <div class="rg-view">
-      <div class="rg-box">
-        <div class="rg-empty">
-          <b>Group your repositories</b>
-          Repository Group for Github organizes {s.org}’s repositories into groups and subgroups. Sign in with GitHub to start.
-          {f && !f.error ? (
-            <div style="margin:16px auto 0;max-width:280px;display:flex;flex-direction:column;gap:8px">
-              <span class="rg-muted">Enter this code on GitHub:</span>
-              <code class="rg-code" aria-live="polite">{f.userCode}</code>
-              <button type="button" class="rg-btn rg-btn-primary" onClick={() => ctl.openVerification(f)}>Open GitHub</button>
-              <span class="rg-muted">Waiting for you to authorize…</span>
-            </div>
-          ) : (
-            <div style="margin-top:16px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-              <button type="button" class="rg-btn rg-btn-primary" onClick={() => ctl.startSignIn()}>Sign in with GitHub</button>
-              <button type="button" class="rg-btn" onClick={() => ctl.setView('list')}>Use GitHub’s list</button>
-            </div>
-          )}
-          {f?.error && <p class="rg-error" role="alert">{f.error}</p>}
-        </div>
+    <div class="rg-signin-banner" role="region" aria-label="Repository Group sign-in">
+      <div class="rg-signin-copy">
+        <strong>Group your repositories</strong>
+        <span>GitHub’s repository list is shown below. Sign in to see {s.org}’s groups and subgroups.</span>
       </div>
+      <div class="rg-signin-actions">
+        {f && !f.error ? (
+          <div class="rg-signin-code">
+            <span>Enter this code on GitHub:</span>
+            <DeviceCode code={f.userCode} className="rg-code" />
+            <button type="button" class="rg-btn rg-btn-primary" onClick={() => ctl.openVerification(f)}>Open GitHub</button>
+          </div>
+        ) : (
+          <button type="button" class="rg-btn rg-btn-primary rg-signin-cta" onClick={() => ctl.startSignIn()}>
+            <span>Sign in with GitHub · Show groups</span>
+            <span class="rg-signin-arrow" aria-hidden="true">→</span>
+          </button>
+        )}
+      </div>
+      {f?.error && <p class="rg-error" role="alert">{f.error}</p>}
     </div>
   );
 }

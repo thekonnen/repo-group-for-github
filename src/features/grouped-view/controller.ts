@@ -545,7 +545,9 @@ export function createController(org: string, env: Env) {
         if (r.state === 'pending') interval = r.interval;
         else if (r.state === 'error') return void store.set({ signIn: { ...flow, error: r.message } });
         else {
-          store.set({ signIn: null, phase: 'ready' });
+          store.set({ signIn: null, phase: 'ready', view: 'grouped' });
+          savePrefs({ view: 'grouped' });
+          void loadAccess();
           await loadCached();
           await refresh();
           return;

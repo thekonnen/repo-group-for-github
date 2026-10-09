@@ -6,6 +6,7 @@ import { call } from '../../github/client';
 import { toInfo, useAuth } from '../../ext-pages/use-auth';
 import type { OrgEntry, OrgList } from '../../background/orgs';
 import type { OrgPrefs } from '../../github/messages';
+import { DeviceCode } from '../../ui/DeviceCode';
 
 function Account({ auth }: { auth: ReturnType<typeof useAuth> }) {
   const s = auth.status;
@@ -22,7 +23,7 @@ function Account({ auth }: { auth: ReturnType<typeof useAuth> }) {
       ) : auth.flow ? (
         <>
           <p class="rg-ext-muted">{t('deviceHint')}</p>
-          <div class="rg-ext-code" aria-live="polite">{auth.flow.userCode}</div>
+          <DeviceCode code={auth.flow.userCode} className="rg-ext-code" />
           <div class="inline">
             <button class="rg-ext-btn primary" onClick={() => auth.openDevicePage(auth.flow!)}>{t('openDevicePage')}</button>
             <span class="rg-ext-muted">{t('deviceWaiting')}</span>

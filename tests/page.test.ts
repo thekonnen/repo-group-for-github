@@ -6,6 +6,7 @@ import { hasGithubFilter, routeOf } from '../src/github/route';
 import { commonAncestor, findFilterList, locateOrgRepos } from '../src/github/selectors';
 import { watchUrl, waitFor } from '../src/github/navigation';
 import { mountOrgRepos } from '../src/features/mount';
+import { CallError } from '../src/github/client';
 import type { Request } from '../src/github/messages';
 
 const html = readFileSync(join(process.cwd(), 'tests/fixtures/org-repos.html'), 'utf8');
@@ -438,21 +439,53 @@ describe('display names (titles) with slugs underneath', () => {
 });
 
 describe('states', () => {
-  it('shows sign-in first, with the device code inline', async () => {
+  it('keeps GitHub’s repositories visible with a prominent sign-in banner and device code', async () => {
     const { call } = fakeCall({ signedIn: false });
     const m = (await mountOrgRepos('thekonnen', { call, sleep: () => new Promise(() => {}) }, document, 200))!;
-    await vi.waitFor(() => expect(document.querySelector('.rg-view .rg-empty')!.textContent).toContain('Sign in with GitHub'));
-    expect(document.getElementById('content')!.classList.contains('rg-hidden')).toBe(true);
+    await vi.waitFor(() => expect(document.querySelector('.rg-signin-banner')!.textContent).toContain('Sign in with GitHub'));
+    expect(document.getElementById('content')!.classList.contains('rg-hidden')).toBe(false);
+    expect(document.querySelector('#content > .rg-root .rg-signin-banner')).toBeTruthy();
+    expect(document.querySelector('#content > .rg-root')!.nextElementSibling?.className).toBe('head');
     expect(document.querySelectorAll('[data-rg="side"] .rg-nav-item')).toHaveLength(0);
     const open = vi.fn();
     m.dispose();
     const m2 = (await mountOrgRepos('thekonnen', { call, open, sleep: () => new Promise(() => {}) }, document, 200))!;
-    await vi.waitFor(() => expect(document.querySelector('.rg-view .rg-btn-primary')).toBeTruthy());
-    (document.querySelector('.rg-view .rg-btn-primary') as HTMLElement).click();
+    await vi.waitFor(() => expect(document.querySelector('.rg-signin-banner .rg-btn-primary')).toBeTruthy());
+    (document.querySelector('.rg-signin-banner .rg-btn-primary') as HTMLElement).click();
     await vi.waitFor(() => expect(document.querySelector('.rg-code')!.textContent).toBe('ABCD-1234'));
-    (document.querySelector('.rg-view .rg-btn-primary') as HTMLElement).click();
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    (document.querySelector('.rg-code') as HTMLElement).click();
+    await vi.waitFor(() => expect(writeText).toHaveBeenCalledWith('ABCD-1234'));
+    await vi.waitFor(() => expect(document.querySelector('.rg-device-code-feedback')!.textContent).toBe('Copied!'));
+    (document.querySelector('.rg-signin-banner .rg-btn-primary') as HTMLElement).click();
     expect(open).toHaveBeenCalledWith('https://github.com/login/device?user_code=ABCD-1234');
     m2.dispose();
+  });
+  it('shows sign-in above GitHub’s list even when list view was saved or a filter is active', async () => {
+    for (const search of ['', '?type=public']) {
+      window.history.replaceState(null, '', `/orgs/thekonnen/repositories${search}`);
+      const base = fakeCall({ signedIn: false });
+      const call = vi.fn(async (req: Request) => req.type === 'prefs:get' ? { view: 'list' } : base.call(req));
+      const m = (await mountOrgRepos('thekonnen', { call }, document, 200))!;
+      await vi.waitFor(() => expect(document.querySelector('.rg-signin-banner')).toBeTruthy());
+      expect(document.querySelector('.rg-banner')).toBeNull();
+      expect(document.getElementById('content')!.classList.contains('rg-hidden')).toBe(false);
+      expect(document.querySelector('#content > .rg-root .rg-signin-banner')).toBeTruthy();
+      m.dispose();
+    }
+  });
+  it('restores the native list when a previously signed-in session expires during refresh', async () => {
+    const base = fakeCall();
+    const call = vi.fn(async (req: Request) => {
+      if (req.type === 'org:refresh') throw new CallError({ kind: 'auth', message: 'Your GitHub sign-in expired.' });
+      return base.call(req);
+    });
+    const m = (await mountOrgRepos('thekonnen', { call }, document, 200))!;
+    await vi.waitFor(() => expect(document.querySelector('.rg-signin-banner')).toBeTruthy());
+    expect(document.getElementById('content')!.classList.contains('rg-hidden')).toBe(false);
+    expect(document.querySelector('#content > .rg-root .rg-signin-banner')).toBeTruthy();
+    m.dispose();
   });
   it('shows everything ungrouped when the org has no repo-groups.yml, and an error when it is invalid', async () => {
     const a = fakeCall({ config: { exists: false } });

@@ -34,6 +34,8 @@ On the same form:
 2. Uncheck **Expire user authorization tokens** (checked by default; no client secret is needed for refresh).
 3. At the bottom, *Where can this GitHub App be installed?* → **Any account**. The default, "Only on this account", prevents installing it on an org.
 
+For an existing App, also check **Expire user authorization tokens** in its settings. The extension keeps the authorization in browser local storage across restarts and does not sign out automatically, but it cannot extend a token that GitHub expires or revokes. Without a client secret, an expired authorization requires signing in again. Clearing extension storage, reinstalling the extension, or signing out also removes the saved authorization.
+
 Leave the callback URL empty and **Webhook → Active** unchecked.
 
 ## 4. After creating

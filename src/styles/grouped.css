@@ -26,6 +26,31 @@
 .rg-bar { height: 4px; width: 160px; background: var(--rg-selected); border-radius: 2px; overflow: hidden; }
 .rg-bar > i { display: block; height: 100%; background: var(--rg-accent); }
 .rg-code { display: block; font: 600 22px var(--rg-mono); letter-spacing: 2px; text-align: center; padding: 8px; border: 1px solid var(--rg-border); border-radius: 6px; }
+.rg-root .rg-device-code-wrap { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; }
+.rg-root .rg-device-code { background: var(--rg-selected); color: var(--rg-fg); cursor: copy; }
+.rg-root .rg-device-code:hover { border-color: var(--rg-accent); }
+.rg-root .rg-device-code-feedback { color: var(--rg-muted); font-size: 12px; }
+.rg-root .rg-device-code-feedback:empty { display: none; }
+.rg-root .rg-signin-banner { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 20px; padding: 16px 20px; margin-bottom: 16px; border: 1px solid var(--rg-accent); border-radius: 6px; background: var(--rg-bg-subtle); box-shadow: inset 4px 0 var(--rg-accent); }
+.rg-root .rg-signin-copy { display: flex; flex: 1 1 300px; flex-direction: column; gap: 2px; }
+.rg-root .rg-signin-copy strong { color: var(--rg-fg); font-size: 16px; }
+.rg-root .rg-signin-copy span { color: var(--rg-muted); }
+.rg-root .rg-signin-actions, .rg-root .rg-signin-code { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.rg-root .rg-signin-cta { position: relative; isolation: isolate; overflow: hidden; font-weight: 600; box-shadow: 0 2px 8px var(--rg-selected); }
+.rg-root .rg-signin-cta::before { content: ''; position: absolute; inset: 0; z-index: -1; background: linear-gradient(110deg, transparent 30%, var(--rg-on-emphasis) 50%, transparent 70%); opacity: .16; transform: translateX(-150%); pointer-events: none; }
+.rg-root .rg-signin-arrow { display: inline-block; font-size: 17px; line-height: 1; }
+.rg-root .rg-signin-cta:hover { box-shadow: 0 4px 14px var(--rg-selected); }
+@media (prefers-reduced-motion: no-preference) {
+  .rg-root .rg-signin-cta { animation: rg-signin-glow 4s ease-in-out infinite; transition: transform .18s ease, box-shadow .18s ease; }
+  .rg-root .rg-signin-cta::before { transition: transform .55s ease; }
+  .rg-root .rg-signin-cta:hover { transform: translateY(-2px); animation-play-state: paused; }
+  .rg-root .rg-signin-cta:hover::before { transform: translateX(150%); }
+  .rg-root .rg-signin-arrow { transition: transform .18s ease; }
+  .rg-root .rg-signin-cta:hover .rg-signin-arrow { transform: translateX(3px); }
+  .rg-root .rg-signin-cta:active { transform: translateY(0); }
+}
+@keyframes rg-signin-glow { 50% { box-shadow: 0 0 0 3px var(--rg-selected), 0 3px 12px var(--rg-selected); } }
+.rg-root .rg-signin-banner .rg-error { flex-basis: 100%; margin: 0; }
 .rg-error { color: var(--rg-danger-fg); font-size: 13px; }
 .rg-banner-warn { background: var(--rg-bg-subtle); }
 .rg-root .rg-nav-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
